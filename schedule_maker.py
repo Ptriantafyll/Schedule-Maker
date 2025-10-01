@@ -97,6 +97,7 @@ for doc in doctors_list:
         sum(x.get((i,doc), 0) for i,d in enumerate(dates) if is_weekend[d]) <= max_wkend
     )
 
+# If possible (no hard constraint), avoid more than 2 consecutive "every other day" assignments
 penalty_terms = []
 for doc in doctors_list:
     for i in range(len(dates) - 2):
@@ -105,12 +106,48 @@ for doc in doctors_list:
             model.Add(x[(i,doc)] + x[(i+2,doc)] == 2).OnlyEnforceIf(b)
             model.Add(x[(i,doc)] + x[(i+2,doc)] != 2).OnlyEnforceIf(b.Not())
             penalty_terms.append(b)
-            
-# for doc in doctors_list:
-#     for 
-
+      
 # Add to objective: minimize total "every other day" violations
 model.Minimize(sum(penalty_terms))
+
+fri_sat_sun_bonus = []
+
+# Have a doctor who works on Friday not work on the weekend (if possible)
+for i, day in enumerate(dates):
+    if day.weekday() == 4:  # Friday
+        sat_idx = i + 1 if i + 1 < len(dates) else None
+        sun_idx = i + 2 if i + 2 < len(dates) else None
+        if sat_idx is not None and sun_idx is not None:
+            for doc in doctors_list:
+                vars_window = [
+                    x.get((i,doc), 0),      # Friday
+                    x.get((sat_idx,doc), 0),  # Saturday
+                    x.get((sun_idx,doc), 0)   # Sunday
+                ]
+                b = model.NewBoolVar(f"fri_pref_{i}_{doc}")
+                model.Add(sum(vars_window) == 0).OnlyEnforceIf(b)
+                model.Add(sum(vars_window) != 0).OnlyEnforceIf(b.Not())
+                fri_sat_sun_bonus.append(b)
+
+# Add to objective: maximize number of Friday-not-weekend bonuses
+model.Maximize(sum(fri_sat_sun_bonus))
+
+gap_penalties = []
+
+for doc in doctors_list:
+    for i in range(len(dates)-1):
+        if (i,doc) in x and (i+1,doc) in x:
+            # Already have "no consecutive" duty constraint
+            continue
+        if (i,doc) in x and (i+2,doc) in x:
+            # Penalize "every other day"
+            b = model.NewBoolVar(f"gap2_{i}_{doc}")
+            model.Add(x[(i,doc)] + x[(i+2,doc)] == 2).OnlyEnforceIf(b)
+            model.Add(x[(i,doc)] + x[(i+2,doc)] != 2).OnlyEnforceIf(b.Not())
+            gap_penalties.append(b)
+
+model.Minimize(sum(gap_penalties))
+
 # ------------------------------
 # 3. Solve
 # ------------------------------
@@ -149,7 +186,6 @@ for row in range(2, ws.max_row + 1):  # skip header row
     date_value = pd.to_datetime(date_cell.value).date()
     if date_value.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
         for col in range(1, ws.max_column + 1):
-            print(f"Styling cell at row {row}, col {col} for weekend")
             cell = ws.cell(row=row, column=col)
             cell.fill = weekend_fill
             cell.font = weekend_font
