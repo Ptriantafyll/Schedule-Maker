@@ -3,6 +3,7 @@ import datetime as dt
 from ortools.sat.python import cp_model
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill, Font
+from openpyxl.utils import get_column_letter
 import math
 
 # ------------------------------
@@ -12,12 +13,12 @@ INPUT_FILE = "input.xlsx"
 OUT_FILE = "monthly_schedule.xlsx"
 
 # weights for the combined objective (tweak to taste)
-W_FRI_WEEKEND_BONUS = 3      # reward for Fri+Sat+Sun off
-W_3DAY_BREAK = 2             # reward for a 3-day break
-W_EVERY_OTHER_PENALTY = 4    # penalty for every-other patterns
-W_GAP_PENALTY = 2            # penalty for short gaps (i.e., i and i+2)
-W_BLOCK_DEV_PENALTY = 2      # penalty per unit deviation from ideal per block
-W_FULL_WKEND_OFF_BONUS = 5   # reward for full weekend off (Fri+Sat+Sun)
+W_EVERY_OTHER_PENALTY = 4       # penalty for every-other patterns
+W_GAP_PENALTY = 2               # penalty for short gaps (i.e., i and i+2)
+W_BLOCK_DEV_PENALTY = 2         # penalty per unit deviation from ideal per block
+W_FULL_WKEND_OFF_BONUS = 5      # reward for full weekend off (Fri+Sat+Sun)
+W_BALANCE_FULL_WKENDS_OFF = 20  # weight for balancing weekend duties
+W_DIFF_WKEND_DUTY_DAY = 2       # weight for balancing weekend days of duty
 
 # solver time limit seconds
 SOLVER_TIME_LIMIT = 120
@@ -34,11 +35,13 @@ month_for_schedule = next_month_first.month
 year_for_schedule = next_month_first.year
 
 # Option: you can override above two lines manually if you want a specific month:
-# month_for_schedule = 1
-# year_for_schedule = 2026
+# month_for_schedule = 12
+# year_for_schedule = 2025
 
 first_day = dt.date(year_for_schedule, month_for_schedule, 1)
-last_day = (first_day.replace(month=month_for_schedule % 12 + 1, day=1) - dt.timedelta(days=1))
+import calendar
+days_in_month = calendar.monthrange(year_for_schedule, month_for_schedule)[1]
+last_day = dt.date(year_for_schedule, month_for_schedule, days_in_month)
 dates = [first_day + dt.timedelta(days=i) for i in range((last_day - first_day).days + 1)]
 print(f"Creating schedule for: {first_day} → {last_day}")
 
@@ -85,9 +88,22 @@ for i, day in enumerate(dates):
             continue
         x[(i, doc)] = model.NewBoolVar(f"x_{i}_{doc}")
 
+# Check if we have enough doctors to cover all days
+max_possible_duties = len(doctors_list) * 7
+allow_unassigned_tuesdays = False
+if max_possible_duties < len(dates):
+    print("⚠ Not enough doctors to cover all days. Tuesdays will be left unassigned.")
+    allow_unassigned_tuesdays = True
+
 # Exactly one doctor per day
-for i in range(len(dates)):
-    model.Add(sum(x.get((i, doc), 0) for doc in doctors_list) == 1)
+for i, day in enumerate(dates):
+    if allow_unassigned_tuesdays and day.weekday() == 1:  # 1 = Tuesday
+        # Either 0 or 1 doctor (so it can be left unassigned)
+        model.Add(sum(x.get((i,doc), 0) for doc in doctors_list) <= 1)
+    else:
+        # Normal rule: exactly 1 doctor assigned
+        model.Add(sum(x.get((i,doc), 0) for doc in doctors_list) == 1)
+
 
 # Balanced total duties per doctor (difference at most 1)
 total_days = len(dates)
@@ -96,13 +112,16 @@ max_days = min_days if total_days % num_docs == 0 else min_days + 1
 for doc in doctors_list:
     model.Add(sum(x.get((i, doc), 0) for i in range(len(dates))) >= min_days)
     model.Add(sum(x.get((i, doc), 0) for i in range(len(dates))) <= max_days)
+    
+    # hard constraint: no more than 7 duties in the month
+    model.Add(sum(x.get((i, doc), 0) for i in range(len(dates))) <= 7)
 
-# No consecutive duties (hard)
+# No consecutive duties (hard constraint)
 for i in range(len(dates) - 1):
     for doc in doctors_list:
         model.Add(x.get((i, doc), 0) + x.get((i + 1, doc), 0) <= 1)
 
-# Equal number of weekend/weekday duties (difference at most 1)
+# Balance number of weekend/weekday duties (difference at most 1)
 total_weekends = sum(1 for d in dates if is_weekend[d])
 min_wkend = total_weekends // num_docs
 max_wkend = min_wkend if total_weekends % num_docs == 0 else min_wkend + 1
@@ -110,14 +129,16 @@ for doc in doctors_list:
     model.Add(sum(x.get((i, doc), 0) for i, d in enumerate(dates) if is_weekend[d]) >= min_wkend)
     model.Add(sum(x.get((i, doc), 0) for i, d in enumerate(dates) if is_weekend[d]) <= max_wkend)
 
+
 # ------------------------------
 # Soft preference variables (we'll combine into one objective)
 # ------------------------------
 every_other_vars = []     # patterns i and i+2 both assigned
 gap2_vars = []            # same as every_other, kept separately if you want different weights
-fri_weekend_bonus_vars = []  # reward Fri+Sat+Sun all off for a doc
 block_deviation_vars = []    # deviation from ideal per block
 full_weekend_off_bonus = []  # reward for full weekend off (Fri+Sat+Sun)
+balanced_full_wkends_off_deviation_vars = [] # deviation vars for balancing full weekends off
+different_weekend_duty_day_vars = []  # vars to balance weekend duty days
 
 # penalize every-other patterns (i,i+2)
 for doc in doctors_list:
@@ -128,28 +149,6 @@ for doc in doctors_list:
             model.Add(x[(i, doc)] + x[(i + 2, doc)] != 2).OnlyEnforceIf(b.Not())
             every_other_vars.append(b)
             gap2_vars.append(b)
-
-# Friday-Sat-Sun off bonus
-for i, day in enumerate(dates):
-    if day.weekday() == 4:  # Friday
-        if i + 2 < len(dates):
-            sat_idx = i + 1
-            sun_idx = i + 2
-            for doc in doctors_list:
-                # If the doc is unavailable on Friday and/or weekend, that's fine — treat missing var as 0.
-                vars_window = []
-                if (i, doc) in x:
-                    vars_window.append(x[(i, doc)])
-                # if doc is unavailable that weekend, that's equivalent to "off" (so contributes to bonus)
-                if (sat_idx, doc) in x:
-                    vars_window.append(x[(sat_idx, doc)])
-                if (sun_idx, doc) in x:
-                    vars_window.append(x[(sun_idx, doc)])
-                # If vars_window is empty (doc unavailable entire Fri-Sun), sum(vars_window)==0 will hold; that's okay.
-                b = model.NewBoolVar(f"fri_weekend_{i}_{doc}")
-                model.Add(sum(vars_window) == 0).OnlyEnforceIf(b)
-                model.Add(sum(vars_window) != 0).OnlyEnforceIf(b.Not())
-                fri_weekend_bonus_vars.append(b)
 
 # Block balancing: split month into blocks (4 blocks) and penalize deviation from ideal per block
 num_blocks = 4
@@ -178,6 +177,12 @@ for doc in doctors_list:
         # dev >= rounded_ideal_low - duties_sum
         model.Add(rounded_ideal_low - duties_sum <= dev)
         block_deviation_vars.append(dev)
+      
+
+# Count full weekends off per doctor
+weekends_off_per_doc = {
+    doc: [] for doc in doctors_list
+}      
         
 # Full weekend off bonus (Fri+Sat+Sun)
 # Reward if a doctor has an entire weekend off (Fri, Sat, Sun)
@@ -188,14 +193,80 @@ for i, day in enumerate(dates):
         if sat_idx is not None and sun_idx is not None:
             for doc in doctors_list:
                 vars_window = [
-                    x.get((i,doc), 0),        # Friday
-                    x.get((sat_idx,doc), 0),  # Saturday
-                    x.get((sun_idx,doc), 0)   # Sunday
+                    x.get((i,doc), 0),
+                    x.get((sat_idx,doc), 0),
+                    x.get((sun_idx,doc), 0)
                 ]
                 b = model.NewBoolVar(f"full_wkend_off_{i}_{doc}")
                 model.Add(sum(vars_window) == 0).OnlyEnforceIf(b)
                 model.Add(sum(vars_window) != 0).OnlyEnforceIf(b.Not())
                 full_weekend_off_bonus.append(b)
+                weekends_off_per_doc[doc].append(b)
+
+total_full_weekends = len([d for d in dates if d.weekday() == 4])  # number of Fridays
+min_wkend_off = total_full_weekends // len(doctors_list)
+max_wkend_off = min_wkend_off if total_full_weekends % len(doctors_list) == 0 else min_wkend_off + 1
+
+full_weekends_off_count = {
+    doc: sum(weekends_off_per_doc[doc]) for doc in doctors_list
+}
+    
+avg_full_weekends_off = total_full_weekends / len(doctors_list)
+
+for doc in doctors_list:
+    diff = model.NewIntVar(0, total_full_weekends, f"diff_{doc}")
+    model.Add(diff >= full_weekends_off_count[doc] - int(avg_full_weekends_off))
+    model.Add(diff >= int(avg_full_weekends_off) - full_weekends_off_count[doc])
+    balanced_full_wkends_off_deviation_vars.append(diff)
+
+# Collect weekend indices
+saturdays = [i for i, d in enumerate(dates) if d.weekday() == 5]
+sundays = [i for i, d in enumerate(dates) if d.weekday() == 6]
+
+for doc in doctors_list:
+    # Saturdays
+    sat_vars = [x[(i,doc)] for i in saturdays if (i,doc) in x]
+    if len(sat_vars) > 1:
+        extra_sat = model.NewIntVar(0, len(sat_vars)-1, f"extra_sat_{doc}")
+        model.Add(extra_sat == sum(sat_vars) - 1)
+        different_weekend_duty_day_vars.append(extra_sat)
+    # Sundays
+    sun_vars = [x[(i,doc)] for i in sundays if (i,doc) in x]
+    if len(sun_vars) > 1:
+        extra_sun = model.NewIntVar(0, len(sun_vars)-1, f"extra_sun_{doc}")
+        model.Add(extra_sun == sum(sun_vars) - 1)
+        different_weekend_duty_day_vars.append(extra_sun)
+
+for doc in doctors_list:
+    # Collect all "full weekend" indices: Fri, Sat, Sun sequences
+    full_weekends = []
+    for i in range(len(dates) - 2):
+        if dates[i].weekday() == 4 and dates[i+1].weekday() == 5 and dates[i+2].weekday() == 6:
+            full_weekends.append((i, i+1, i+2))
+
+    if full_weekends:
+        # For each full weekend, create a bool var that is 1 if doctor is OFF all three days
+        off_weekend_vars = []
+        for fri, sat, sun in full_weekends:
+            off_var = model.NewBoolVar(f"off_full_weekend_{doc}_{fri}")
+            
+            # Check if doctor is assigned on each day (None if unavailable)
+            fri_assigned = x.get((fri, doc), None)
+            sat_assigned = x.get((sat, doc), None)
+            sun_assigned = x.get((sun, doc), None)
+            
+            # Treat unavailable days as already off (0)
+            fri_val = fri_assigned if fri_assigned is not None else model.NewConstant(0)
+            sat_val = sat_assigned if sat_assigned is not None else model.NewConstant(0)
+            sun_val = sun_assigned if sun_assigned is not None else model.NewConstant(0)
+            
+            # off_var = 1 if all three days are free
+            model.Add(fri_val + sat_val + sun_val == 0).OnlyEnforceIf(off_var)
+            model.Add(fri_val + sat_val + sun_val != 0).OnlyEnforceIf(off_var.Not())
+            off_weekend_vars.append(off_var)
+        
+        # Hard constraint: at least one full weekend off
+        model.Add(sum(off_weekend_vars) >= 1)
 
 
 # ------------------------------
@@ -206,23 +277,26 @@ for i, day in enumerate(dates):
 
 obj_terms = []
 
-# Fri+weekend bonuses (positive)
-obj_terms.append(W_FRI_WEEKEND_BONUS * sum(fri_weekend_bonus_vars))
-
+# Full weekend off rewards (positive)
 if full_weekend_off_bonus:
     obj_terms.append(W_FULL_WKEND_OFF_BONUS * sum(full_weekend_off_bonus))
 
 # Penalties (negative)
-if every_other_vars:
-    obj_terms.append(-W_EVERY_OTHER_PENALTY * sum(every_other_vars))
+# if every_other_vars:
+#     obj_terms.append(-W_EVERY_OTHER_PENALTY * sum(every_other_vars))
 
-if gap2_vars:
-    obj_terms.append(-W_GAP_PENALTY * sum(gap2_vars))
+# if gap2_vars:
+#     obj_terms.append(-W_GAP_PENALTY * sum(gap2_vars))
 
 if block_deviation_vars:
     # block_deviation_vars are IntVars — penalize sum of deviations
     obj_terms.append(-W_BLOCK_DEV_PENALTY * sum(block_deviation_vars))
     
+if balanced_full_wkends_off_deviation_vars:
+    obj_terms.append(-W_BALANCE_FULL_WKENDS_OFF * sum(balanced_full_wkends_off_deviation_vars))
+    
+if different_weekend_duty_day_vars:
+    obj_terms.append(-W_DIFF_WKEND_DUTY_DAY * sum(different_weekend_duty_day_vars))
 
 # If no soft terms, minimize nothing (but that shouldn't be the case)
 full_obj = sum(obj_terms) if obj_terms else 0
@@ -275,6 +349,20 @@ for row in range(2, ws.max_row + 1):  # skip header
             cell.fill = weekend_fill
             cell.font = weekend_font
 
+# Adjust column width based on max length in each column
+for col in ws.columns:
+    max_length = 0
+    col_letter = get_column_letter(col[0].column)
+    for cell in col:
+        try:
+            if cell.value:
+                max_length = max(max_length, len(str(cell.value)))
+        except:
+            pass
+    # Add some padding (e.g., +2)
+    adjusted_width = max_length + 2
+    ws.column_dimensions[col_letter].width = adjusted_width
+
 wb.save(OUT_FILE)
 
 # ------------------------------
@@ -307,3 +395,20 @@ for doc in doctors_list:
         if var is not None and solver.Value(var) == 1:
             assigned_days.append(dates[i].strftime("%d %a"))
     print(f"  {doc}: {', '.join(assigned_days)}")
+    
+print("\nFull weekends off (Fri+Sat+Sun) per doctor:")
+for doc in doctors_list:
+    full_wkends = 0
+    for i, day in enumerate(dates):
+        if day.weekday() == 4:  # Friday
+            sat_idx = i + 1 if i + 1 < len(dates) else None
+            sun_idx = i + 2 if i + 2 < len(dates) else None
+            if sat_idx is not None and sun_idx is not None:
+                vars_window = [
+                    x.get((i,doc), 0),        # Friday
+                    x.get((sat_idx,doc), 0),  # Saturday
+                    x.get((sun_idx,doc), 0)   # Sunday
+                ]
+                if all(solver.Value(v) == 0 for v in vars_window):
+                    full_wkends += 1
+    print(f"  {doc}: {full_wkends}")
