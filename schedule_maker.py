@@ -95,7 +95,7 @@ if max_possible_duties < len(dates):
     print("⚠ Not enough doctors to cover all days. Tuesdays will be left unassigned.")
     allow_unassigned_tuesdays = True
 
-# Exactly one doctor per day
+# Exactly one doctor per day unless there are not enough doctors
 for i, day in enumerate(dates):
     if allow_unassigned_tuesdays and day.weekday() == 1:  # 1 = Tuesday
         # Either 0 or 1 doctor (so it can be left unassigned)
