@@ -129,7 +129,37 @@ def add_hard_constraint_balance_weekend_duties(model, doctors_list, dates, is_we
         model.Add(sum(x.get((i, doc), 0) for i, d in enumerate(dates) if is_weekend[d]) >= min_wkend)
         model.Add(sum(x.get((i, doc), 0) for i, d in enumerate(dates) if is_weekend[d]) <= max_wkend)
 
+def add_hard_constraint_one_full_weekend_off_per_doctor(model, doctors_list, dates, x):
+    for doc in doctors_list:
+        # Collect all "full weekend" indices: Fri, Sat, Sun sequences
+        full_weekends = []
+        for i in range(len(dates) - 2):
+            if dates[i].weekday() == 4 and dates[i+1].weekday() == 5 and dates[i+2].weekday() == 6:
+                full_weekends.append((i, i+1, i+2))
 
+        if full_weekends:
+            # For each full weekend, create a bool var that is 1 if doctor is OFF all three days
+            off_weekend_vars = []
+            for fri, sat, sun in full_weekends:
+                off_var = model.NewBoolVar(f"off_full_weekend_{doc}_{fri}")
+                
+                # Check if doctor is assigned on each day (None if unavailable)
+                fri_assigned = x.get((fri, doc), None)
+                sat_assigned = x.get((sat, doc), None)
+                sun_assigned = x.get((sun, doc), None)
+                
+                # Treat unavailable days as already off (0)
+                fri_val = fri_assigned if fri_assigned is not None else model.NewConstant(0)
+                sat_val = sat_assigned if sat_assigned is not None else model.NewConstant(0)
+                sun_val = sun_assigned if sun_assigned is not None else model.NewConstant(0)
+                
+                # off_var = 1 if all three days are free
+                model.Add(fri_val + sat_val + sun_val == 0).OnlyEnforceIf(off_var)
+                model.Add(fri_val + sat_val + sun_val != 0).OnlyEnforceIf(off_var.Not())
+                off_weekend_vars.append(off_var)
+            
+            # Hard constraint: at least one full weekend off
+            model.Add(sum(off_weekend_vars) >= 1)
 
 def add_penalty_for_every_other_day_dudy(model, doctors_list, dates, x,):
     every_other_vars = []     # patterns i and i+2 both assigned
@@ -250,38 +280,6 @@ def balance_weekend_day_duties_per_doctor(model, doctors_list, dates, x):
             model.Add(extra_sun == sum(sun_vars) - 1)
             different_weekend_duty_day_vars.append(extra_sun)
     return different_weekend_duty_day_vars
-
-def add_hard_constraint_one_full_weekend_off_per_doctor(model, doctors_list, dates, x):
-    for doc in doctors_list:
-        # Collect all "full weekend" indices: Fri, Sat, Sun sequences
-        full_weekends = []
-        for i in range(len(dates) - 2):
-            if dates[i].weekday() == 4 and dates[i+1].weekday() == 5 and dates[i+2].weekday() == 6:
-                full_weekends.append((i, i+1, i+2))
-
-        if full_weekends:
-            # For each full weekend, create a bool var that is 1 if doctor is OFF all three days
-            off_weekend_vars = []
-            for fri, sat, sun in full_weekends:
-                off_var = model.NewBoolVar(f"off_full_weekend_{doc}_{fri}")
-                
-                # Check if doctor is assigned on each day (None if unavailable)
-                fri_assigned = x.get((fri, doc), None)
-                sat_assigned = x.get((sat, doc), None)
-                sun_assigned = x.get((sun, doc), None)
-                
-                # Treat unavailable days as already off (0)
-                fri_val = fri_assigned if fri_assigned is not None else model.NewConstant(0)
-                sat_val = sat_assigned if sat_assigned is not None else model.NewConstant(0)
-                sun_val = sun_assigned if sun_assigned is not None else model.NewConstant(0)
-                
-                # off_var = 1 if all three days are free
-                model.Add(fri_val + sat_val + sun_val == 0).OnlyEnforceIf(off_var)
-                model.Add(fri_val + sat_val + sun_val != 0).OnlyEnforceIf(off_var.Not())
-                off_weekend_vars.append(off_var)
-            
-            # Hard constraint: at least one full weekend off
-            model.Add(sum(off_weekend_vars) >= 1)
 
 
 def combine_objective(model, full_weekend_off_bonus, balanced_full_wkends_off_deviation_vars, different_weekend_duty_day_vars, block_deviation_vars, every_other_vars, gap2_vars):
