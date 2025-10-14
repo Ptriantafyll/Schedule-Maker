@@ -183,8 +183,6 @@ def spread_duties_across_month(model, doctors_list, dates, x):
 
 def reward_full_weekends_off(model, doctors_list, dates, x):
     full_weekend_off_bonus = []  # reward for full weekend off (Fri+Sat+Sun)
-    balanced_full_wkends_off_deviation_vars = [] # deviation vars for balancing full weekends off
-    different_weekend_duty_day_vars = []  # vars to balance weekend duty days
     # Count full weekends off per doctor
     weekends_off_per_doc = {
         doc: [] for doc in doctors_list
@@ -208,10 +206,12 @@ def reward_full_weekends_off(model, doctors_list, dates, x):
                     model.Add(sum(vars_window) != 0).OnlyEnforceIf(b.Not())
                     full_weekend_off_bonus.append(b)
                     weekends_off_per_doc[doc].append(b)
+    return weekends_off_per_doc, full_weekend_off_bonus
+
+def balance_full_weekends_off(model, doctors_list, dates, x, weekends_off_per_doc):
+    balanced_full_wkends_off_deviation_vars = [] # deviation vars for balancing full weekends off
 
     total_full_weekends = len([d for d in dates if d.weekday() == 4])  # number of Fridays
-    min_wkend_off = total_full_weekends // len(doctors_list)
-    max_wkend_off = min_wkend_off if total_full_weekends % len(doctors_list) == 0 else min_wkend_off + 1
 
     full_weekends_off_count = {
         doc: sum(weekends_off_per_doc[doc]) for doc in doctors_list
@@ -224,7 +224,14 @@ def reward_full_weekends_off(model, doctors_list, dates, x):
         model.Add(diff >= full_weekends_off_count[doc] - int(avg_full_weekends_off))
         model.Add(diff >= int(avg_full_weekends_off) - full_weekends_off_count[doc])
         balanced_full_wkends_off_deviation_vars.append(diff)
+        
+    return balanced_full_wkends_off_deviation_vars
 
+
+def balance_weekend_day_duties_per_doctor(model, doctors_list, dates, x):
+    # If a doctor has a weekend duty on saturday one week, try to avoid assigning them again on saturday the next weekend duty
+    different_weekend_duty_day_vars = []  # vars to balance weekend duty days
+    
     # Collect weekend indices
     saturdays = [i for i, d in enumerate(dates) if d.weekday() == 5]
     sundays = [i for i, d in enumerate(dates) if d.weekday() == 6]
@@ -242,7 +249,9 @@ def reward_full_weekends_off(model, doctors_list, dates, x):
             extra_sun = model.NewIntVar(0, len(sun_vars)-1, f"extra_sun_{doc}")
             model.Add(extra_sun == sum(sun_vars) - 1)
             different_weekend_duty_day_vars.append(extra_sun)
+    return different_weekend_duty_day_vars
 
+def add_hard_constraint_one_full_weekend_off_per_doctor(model, doctors_list, dates, x):
     for doc in doctors_list:
         # Collect all "full weekend" indices: Fri, Sat, Sun sequences
         full_weekends = []
@@ -273,8 +282,6 @@ def reward_full_weekends_off(model, doctors_list, dates, x):
             
             # Hard constraint: at least one full weekend off
             model.Add(sum(off_weekend_vars) >= 1)
-
-    return full_weekend_off_bonus, balanced_full_wkends_off_deviation_vars, different_weekend_duty_day_vars
 
 
 def combine_objective(model, full_weekend_off_bonus, balanced_full_wkends_off_deviation_vars, different_weekend_duty_day_vars, block_deviation_vars, every_other_vars, gap2_vars):
@@ -436,13 +443,17 @@ def main():
     balance_total_duties_per_doctor(model, doctors_list, dates, x)
     add_hard_constraint_no_consecutive_duties(model, doctors_list, dates, x)
     add_hard_constraint_balance_weekend_duties(model, doctors_list, dates, is_weekend, x)
+    add_hard_constraint_one_full_weekend_off_per_doctor(model, doctors_list, dates, x)
     
     # ------------------------------
     # Soft preference variables (we'll combine into one objective)
     # ------------------------------
     every_other_vars, gap2_vars = add_penalty_for_every_other_day_dudy(model, doctors_list, dates, x)
     block_deviation_vars = spread_duties_across_month(model, doctors_list, dates, x)
-    full_weekend_off_bonus, balanced_full_wkends_off_deviation_vars, different_weekend_duty_day_vars = reward_full_weekends_off(model, doctors_list, dates, x)
+    weekends_off_per_doc, full_weekend_off_bonus = reward_full_weekends_off(model, doctors_list, dates, x)
+    balanced_full_wkends_off_deviation_vars = balance_full_weekends_off(model, doctors_list, dates, x, weekends_off_per_doc)
+    different_weekend_duty_day_vars = balance_weekend_day_duties_per_doctor(model, doctors_list, dates, x)
+    
     combine_objective(model, full_weekend_off_bonus, balanced_full_wkends_off_deviation_vars, different_weekend_duty_day_vars, block_deviation_vars, every_other_vars, gap2_vars)
     
     # ------------------------------
