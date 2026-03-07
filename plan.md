@@ -36,10 +36,24 @@ A hospital on-duty scheduling tool that generates optimized monthly schedules pe
 
 ### Department
 
-- Has a name and a number of duty slots per night (e.g. ER = 3, Cardiology = 1)
+- Has a name and a list of positions, each with a required number of doctors per night (e.g. Internal Medicine: "ER" needs 2 doctors/night + "Clinic" needs 2 doctors/night; Hematology: "Clinic" needs 1 doctor/night)
 - Has its own pool of doctors
 - Can have a pre-defined backup department that provides extra doctors when the primary pool is insufficient
 - Has its own scheduling preferences expressed as constraint weights (e.g. a department may prefer clustered duties with longer rest periods vs. duties spread evenly across the month). These override the global defaults in `ScheduleConfig`.
+
+### Position
+
+- Belongs to a department
+- Has a name (e.g. "ER", "Clinic")
+- Has one or more named shifts per night (e.g. ER has "1st shift" and "2nd shift"; Clinic may have only one)
+- A doctor can only cover one shift per night
+
+### Shift
+
+- Belongs to a position
+- Has a name (e.g. "1st shift", "2nd shift")
+- Requires exactly 1 doctor per night
+- The assignment is explicit — the schedule specifies which doctor covers which shift, not just which position
 
 ### Schedule
 
@@ -85,10 +99,12 @@ Classes to introduce:
 | ---------------- | ------------------------------------------------------------------------------------------------- |
 | `ScheduleConfig` | Weights, solver time limit, max duties — defined per department, with global defaults as fallback |
 | `Doctor`         | Name, department, unavailability                                                                  |
-| `Department`     | Name, slots per night, doctor list, backup department reference                                   |
+| `Position`       | Name, list of shifts, parent department                                                           |
+| `Shift`          | Name (e.g. "1st shift"), parent position — always requires exactly 1 doctor per night             |
+| `Department`     | Name, list of positions, doctor list, backup department reference                                 |
 | `ScheduleApp`    | Orchestrates the full pipeline: load data, build model, solve, export                             |
 
-The `x` assignment variable becomes keyed on `(day_index, department, slot_index, doctor)`.
+The `x` assignment variable becomes keyed on `(day_index, shift, doctor)`.
 
 ---
 
