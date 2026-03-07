@@ -52,7 +52,7 @@ A hospital on-duty scheduling tool that generates optimized monthly schedules pe
 
 - Belongs to a position
 - Has a name (e.g. "1st shift", "2nd shift")
-- Requires exactly 1 doctor per night
+- Requires a configurable number of doctors per night
 - The assignment is explicit — the schedule specifies which doctor covers which shift, not just which position
 
 ### Schedule
@@ -100,7 +100,7 @@ Classes to introduce:
 | `ScheduleConfig` | Weights, solver time limit, max duties — defined per department, with global defaults as fallback |
 | `Doctor`         | Name, department, unavailability                                                                  |
 | `Position`       | Name, list of shifts, parent department                                                           |
-| `Shift`          | Name (e.g. "1st shift"), parent position — always requires exactly 1 doctor per night             |
+| `Shift`          | Name (e.g. "1st shift"), required doctors per night, parent position                              |
 | `Department`     | Name, list of positions, doctor list, backup department reference                                 |
 | `ScheduleApp`    | Orchestrates the full pipeline: load data, build model, solve, export                             |
 
