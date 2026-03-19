@@ -325,6 +325,7 @@ def combine_objective(model, full_weekend_off_bonus, balanced_full_wkends_off_de
     # ------------------------------
     # We want to MAXIMIZE good things and MINIMIZE bad things.
     # Convert penalties to negatives inside the Maximize expression.
+
     # Full weekend off rewards (positive)
     if full_weekend_off_bonus:
         obj_terms.append(W_FULL_WKEND_OFF_BONUS * sum(full_weekend_off_bonus))
