@@ -1,6 +1,21 @@
 from models import Department, Team, Doctor, Position, Shift
 import datetime
+from ortools.sat.python import cp_model
 from scheduler import ShiftScheduler
+
+
+def _build_and_solve(department, month=4, year=2026, constraint_names=None):
+    """Jelper that builds model, adds constraints by method name, solves, and returns (scheduler, solver, dates)."""
+    scheduler = ShiftScheduler(department=department)
+    dates, _ = scheduler._calculate_days_for_schedule(month=month, year=year)
+    scheduler._build_model(dates)
+    for name in (constraint_names or []):
+        getattr(scheduler, name)(dates)
+    solver = cp_model.CpSolver()
+    status = solver.Solve(scheduler.model)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE), \
+        "Solver failed to find a solution"
+    return scheduler, solver, dates
 
 
 def _make_test_department():
@@ -46,45 +61,23 @@ def test_leap_year_identified_correctly():
 
 def test_hard_constraint_no_consecutive_duties():
     department = _make_test_department()
-    scheduler = ShiftScheduler(department=department)
-
-    dates, _ = scheduler._calculate_days_for_schedule(month=4, year=2026)
-    scheduler._build_model(dates)
-    scheduler._add_hard_constraint_no_consecutive_shifts(dates)
-
-    # Force exactly 1 doctor per night so the solver actually assigns duties
-    # Without this, the solver could assign nobody and trivially satisfy the constraint
-    for day_index in range(len(dates)):
-        daily_vars = [
-            scheduler.shift_assignments[(day_index, position, shift, doctor)]
-            for position in department.positions
-            for shift in position.shifts
-            for doctor in department.doctors
-            if (day_index, position, shift, doctor) in scheduler.shift_assignments
+    scheduler, solver, dates = _build_and_solve(
+        department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
         ]
-        scheduler.model.Add(sum(daily_vars) == 1)
-
-    # Step 5: Solve and verify no doctor has consecutive days
-    from ortools.sat.python import cp_model
-    solver = cp_model.CpSolver()
-    status = solver.Solve(scheduler.model)
-
-    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE), \
-        "Solver failed to find a solution"
+    )
 
     for doctor in department.doctors:
         for day_index in range(len(dates) - 1):
             today = any(
-                solver.Value(scheduler.shift_assignments[(day_index, pos, sh, doctor)])
-                for pos in department.positions
-                for sh in pos.shifts
-                if (day_index, pos, sh, doctor) in scheduler.shift_assignments
+                solver.Value(var)
+                for var in scheduler._get_assignments_for(day_index, doctor=doctor)
             )
             tomorrow = any(
-                solver.Value(scheduler.shift_assignments[(day_index + 1, pos, sh, doctor)])
-                for pos in department.positions
-                for sh in pos.shifts
-                if (day_index + 1, pos, sh, doctor) in scheduler.shift_assignments
+                solver.Value(var)
+                for var in scheduler._get_assignments_for(day_index + 1, doctor=doctor)
             )
             assert not (today and tomorrow), \
                 f"{doctor.name} has consecutive duties on days {day_index} and {day_index + 1}"
@@ -92,27 +85,17 @@ def test_hard_constraint_no_consecutive_duties():
 
 def test_hard_constraint_doctors_per_shift():
     department = _make_test_department()
-    scheduler = ShiftScheduler(department=department)
+    scheduler, solver, dates = _build_and_solve(
+        department,
+        constraint_names=["_add_hard_constraint_doctors_per_shift"]
+    )
 
-    dates, _ = scheduler._calculate_days_for_schedule(month=4, year=2026)
-    scheduler._build_model(dates)
-    scheduler._add_hard_constraint_doctors_per_shift(dates)
-
-    from ortools.sat.python import cp_model
-    solver = cp_model.CpSolver()
-    status = solver.Solve(scheduler.model)
-
-    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE), \
-        "Solver failed to find a solution"
-
-    # Verify each shift on each day has exactly doctors_per_shift doctors assigned
     for day_index in range(len(dates)):
         for position in department.positions:
             for shift in position.shifts:
                 assigned_count = sum(
-                    solver.Value(scheduler.shift_assignments[(day_index, position, shift, doctor)])
-                    for doctor in department.doctors
-                    if (day_index, position, shift, doctor) in scheduler.shift_assignments
+                    solver.Value(var)
+                    for var in scheduler._get_assignments_for(day_index, position, shift)
                 )
                 assert assigned_count == shift.doctors_per_shift, \
                     f"Day {day_index}, {position.name}/{shift.name}: expected {shift.doctors_per_shift} doctor(s), got {assigned_count}"
@@ -129,23 +112,15 @@ def test_hard_constraint_doctors_per_shift_multiple():
     position = Position(name="ER", shifts=[shift])
     department = Department(name="Test", teams=[team], positions=[position])
 
-    scheduler = ShiftScheduler(department=department)
-    dates, _ = scheduler._calculate_days_for_schedule(month=4, year=2026)
-    scheduler._build_model(dates)
-    scheduler._add_hard_constraint_doctors_per_shift(dates)
-
-    from ortools.sat.python import cp_model
-    solver = cp_model.CpSolver()
-    status = solver.Solve(scheduler.model)
-
-    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE), \
-        "Solver failed to find a solution"
+    scheduler, solver, dates = _build_and_solve(
+        department,
+        constraint_names=["_add_hard_constraint_doctors_per_shift"]
+    )
 
     for day_index in range(len(dates)):
         assigned_count = sum(
-            solver.Value(scheduler.shift_assignments[(day_index, position, shift, doctor)])
-            for doctor in department.doctors
-            if (day_index, position, shift, doctor) in scheduler.shift_assignments
+            solver.Value(var)
+            for var in scheduler._get_assignments_for(day_index, position, shift)
         )
         assert assigned_count == 2, \
             f"Day {day_index}: expected 2 doctors, got {assigned_count}"

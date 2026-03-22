@@ -9,3 +9,4 @@ Schedule-Maker is a Python tool that generates optimized monthly on-duty schedul
 - When making changes don't paste all the code at once. Instead go step by step in small chunks of code explaining the process each time
 - When the user is learning and doing most of the coding themselves, explain: (1) why we are making a decision, (2) what the best practices are and (3) if there is a new feature that we haven't touched explain how it works
 - When the user stops and corrects a suggestion or says they don't like something, add that preference to this CLAUDE.md file
+- After every change, check if anything can be made cleaner and if there is repeated code that can be extracted into a helper function
