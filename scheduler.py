@@ -21,6 +21,16 @@ class ShiftScheduler:
         is_weekend = {d: (d.weekday() >= 5) for d in dates}
         return dates, is_weekend
 
+    def _get_assignments_for(self, day_index, position=None, shift=None, doctor=None):
+        """Returns all shift assignment variables matching the given filters."""
+        return [
+            var for (d, p, s, doc), var in self.shift_assignments.items()
+            if d == day_index
+            and (position is None or p == position)
+            and (shift is None or s == shift)
+            and (doctor is None or doc == doctor)
+        ]
+
     def _build_model(self, dates):
         """Creates the CP-SAT model and shift assignment variables."""
         self.model = cp_model.CpModel()
@@ -37,26 +47,26 @@ class ShiftScheduler:
                         self.shift_assignments[(day_index, position, shift, doctor)] = self.model.NewBoolVar(
                             f"shift_assignment_{day_index}_{position}_{shift}_{doctor}")
 
+    def _add_hard_constraint_doctors_per_shift(self, dates):
+        for day_index in range(len(dates)):
+            for position in self.department.positions:
+                for shift in position.shifts:
+                    self.model.Add(
+                        sum(self._get_assignments_for(
+                            day_index, position, shift))
+                        == shift.doctors_per_shift
+                    )
+
     def _add_hard_constraint_no_consecutive_shifts(self, dates):
         """Adds a hard constraint that a doctor cannot be on duty for 2 consecutive days"""
 
         for doctor in self.department.doctors:
             for day_index in range(len(dates) - 1):
-                today_shifts = [
-                    self.shift_assignments[(
-                        day_index, position, shift, doctor)]
-                    for position in self.department.positions
-                    for shift in position.shifts
-                    if (day_index, position, shift, doctor) in self.shift_assignments
-                ]
+                today_shifts = self._get_assignments_for(
+                    day_index, doctor=doctor)
 
-                tomorrow_shifts = [
-                    self.shift_assignments[(
-                        day_index + 1, position, shift, doctor)]
-                    for position in self.department.positions
-                    for shift in position.shifts
-                    if (day_index + 1, position, shift, doctor) in self.shift_assignments
-                ]
+                tomorrow_shifts = self._get_assignments_for(
+                    day_index + 1, doctor=doctor)
 
                 self.model.Add(sum(today_shifts + tomorrow_shifts) <= 1)
 
