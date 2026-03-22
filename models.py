@@ -29,6 +29,7 @@ class Doctor:
 class Shift:
     name: str
     doctors_per_shift: int = 1
+    grants_day_off: bool = False
 
 
 @dataclass
@@ -38,9 +39,15 @@ class Position:
 
 
 @dataclass
+class Team:
+    name: str
+    doctors: list[Doctor] = field(default_factory=list)
+
+
+@dataclass
 class Department:
     name: str
     positions: list[Position] = field(default_factory=list)
-    doctors: list[Doctor] = field(default_factory=list)
+    teams: list[Team] = field(default_factory=list)
     config: ScheduleConfig = field(default_factory=ScheduleConfig)
     backup_department: Optional['Department'] = None

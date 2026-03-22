@@ -37,9 +37,16 @@ A hospital on-duty scheduling tool that generates optimized monthly schedules pe
 ### Department
 
 - Has a name and a list of positions, each with a required number of doctors per night (e.g. Internal Medicine: "ER" needs 2 doctors/night + "Clinic" needs 2 doctors/night; Hematology: "Clinic" needs 1 doctor/night)
-- Has its own pool of doctors
+- Has one or more teams, each containing a group of doctors (departments without explicit teams have a single default team with all doctors)
 - Can have a pre-defined backup department that provides extra doctors when the primary pool is insufficient
 - Has its own scheduling preferences expressed as constraint weights (e.g. a department may prefer clustered duties with longer rest periods vs. duties spread evenly across the month). These override the global defaults in `ScheduleConfig`.
+
+### Team
+
+- Belongs to a department
+- Has a name and a list of doctors
+- Departments that don't explicitly group doctors into teams treat all doctors as one default team
+- Used to enforce the constraint that at most 1 doctor per team can have a post-shift day off on the same day
 
 ### Position
 
@@ -54,6 +61,7 @@ A hospital on-duty scheduling tool that generates optimized monthly schedules pe
 - Has a name (e.g. "1st shift", "2nd shift")
 - Requires a configurable number of doctors per night
 - The assignment is explicit — the schedule specifies which doctor covers which shift, not just which position
+- Some shifts grant the doctor a day off the following day (`grants_day_off` flag)
 
 ### Schedule
 
@@ -73,6 +81,7 @@ A hospital on-duty scheduling tool that generates optimized monthly schedules pe
   - At least one full weekend off (Fri + Sat + Sun) per doctor
   - Balanced total duties across doctors (difference of at most 1)
   - Balanced weekend duties across doctors
+  - At most 1 doctor per team can have a post-shift day off on the same day (applies to shifts where `grants_day_off=True`)
 - Soft constraints (weighted objective):
   - Penalize every-other-day patterns
   - Penalize short gaps between duties
@@ -98,10 +107,11 @@ Classes to introduce:
 | Class            | Responsibility                                                                                    |
 | ---------------- | ------------------------------------------------------------------------------------------------- |
 | `ScheduleConfig` | Weights, solver time limit, max duties — defined per department, with global defaults as fallback |
-| `Doctor`         | Name, department, unavailability                                                                  |
-| `Position`       | Name, list of shifts, parent department                                                           |
-| `Shift`          | Name (e.g. "1st shift"), required doctors per night, parent position                              |
-| `Department`     | Name, list of positions, doctor list, backup department reference                                 |
+| `Doctor`         | Name, email, unavailability                                                                       |
+| `Team`           | Name, list of doctors — groups doctors within a department                                        |
+| `Position`       | Name, list of shifts                                                                              |
+| `Shift`          | Name (e.g. "1st shift"), required doctors per night, grants_day_off flag                          |
+| `Department`     | Name, list of positions, list of teams, backup department reference, scheduling config            |
 | `ScheduleApp`    | Orchestrates the full pipeline: load data, build model, solve, export                             |
 
 The `x` assignment variable becomes keyed on `(day_index, shift, doctor)`.

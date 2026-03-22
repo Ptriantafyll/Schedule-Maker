@@ -1,4 +1,4 @@
-from models import Department, Doctor
+from models import Department
 import datetime
 import calendar
 from ortools.sat.python import cp_model
@@ -30,13 +30,14 @@ class ScheduleApp:
         for department in self.departments:
             for position in department.positions:
                 for shift in position.shifts:
-                    for doctor in department.doctors:
-                        for day_index, date in enumerate(dates):
-                            if date in doctor.unavailability:
-                                continue
+                    for team in department.teams:
+                        for doctor in team.doctors:
+                            for day_index, date in enumerate(dates):
+                                if date in doctor.unavailability:
+                                    continue
 
-                            self.shift_assignments[(day_index, shift, doctor)] = self.model.NewBoolVar(
-                                f"shift_assignment_{day_index}_{position}_{shift.name}_{doctor}")
+                                self.shift_assignments[(day_index, shift, doctor)] = self.model.NewBoolVar(
+                                    f"shift_assignment_{day_index}_{position}_{shift.name}_{doctor}")
 
     def create_schedule(self, month: int, year: int):
         pass
