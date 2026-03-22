@@ -25,7 +25,7 @@ class ShiftScheduler:
         """Returns all shift assignment variables matching the given filters."""
         return [
             var for (d, p, s, doc), var in self.shift_assignments.items()
-            if d == day_index
+            if (day_index is None or d == day_index)
             and (position is None or p == position)
             and (shift is None or s == shift)
             and (doctor is None or doc == doctor)
@@ -48,6 +48,8 @@ class ShiftScheduler:
                             f"shift_assignment_{day_index}_{position}_{shift}_{doctor}")
 
     def _add_hard_constraint_doctors_per_shift(self, dates):
+        """Adds a hard constraint that a shift must have the exact number of doctor as specified"""
+
         for day_index in range(len(dates)):
             for position in self.department.positions:
                 for shift in position.shifts:
@@ -63,12 +65,21 @@ class ShiftScheduler:
         for doctor in self.department.doctors:
             for day_index in range(len(dates) - 1):
                 today_shifts = self._get_assignments_for(
-                    day_index, doctor=doctor)
+                    day_index=day_index, doctor=doctor)
 
                 tomorrow_shifts = self._get_assignments_for(
-                    day_index + 1, doctor=doctor)
+                    day_index=day_index + 1, doctor=doctor)
 
                 self.model.Add(sum(today_shifts + tomorrow_shifts) <= 1)
+
+    def _add_hard_constraint_max_duties_per_doc_per_month(self, dates):
+        """Adds a hard constraint that sets the max duties per month a doctor can do"""
+
+        for doctor in self.department.doctors:
+            shifts = self._get_assignments_for(doctor=doctor)
+            self.model.Add(
+                sum(shifts) <= self.department.config.max_duties_per_month
+            )
 
     def create_schedule(self, month: int, year: int):
         pass
