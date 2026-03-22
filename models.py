@@ -3,7 +3,7 @@ import datetime
 from typing import Optional
 
 
-@dataclass
+@dataclass(eq=False)
 class ScheduleConfig:
     # Soft constraint weights
     w_every_other_penalty: int = 4
@@ -18,36 +18,40 @@ class ScheduleConfig:
     max_duties_per_month: int = 7
 
 
-@dataclass
+@dataclass(eq=False)
 class Doctor:
     name: str
     email: str
     unavailability: set[datetime.date] = field(default_factory=set)
 
 
-@dataclass
+@dataclass(eq=False)
 class Shift:
     name: str
     doctors_per_shift: int = 1
     grants_day_off: bool = False
 
 
-@dataclass
+@dataclass(eq=False)
 class Position:
     name: str
     shifts: list[Shift] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(eq=False)
 class Team:
     name: str
     doctors: list[Doctor] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(eq=False)
 class Department:
     name: str
     positions: list[Position] = field(default_factory=list)
     teams: list[Team] = field(default_factory=list)
     config: ScheduleConfig = field(default_factory=ScheduleConfig)
     backup_department: Optional['Department'] = None
+
+    @property
+    def doctors(self) -> list[Doctor]:
+        return [doctor for team in self.teams for doctor in team.doctors]

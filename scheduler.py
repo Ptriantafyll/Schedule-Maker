@@ -1,12 +1,12 @@
-from models import Department
+from models import Department, Doctor
 import datetime
 import calendar
 from ortools.sat.python import cp_model
 
 
 class ShiftScheduler:
-    def __init__(self, departments: list[Department]):
-        self.departments = departments
+    def __init__(self, department: Department):
+        self.department = department
 
     def _calculate_days_for_schedule(self, month: int, year: int) -> tuple[list[datetime.date], dict[datetime.date, bool]]:
         """Returns the list of dates and a weekend lookup dict for the given month."""
@@ -27,24 +27,45 @@ class ShiftScheduler:
 
         self.shift_assignments = {}
 
-        for department in self.departments:
-            for position in department.positions:
+        for doctor in self.department.doctors:
+            for position in self.department.positions:
                 for shift in position.shifts:
-                    for team in department.teams:
-                        for doctor in team.doctors:
-                            for day_index, date in enumerate(dates):
-                                if date in doctor.unavailability:
-                                    continue
+                    for day_index, date in enumerate(dates):
+                        if date in doctor.unavailability:
+                            continue
 
-                                self.shift_assignments[(day_index, shift, doctor)] = self.model.NewBoolVar(
-                                    f"shift_assignment_{day_index}_{position}_{shift.name}_{doctor}")
+                        self.shift_assignments[(day_index, position, shift, doctor)] = self.model.NewBoolVar(
+                            f"shift_assignment_{day_index}_{position}_{shift}_{doctor}")
+
+    def _add_hard_constraint_no_consecutive_shifts(self, dates):
+        """Adds a hard constraint that a doctor cannot be on duty for 2 consecutive days"""
+
+        for doctor in self.department.doctors:
+            for day_index in range(len(dates) - 1):
+                today_shifts = [
+                    self.shift_assignments[(
+                        day_index, position, shift, doctor)]
+                    for position in self.department.positions
+                    for shift in position.shifts
+                    if (day_index, position, shift, doctor) in self.shift_assignments
+                ]
+
+                tomorrow_shifts = [
+                    self.shift_assignments[(
+                        day_index + 1, position, shift, doctor)]
+                    for position in self.department.positions
+                    for shift in position.shifts
+                    if (day_index + 1, position, shift, doctor) in self.shift_assignments
+                ]
+
+                self.model.Add(sum(today_shifts + tomorrow_shifts) <= 1)
 
     def create_schedule(self, month: int, year: int):
         pass
 
 
 if __name__ == "__main__":
-    app = ShiftScheduler(departments=[])
+    app = ShiftScheduler(department=Department(name="test"))
     dates, is_weekend = app._calculate_days_for_schedule(month=4, year=2026)
     print(dates[0], "→", dates[-1])
     print("Days in month:", len(dates))

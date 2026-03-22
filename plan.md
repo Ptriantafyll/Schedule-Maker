@@ -114,7 +114,7 @@ Classes to introduce:
 | `Department`     | Name, list of positions, list of teams, backup department reference, scheduling config            |
 | `ShiftScheduler`    | Orchestrates the full pipeline: load data, build model, solve, export                             |
 
-The `x` assignment variable becomes keyed on `(day_index, shift, doctor)`.
+The `shift_assignment` assignment variable becomes keyed on `(day_index, shift, doctor)`.
 
 ---
 
