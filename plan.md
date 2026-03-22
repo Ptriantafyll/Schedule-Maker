@@ -112,7 +112,7 @@ Classes to introduce:
 | `Position`       | Name, list of shifts                                                                              |
 | `Shift`          | Name (e.g. "1st shift"), required doctors per night, grants_day_off flag                          |
 | `Department`     | Name, list of positions, list of teams, backup department reference, scheduling config            |
-| `ScheduleApp`    | Orchestrates the full pipeline: load data, build model, solve, export                             |
+| `ShiftScheduler`    | Orchestrates the full pipeline: load data, build model, solve, export                             |
 
 The `x` assignment variable becomes keyed on `(day_index, shift, doctor)`.
 
@@ -120,7 +120,7 @@ The `x` assignment variable becomes keyed on `(day_index, shift, doctor)`.
 
 ## Steps
 
-1. Refactor current script into OOP (`ScheduleConfig`, `Doctor`, `Department`, `ScheduleApp`)
+1. Refactor current script into OOP (`ScheduleConfig`, `Doctor`, `Department`, `ShiftScheduler`)
 2. Extend model to support multiple departments and slots per night
 3. Add cross-department doctor borrowing logic
 4. Build backend API (Go or FastAPI) with auth and database

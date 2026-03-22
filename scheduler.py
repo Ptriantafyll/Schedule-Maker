@@ -4,7 +4,7 @@ import calendar
 from ortools.sat.python import cp_model
 
 
-class ScheduleApp:
+class ShiftScheduler:
     def __init__(self, departments: list[Department]):
         self.departments = departments
 
@@ -44,7 +44,7 @@ class ScheduleApp:
 
 
 if __name__ == "__main__":
-    app = ScheduleApp(departments=[])
+    app = ShiftScheduler(departments=[])
     dates, is_weekend = app._calculate_days_for_schedule(month=4, year=2026)
     print(dates[0], "→", dates[-1])
     print("Days in month:", len(dates))
