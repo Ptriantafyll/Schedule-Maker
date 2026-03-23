@@ -8,7 +8,7 @@ class ShiftScheduler:
     def __init__(self, department: Department):
         self.department = department
 
-    def _calculate_days_for_schedule(self, month: int, year: int) -> tuple[list[datetime.date], dict[datetime.date, bool]]:
+    def _calculate_days_for_schedule(self, month: int, year: int) -> tuple[list[datetime.date]]:
         """Returns the list of dates and a weekend lookup dict for the given month."""
 
         first_day = datetime.date(year, month, 1)
@@ -18,8 +18,8 @@ class ShiftScheduler:
                  for i in range(days_in_month)]
 
         # Identify weekends
-        is_weekend = {d: (d.weekday() >= 5) for d in dates}
-        return dates, is_weekend
+        self.is_weekend = {d: (d.weekday() >= 5) for d in dates}
+        return dates
 
     def _get_assignments_for(self, day_index=None, position=None, shift=None, doctor=None):
         """Returns all shift assignment variables matching the given filters."""
@@ -30,6 +30,16 @@ class ShiftScheduler:
             and (shift is None or s == shift)
             and (doctor is None or doc == doctor)
         ]
+
+    def _get_weekends(self, dates: list[datetime.date]) -> list[list[int]]:
+        """Returns list of (fri, sat, sun) day index tuples for complete weekends."""
+        weekends = []
+
+        for day_index, date in enumerate(dates):
+            if date.weekday() == 4 and day_index + 2 < len(dates):
+                weekends.append([day_index, day_index+1, day_index+2])
+
+        return weekends
 
     def _build_model(self, dates: list[datetime.date]):
         """Creates the CP-SAT model and shift assignment variables."""
@@ -66,7 +76,7 @@ class ShiftScheduler:
                         == shift.doctors_per_shift
                     )
 
-    def _add_hard_constraint_no_consecutive_shifts(self, dates):
+    def _add_hard_constraint_no_consecutive_shifts(self, dates: list[datetime.date]):
         """Adds a hard constraint that a doctor cannot be on duty for 2 consecutive days"""
 
         for doctor in self.department.doctors:
@@ -88,13 +98,17 @@ class ShiftScheduler:
                 sum(shifts) <= self.department.config.max_duties_per_month
             )
 
+    def _add_hard_constraint_one_full_weekend_off_per_doctor(self):
+        pass
+
     def create_schedule(self, month: int, year: int):
         pass
 
 
 if __name__ == "__main__":
     app = ShiftScheduler(department=Department(name="test"))
-    dates, is_weekend = app._calculate_days_for_schedule(month=4, year=2026)
+    dates = app._calculate_days_for_schedule(month=4, year=2026)
     print(dates[0], "→", dates[-1])
     print("Days in month:", len(dates))
-    print("Weekend days:", sum(1 for d in dates if is_weekend[d]))
+    print("Weekend days:", sum(
+        1 for d in dates if ShiftScheduler.is_weekend[d]))

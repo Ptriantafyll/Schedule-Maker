@@ -7,7 +7,7 @@ from scheduler import ShiftScheduler
 def _build_and_solve(department, month=4, year=2026, constraint_names=None):
     """Jelper that builds model, adds constraints by method name, solves, and returns (scheduler, solver, dates)."""
     scheduler = ShiftScheduler(department=department)
-    dates, _ = scheduler._calculate_days_for_schedule(month=month, year=year)
+    dates = scheduler._calculate_days_for_schedule(month=month, year=year)
     scheduler._build_model(dates)
     for name in (constraint_names or []):
         getattr(scheduler, name)(dates)
@@ -35,27 +35,27 @@ def _make_test_department():
 
 def test_april_has_30_days():
     scheduler = ShiftScheduler(department=Department(name="test"))
-    dates, _ = scheduler._calculate_days_for_schedule(month=4, year=2026)
+    dates = scheduler._calculate_days_for_schedule(month=4, year=2026)
     assert len(dates) == 30
 
 
 def test_first_and_last_date():
     scheduler = ShiftScheduler(department=Department(name="test"))
-    dates, _ = scheduler._calculate_days_for_schedule(month=4, year=2026)
+    dates = scheduler._calculate_days_for_schedule(month=4, year=2026)
     assert dates[0] == datetime.date(2026, 4, 1)
     assert dates[-1] == datetime.date(2026, 4, 30)
 
 
 def test_weekends_identified_correctly():
     scheduler = ShiftScheduler(department=Department(name="test"))
-    _, is_weekend = scheduler._calculate_days_for_schedule(month=4, year=2026)
-    assert is_weekend[datetime.date(2026, 4, 4)] is True
-    assert is_weekend[datetime.date(2026, 4, 6)] is False
+    scheduler._calculate_days_for_schedule(month=4, year=2026)
+    assert scheduler.is_weekend[datetime.date(2026, 4, 4)] is True
+    assert scheduler.is_weekend[datetime.date(2026, 4, 6)] is False
 
 
 def test_leap_year_identified_correctly():
     scheduler = ShiftScheduler(department=Department(name="test"))
-    dates, _ = scheduler._calculate_days_for_schedule(month=2, year=2024)
+    dates = scheduler._calculate_days_for_schedule(month=2, year=2024)
     assert len(dates) == 29
 
 
@@ -155,3 +155,33 @@ def test_hard_constraint_max_duties_per_doc_per_month():
         )
         assert total_duties <= 5, \
             f"{doctor.name} has {total_duties} duties, expected at most 5"
+
+
+def test_get_weekends_april_2026():
+    """April 2026: first Friday is Apr 3, last full weekend ends Apr 26."""
+    scheduler = ShiftScheduler(department=Department(name="test"))
+    dates = scheduler._calculate_days_for_schedule(month=4, year=2026)
+    weekends = scheduler._get_weekends(dates)
+
+    # April 2026 has 4 full Fri-Sat-Sun weekends
+    assert len(weekends) == 4
+
+    # First weekend: Apr 3 (Fri) = day_index 2, Apr 4, Apr 5
+    assert weekends[0] == [2, 3, 4]
+
+    # Verify all weekends start on a Friday
+    for fri, sat, sun in weekends:
+        assert dates[fri].weekday() == 4, f"Day {fri} is not a Friday"
+        assert dates[sat].weekday() == 5, f"Day {sat} is not a Saturday"
+        assert dates[sun].weekday() == 6, f"Day {sun} is not a Sunday"
+
+
+def test_get_weekends_month_starting_saturday():
+    """August 2025 starts on a Friday — first weekend should be complete."""
+    scheduler = ShiftScheduler(department=Department(name="test"))
+    dates = scheduler._calculate_days_for_schedule(month=8, year=2025)
+    weekends = scheduler._get_weekends(dates)
+
+    # Aug 1 2025 is a Friday, so first weekend is day 0, 1, 2
+    assert weekends[0] == [0, 1, 2]
+    assert dates[0].weekday() == 4
