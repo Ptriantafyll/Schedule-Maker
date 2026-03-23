@@ -21,7 +21,7 @@ class ShiftScheduler:
         is_weekend = {d: (d.weekday() >= 5) for d in dates}
         return dates, is_weekend
 
-    def _get_assignments_for(self, day_index, position=None, shift=None, doctor=None):
+    def _get_assignments_for(self, day_index=None, position=None, shift=None, doctor=None):
         """Returns all shift assignment variables matching the given filters."""
         return [
             var for (d, p, s, doc), var in self.shift_assignments.items()
@@ -31,7 +31,7 @@ class ShiftScheduler:
             and (doctor is None or doc == doctor)
         ]
 
-    def _build_model(self, dates):
+    def _build_model(self, dates: list[datetime.date]):
         """Creates the CP-SAT model and shift assignment variables."""
         self.model = cp_model.CpModel()
 
@@ -44,15 +44,22 @@ class ShiftScheduler:
                         if date in doctor.unavailability:
                             continue
 
+                        if date.weekday() not in position.duty_days:
+                            continue
+
                         self.shift_assignments[(day_index, position, shift, doctor)] = self.model.NewBoolVar(
                             f"shift_assignment_{day_index}_{position}_{shift}_{doctor}")
 
-    def _add_hard_constraint_doctors_per_shift(self, dates):
+    def _add_hard_constraint_doctors_per_shift(self, dates: list[datetime.date]):
         """Adds a hard constraint that a shift must have the exact number of doctor as specified"""
 
-        for day_index in range(len(dates)):
+        for day_index, date in enumerate(dates):
             for position in self.department.positions:
+                if date.weekday() not in position.duty_days:
+                    continue
+
                 for shift in position.shifts:
+
                     self.model.Add(
                         sum(self._get_assignments_for(
                             day_index, position, shift))

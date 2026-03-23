@@ -1,4 +1,4 @@
-from models import Department, Team, Doctor, Position, Shift
+from models import Department, Team, Doctor, Position, Shift, ScheduleConfig
 import datetime
 from ortools.sat.python import cp_model
 from scheduler import ShiftScheduler
@@ -124,3 +124,34 @@ def test_hard_constraint_doctors_per_shift_multiple():
         )
         assert assigned_count == 2, \
             f"Day {day_index}: expected 2 doctors, got {assigned_count}"
+
+
+def test_hard_constraint_max_duties_per_doc_per_month():
+    """Tests with max 5 duties per month - needs enough doctors to cover 30 days"""
+    doctors = [
+        Doctor(name=f"Dr. {c}", email=f"{c}@test.com")
+        for c in "ABCDEFGH"
+    ]
+    team = Team(name="Team 1", doctors=doctors)
+    shift = Shift(name="Night", doctors_per_shift=1)
+    position = Position(name="ER", shifts=[shift])
+    config = ScheduleConfig(max_duties_per_month=5)
+    department = Department(name="Test", teams=[team], positions=[
+        position], config=config)
+
+    scheduler, solver, dates = _build_and_solve(
+        department=department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_hard_constraint_max_duties_per_doc_per_month"
+        ]
+    )
+
+    for doctor in department.doctors:
+        total_duties = sum(
+            solver.Value(var)
+            for var in scheduler._get_assignments_for(doctor=doctor)
+        )
+        assert total_duties <= 5, \
+            f"{doctor.name} has {total_duties} duties, expected at most 5"

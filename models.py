@@ -36,6 +36,7 @@ class Shift:
 class Position:
     name: str
     shifts: list[Shift] = field(default_factory=list)
+    duty_days: set[int] = field(default_factory=lambda: {0, 1, 2, 3, 4, 5, 6})
 
 
 @dataclass(eq=False)
