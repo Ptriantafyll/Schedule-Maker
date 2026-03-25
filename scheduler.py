@@ -98,8 +98,32 @@ class ShiftScheduler:
                 sum(shifts) <= self.department.config.max_duties_per_month
             )
 
-    def _add_hard_constraint_one_full_weekend_off_per_doctor(self):
-        pass
+    def _add_hard_constraint_one_full_weekend_off_per_doctor(self, dates):
+        weekends = self._get_weekends(dates=dates)
+
+        for doctor in self.department.doctors:
+            weekend_off_vars = []
+
+            for weekend_index, (fri, sat, sun) in enumerate(weekends):
+                weekend_off = self.model.NewBoolVar(
+                    f"full_weekend_off_{weekend_index}_{doctor}"
+                )
+
+                psk_shifts = (
+                    self._get_assignments_for(
+                        day_index=fri, doctor=doctor
+                    ) + self._get_assignments_for(
+                        day_index=sat, doctor=doctor
+                    ) + self._get_assignments_for(
+                        day_index=sun, doctor=doctor
+                    )
+                )
+
+                weekend_off_vars.append(weekend_off)
+                self.model.Add(sum(psk_shifts) + len(psk_shifts)
+                               * weekend_off <= len(psk_shifts))
+
+            self.model.Add(sum(weekend_off_vars) >= 1)
 
     def create_schedule(self, month: int, year: int):
         pass

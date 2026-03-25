@@ -185,3 +185,33 @@ def test_get_weekends_month_starting_saturday():
     # Aug 1 2025 is a Friday, so first weekend is day 0, 1, 2
     assert weekends[0] == [0, 1, 2]
     assert dates[0].weekday() == 4
+
+
+def test_hard_constraint_one_full_weekend_off_per_doctor():
+
+    test_department = _make_test_department()
+    scheduler, solver, dates = _build_and_solve(
+        department=test_department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_hard_constraint_one_full_weekend_off_per_doctor"
+        ]
+    )
+
+    weekends = scheduler._get_weekends(dates=dates)
+    for doctor in test_department.doctors:
+        has_full_weekend_off = False
+        for (fri, sat, sun) in weekends:
+            fri_off = not any(solver.Value(var) for var in scheduler._get_assignments_for(
+                day_index=fri, doctor=doctor))
+            sat_off = not any(solver.Value(var) for var in scheduler._get_assignments_for(
+                day_index=sat, doctor=doctor))
+            sun_off = not any(solver.Value(var) for var in scheduler._get_assignments_for(
+                day_index=sun, doctor=doctor))
+
+            if fri_off and sat_off and sun_off:
+                has_full_weekend_off = True
+                break
+
+        assert has_full_weekend_off, f"{doctor.name} has no full weekend off"
