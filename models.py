@@ -19,13 +19,6 @@ class ScheduleConfig:
 
 
 @dataclass(eq=False)
-class Doctor:
-    name: str
-    email: str
-    unavailability: set[datetime.date] = field(default_factory=set)
-
-
-@dataclass(eq=False)
 class Shift:
     name: str
     doctors_per_shift: int = 1
@@ -33,10 +26,20 @@ class Shift:
 
 
 @dataclass(eq=False)
+class Doctor:
+    name: str
+    email: str
+    unavailability: set[datetime.date] = field(default_factory=set)
+    pre_assignments: list[tuple[datetime.date, Shift]
+                          ] = field(default_factory=list)
+
+
+@dataclass(eq=False)
 class Position:
     name: str
     shifts: list[Shift] = field(default_factory=list)
     duty_days: set[int] = field(default_factory=lambda: {0, 1, 2, 3, 4, 5, 6})
+    eligible_doctors: list[Doctor] = field(default_factory=list)
 
 
 @dataclass(eq=False)

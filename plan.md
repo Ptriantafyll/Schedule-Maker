@@ -33,6 +33,7 @@ A hospital on-duty scheduling tool that generates optimized monthly schedules pe
 - Belongs to one department
 - Has a name, email, and unavailability dates per month
 - Max 7 on-duty days per month (across all departments they cover)
+- May have pre-assigned shifts — specific (date, shift) pairs where the doctor must be on duty (e.g. doctors with special needs who choose their own schedule). These are enforced as hard constraints before the solver runs.
 
 ### Department
 
@@ -53,6 +54,7 @@ A hospital on-duty scheduling tool that generates optimized monthly schedules pe
 - Belongs to a department
 - Has a name (e.g. "ER", "Clinic")
 - Has one or more named shifts per night (e.g. ER has "1st shift" and "2nd shift"; Clinic may have only one)
+- Has an optional list of eligible doctors — only these doctors can be assigned to shifts in this position (e.g. only 10 out of 40 doctors are qualified for ER). If not specified, all department doctors are eligible.
 - A doctor can only cover one shift per night
 
 ### Shift
@@ -82,6 +84,8 @@ A hospital on-duty scheduling tool that generates optimized monthly schedules pe
   - Balanced total duties across doctors (difference of at most 1)
   - Balanced weekend duties across doctors
   - At most 1 doctor per team can have a post-shift day off on the same day (applies to shifts where `grants_day_off=True`)
+  - Pre-assigned shifts are respected — if a doctor has chosen specific (date, shift) pairs, those assignments are forced
+  - Only eligible doctors can be assigned to a position (if the position defines an eligible doctors list)
 - Soft constraints (weighted objective):
   - Penalize every-other-day patterns
   - Penalize short gaps between duties
@@ -107,9 +111,9 @@ Classes to introduce:
 | Class            | Responsibility                                                                                    |
 | ---------------- | ------------------------------------------------------------------------------------------------- |
 | `ScheduleConfig` | Weights, solver time limit, max duties — defined per department, with global defaults as fallback |
-| `Doctor`         | Name, email, unavailability                                                                       |
+| `Doctor`         | Name, email, unavailability, pre-assigned shifts                                                  |
 | `Team`           | Name, list of doctors — groups doctors within a department                                        |
-| `Position`       | Name, list of shifts                                                                              |
+| `Position`       | Name, list of shifts, optional eligible doctors list                                              |
 | `Shift`          | Name (e.g. "1st shift"), required doctors per night, grants_day_off flag                          |
 | `Department`     | Name, list of positions, list of teams, backup department reference, scheduling config            |
 | `ShiftScheduler`    | Orchestrates the full pipeline: load data, build model, solve, export                             |

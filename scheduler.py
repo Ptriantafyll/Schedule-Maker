@@ -47,8 +47,10 @@ class ShiftScheduler:
 
         self.shift_assignments = {}
 
-        for doctor in self.department.doctors:
-            for position in self.department.positions:
+        for position in self.department.positions:
+            position_doctors = position.eligible_doctors if position.eligible_doctors else self.department.doctors
+
+            for doctor in position_doctors:
                 for shift in position.shifts:
                     for day_index, date in enumerate(dates):
                         if date in doctor.unavailability:
