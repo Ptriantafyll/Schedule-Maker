@@ -83,6 +83,45 @@ def test_hard_constraint_no_consecutive_duties():
                 f"{doctor.name} has consecutive duties on days {day_index} and {day_index + 1}"
 
 
+def test_pre_assignments():
+    shift = Shift(name="Night", doctors_per_shift=1)
+    doctors = [
+        Doctor(name="Dr. A", email="a@test.com"),
+        Doctor(name="Dr. B", email="b@test.com"),
+        Doctor(name="Dr. C", email="C@test.com"),
+        Doctor(name="Dr. D", email="D@test.com"),
+        Doctor(name="Dr. E", email="E@test.com"),
+        Doctor(name="Dr. Pre-assigned", email="preassigned@test.com",
+                    pre_assignments=[
+                        (datetime.date(2026, 4, 6), shift),
+                        (datetime.date(2026, 4, 8), shift),
+                        (datetime.date(2026, 4, 15), shift),
+                        (datetime.date(2026, 4, 21), shift)
+                    ])
+    ]
+    team = Team(name="Team 1", doctors=doctors)
+    position = Position(name="ER", shifts=[shift])
+    department = Department(name="test", teams=[team], positions=[position])
+
+    scheduler, solver, dates = _build_and_solve(
+        department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_hard_constraint_max_duties_per_doc_per_month"
+        ]
+    )
+
+    for (day_index, pos, sh, doc), var in scheduler.shift_assignments.items():
+        if doc == doctors[5]:
+            if (dates[day_index], sh) in doctors[5].pre_assignments:
+                assert solver.Value(
+                    var) == 1, f"Should be assigned on day {day_index}"
+            else:
+                assert solver.Value(
+                    var) == 0, f"Should not be assigned on day {day_index}"
+
+
 def test_hard_constraint_doctors_per_shift():
     department = _make_test_department()
     scheduler, solver, dates = _build_and_solve(
@@ -97,8 +136,7 @@ def test_hard_constraint_doctors_per_shift():
                     solver.Value(var)
                     for var in scheduler._get_assignments_for(day_index, position, shift)
                 )
-                assert assigned_count == shift.doctors_per_shift, \
-                    f"Day {day_index}, {position.name}/{shift.name}: expected {shift.doctors_per_shift} doctor(s), got {assigned_count}"
+                assert assigned_count == shift.doctors_per_shift, f"Day {day_index}, {position.name}/{shift.name}: expected {shift.doctors_per_shift} doctor(s), got {assigned_count}"
 
 
 def test_hard_constraint_doctors_per_shift_multiple():
@@ -122,8 +160,7 @@ def test_hard_constraint_doctors_per_shift_multiple():
             solver.Value(var)
             for var in scheduler._get_assignments_for(day_index, position, shift)
         )
-        assert assigned_count == 2, \
-            f"Day {day_index}: expected 2 doctors, got {assigned_count}"
+        assert assigned_count == 2, f"Day {day_index}: expected 2 doctors, got {assigned_count}"
 
 
 def test_hard_constraint_max_duties_per_doc_per_month():
@@ -153,8 +190,7 @@ def test_hard_constraint_max_duties_per_doc_per_month():
             solver.Value(var)
             for var in scheduler._get_assignments_for(doctor=doctor)
         )
-        assert total_duties <= 5, \
-            f"{doctor.name} has {total_duties} duties, expected at most 5"
+        assert total_duties <= 5, f"{doctor.name} has {total_duties} duties, expected at most 5"
 
 
 def test_get_weekends_april_2026():

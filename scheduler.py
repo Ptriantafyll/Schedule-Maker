@@ -63,9 +63,14 @@ class ShiftScheduler:
 
                         self.shift_assignments[(day_index, position, shift, doctor)] = self.model.NewBoolVar(
                             f"shift_assignment_{day_index}_{position}_{shift}_{doctor}")
-                        
+
                         if (date, shift) in pre_assignments:
-                            self.model.Add(self.shift_assignments[(day_index, position, shift, doctor)] == 1)
+                            self.model.Add(self.shift_assignments[(
+                                day_index, position, shift, doctor)] == 1)
+                        else:
+                            if pre_assignments:
+                                self.model.Add(self.shift_assignments[(
+                                    day_index, position, shift, doctor)] == 0)
 
     def _add_hard_constraint_doctors_per_shift(self, dates: list[datetime.date]):
         """Adds a hard constraint that a shift must have the exact number of doctor as specified"""
