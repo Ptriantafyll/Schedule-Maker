@@ -101,7 +101,7 @@ class ShiftScheduler:
 
                 self.model.Add(sum(today_shifts + tomorrow_shifts) <= 1)
 
-    def _add_hard_constraint_max_duties_per_doc_per_month(self, dates):
+    def _add_hard_constraint_max_duties_per_doc_per_month(self, dates: list[datetime.date]):
         """Adds a hard constraint that sets the max duties per month a doctor can do"""
 
         for doctor in self.department.doctors:
@@ -113,7 +113,7 @@ class ShiftScheduler:
                 sum(shifts) <= self.department.config.max_duties_per_month
             )
 
-    def _add_hard_constraint_one_full_weekend_off_per_doctor(self, dates):
+    def _add_hard_constraint_one_full_weekend_off_per_doctor(self, dates: list[datetime.date]):
         """Ensures every doctor has at least one full weekend (Fri+Sat+Sun) off."""
         weekends = self._get_weekends(dates=dates)
 
@@ -141,8 +141,32 @@ class ShiftScheduler:
 
             self.model.Add(sum(weekend_off_vars) >= 1)
 
-    def _add_hard_constraint_balanced_total_duties_across_doctors(self, dates):
-        pass
+    def _add_hard_constraint_balanced_total_duties_across_doctors(self, dates: list[datetime.date]):
+        pre_assigned_duties = sum(len(doctor.pre_assignments)
+                                  for doctor in self.department.doctors if doctor.pre_assignments)
+
+        total_duties = sum(
+            shift.doctors_per_shift *
+            sum(1 for d in dates if d.weekday() in position.duty_days)
+            for position in self.department.positions
+            for shift in position.shifts
+        )
+
+        duties_needed = total_duties - pre_assigned_duties
+        doctors_available = sum(
+            1 for doctor in self.department.doctors if not doctor.pre_assignments)
+
+        # total duties needed / # of docs
+        min_duties = duties_needed // doctors_available
+        max_duties = min_duties + 1
+
+        for doctor in self.department.doctors:
+            if doctor.pre_assignments:
+                continue
+
+            doctor_assignments = self._get_assignments_for(doctor=doctor)
+            self.model.Add(sum(doctor_assignments) <= max_duties)
+            self.model.Add(sum(doctor_assignments) >= min_duties)
 
     def create_schedule(self, month: int, year: int):
         pass

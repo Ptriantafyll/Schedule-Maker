@@ -254,3 +254,35 @@ def test_hard_constraint_one_full_weekend_off_per_doctor():
                 break
 
         assert has_full_weekend_off, f"{doctor.name} has no full weekend off"
+
+
+def test_balanced_total_duties_across_doctors():
+    test_department = _make_test_department()
+
+    scheduler, solver, dates = _build_and_solve(
+        department=test_department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_hard_constraint_one_full_weekend_off_per_doctor",
+            "_add_hard_constraint_balanced_total_duties_across_doctors"
+        ]
+    )
+
+    number_of_doctors = len(test_department.doctors)
+    total_duties = sum(
+        shift.doctors_per_shift *
+        sum(1 for d in dates if d.weekday() in position.duty_days)
+        for position in test_department.positions
+        for shift in position.shifts
+    )
+
+    min_duties = total_duties // number_of_doctors
+    max_duties = min_duties + 1
+
+    for doctor in test_department.doctors:
+        doctor_assignments = sum(
+            solver.Value(var) for var in scheduler._get_assignments_for(doctor=doctor)
+        )
+        assert doctor_assignments <= max_duties, f"{doctor.name} has more than the max allowed duties"
+        assert doctor_assignments >= min_duties, f"{doctor.name} has more than the min allowed duties"
