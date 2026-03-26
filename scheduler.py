@@ -105,12 +105,16 @@ class ShiftScheduler:
         """Adds a hard constraint that sets the max duties per month a doctor can do"""
 
         for doctor in self.department.doctors:
+            if doctor.pre_assignments:
+                continue
+
             shifts = self._get_assignments_for(doctor=doctor)
             self.model.Add(
                 sum(shifts) <= self.department.config.max_duties_per_month
             )
 
     def _add_hard_constraint_one_full_weekend_off_per_doctor(self, dates):
+        """Ensures every doctor has at least one full weekend (Fri+Sat+Sun) off."""
         weekends = self._get_weekends(dates=dates)
 
         for doctor in self.department.doctors:
@@ -136,6 +140,9 @@ class ShiftScheduler:
                                * weekend_off <= len(psk_shifts))
 
             self.model.Add(sum(weekend_off_vars) >= 1)
+
+    def _add_hard_constraint_balanced_total_duties_across_doctors(self, dates):
+        pass
 
     def create_schedule(self, month: int, year: int):
         pass

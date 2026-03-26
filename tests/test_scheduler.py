@@ -5,7 +5,7 @@ from scheduler import ShiftScheduler
 
 
 def _build_and_solve(department, month=4, year=2026, constraint_names=None):
-    """Jelper that builds model, adds constraints by method name, solves, and returns (scheduler, solver, dates)."""
+    """Helper that builds model, adds constraints by method name, solves, and returns (scheduler, solver, dates)."""
     scheduler = ShiftScheduler(department=department)
     dates = scheduler._calculate_days_for_schedule(month=month, year=year)
     scheduler._build_model(dates)
@@ -60,6 +60,7 @@ def test_leap_year_identified_correctly():
 
 
 def test_hard_constraint_no_consecutive_duties():
+    """Verifies no doctor is assigned on two consecutive days."""
     department = _make_test_department()
     scheduler, solver, dates = _build_and_solve(
         department,
@@ -84,6 +85,7 @@ def test_hard_constraint_no_consecutive_duties():
 
 
 def test_pre_assignments():
+    """Verifies pre-assigned doctors work only their chosen days and no others."""
     shift = Shift(name="Night", doctors_per_shift=1)
     doctors = [
         Doctor(name="Dr. A", email="a@test.com"),
@@ -123,6 +125,7 @@ def test_pre_assignments():
 
 
 def test_hard_constraint_doctors_per_shift():
+    """Verifies each shift has exactly the required number of doctors per night."""
     department = _make_test_department()
     scheduler, solver, dates = _build_and_solve(
         department,
@@ -224,7 +227,7 @@ def test_get_weekends_month_starting_saturday():
 
 
 def test_hard_constraint_one_full_weekend_off_per_doctor():
-
+    """Verifies every doctor has at least one full weekend (Fri+Sat+Sun) off."""
     test_department = _make_test_department()
     scheduler, solver, dates = _build_and_solve(
         department=test_department,
