@@ -210,6 +210,25 @@ class ShiftScheduler:
             self.model.Add(sum(assigned_weekends) <= max_weekend_duties)
             self.model.Add(sum(assigned_weekends) >= min_weekend_duties)
 
+    def _add_hard_constraint_max_one_team_day_off(self, dates: list[datetime.date]):
+        """Ensures at most 1 doctor per team has a post-shift day off on the same day."""
+        for day_index in range(1, len(dates)):
+            for team in self.department.teams:
+                yesterday_day_off_shifts = []
+
+                for doctor in team.doctors:
+                    for position in self.department.positions:
+                        for shift in position.shifts:
+                            if not shift.grants_day_off:
+                                continue
+
+                            key = (day_index - 1, position, shift, doctor)
+                            if key in self.shift_assignments:
+                                yesterday_day_off_shifts.append(
+                                    self.shift_assignments[key])
+
+            self.model.Add(sum(yesterday_day_off_shifts) <= 1)
+
     def create_schedule(self, month: int, year: int):
         pass
 

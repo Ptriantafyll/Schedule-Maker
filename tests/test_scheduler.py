@@ -328,3 +328,56 @@ def test_balanced_weekend_duties_across_doctors():
             )
         assert total_weekend_assignments <= max_weekend_duties, f"{doctor.name} has more than the max allowed duties"
         assert total_weekend_assignments >= min_weekend_duties, f"{doctor.name} has more than the min allowed duties"
+
+
+def test_max_one_day_off_team():
+    """Verifies at most 1 doctor per team has a post-shift day off on the same day."""
+    doctors = [
+        Doctor(name="Dr. A", email="a@test.com"),
+        Doctor(name="Dr. B", email="b@test.com"),
+        Doctor(name="Dr. C", email="C@test.com"),
+        Doctor(name="Dr. D", email="D@test.com"),
+        Doctor(name="Dr. E", email="E@test.com"),
+        Doctor(name="Dr. F", email="D@test.com"),
+        Doctor(name="Dr. G", email="D@test.com"),
+        Doctor(name="Dr. H", email="D@test.com"),
+        Doctor(name="Dr. I", email="D@test.com")
+    ]
+    teams = [
+        Team(name="Team 1", doctors=doctors[:3]),
+        Team(name="Team 2", doctors=doctors[3:])
+    ]
+    shifts = [
+        Shift(name="ER", doctors_per_shift=1, grants_day_off=True),
+        Shift(name="Night", doctors_per_shift=1)
+    ]
+    position = Position(name="ER", shifts=shifts)
+    test_department = Department(
+        name="Test", teams=teams, positions=[position])
+
+    scheduler, solver, dates = _build_and_solve(
+        department=test_department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_hard_constraint_one_full_weekend_off_per_doctor",
+            "_add_hard_constraint_balanced_total_duties_across_doctors",
+            "_add_hard_constraint_balanced_weekend_duties_across_doctors",
+            "_add_hard_constraint_max_one_team_day_off"
+        ]
+    )
+
+    for day_index in range(1, len(dates)):
+        for team in teams:
+            yesterday_day_off_count = 0
+            for doctor in team.doctors:
+                for shift in position.shifts:
+                    if not shift.grants_day_off:
+                        continue
+
+                    key = (day_index - 1, position, shift, doctor)
+                    if key in scheduler.shift_assignments:
+                        if solver.Value(scheduler.shift_assignments[key]):
+                            yesterday_day_off_count += 1
+
+            assert yesterday_day_off_count <= 1, f"{team.name} has more than 1 doctor with the day off"
