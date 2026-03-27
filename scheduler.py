@@ -21,7 +21,7 @@ class ShiftScheduler:
         self.is_weekend = {d: (d.weekday() >= 5) for d in dates}
         return dates
 
-    def _get_assignments_for(self, day_index=None, position=None, shift=None, doctor=None):
+    def _get_assignment_vars_for(self, day_index=None, position=None, shift=None, doctor=None):
         """Returns all shift assignment variables matching the given filters."""
         return [
             var for (d, p, s, doc), var in self.shift_assignments.items()
@@ -83,7 +83,7 @@ class ShiftScheduler:
                 for shift in position.shifts:
 
                     self.model.Add(
-                        sum(self._get_assignments_for(
+                        sum(self._get_assignment_vars_for(
                             day_index, position, shift))
                         == shift.doctors_per_shift
                     )
@@ -93,10 +93,10 @@ class ShiftScheduler:
 
         for doctor in self.department.doctors:
             for day_index in range(len(dates) - 1):
-                today_shifts = self._get_assignments_for(
+                today_shifts = self._get_assignment_vars_for(
                     day_index=day_index, doctor=doctor)
 
-                tomorrow_shifts = self._get_assignments_for(
+                tomorrow_shifts = self._get_assignment_vars_for(
                     day_index=day_index + 1, doctor=doctor)
 
                 self.model.Add(sum(today_shifts + tomorrow_shifts) <= 1)
@@ -108,7 +108,7 @@ class ShiftScheduler:
             if doctor.pre_assignments:
                 continue
 
-            shifts = self._get_assignments_for(doctor=doctor)
+            shifts = self._get_assignment_vars_for(doctor=doctor)
             self.model.Add(
                 sum(shifts) <= self.department.config.max_duties_per_month
             )
@@ -126,11 +126,11 @@ class ShiftScheduler:
                 )
 
                 psk_shifts = (
-                    self._get_assignments_for(
+                    self._get_assignment_vars_for(
                         day_index=fri, doctor=doctor
-                    ) + self._get_assignments_for(
+                    ) + self._get_assignment_vars_for(
                         day_index=sat, doctor=doctor
-                    ) + self._get_assignments_for(
+                    ) + self._get_assignment_vars_for(
                         day_index=sun, doctor=doctor
                     )
                 )
@@ -142,6 +142,7 @@ class ShiftScheduler:
             self.model.Add(sum(weekend_off_vars) >= 1)
 
     def _add_hard_constraint_balanced_total_duties_across_doctors(self, dates: list[datetime.date]):
+        """Ensures all doctors have the same number of duties (+-1)"""
         pre_assigned_duties = sum(len(doctor.pre_assignments)
                                   for doctor in self.department.doctors if doctor.pre_assignments)
 
@@ -156,7 +157,6 @@ class ShiftScheduler:
         doctors_available = sum(
             1 for doctor in self.department.doctors if not doctor.pre_assignments)
 
-        # total duties needed / # of docs
         min_duties = duties_needed // doctors_available
         max_duties = min_duties + 1
 
@@ -164,9 +164,51 @@ class ShiftScheduler:
             if doctor.pre_assignments:
                 continue
 
-            doctor_assignments = self._get_assignments_for(doctor=doctor)
+            doctor_assignments = self._get_assignment_vars_for(doctor=doctor)
             self.model.Add(sum(doctor_assignments) <= max_duties)
             self.model.Add(sum(doctor_assignments) >= min_duties)
+
+    def _add_hard_constraint_balanced_weekend_duties_across_doctors(self, dates: list[datetime.date]):
+        """Ensures all doctors have the same number of weekend duties (+-1)"""
+        pre_assigned_weekends = 0
+
+        for doctor in self.department.doctors:
+            if not doctor.pre_assignments:
+                continue
+
+            for (pre_assigned_date, _) in doctor.pre_assignments:
+                if self.is_weekend[pre_assigned_date]:
+                    pre_assigned_weekends += 1
+
+        total_weekend_duties = sum(
+            shift.doctors_per_shift *
+            sum(1 for d in dates if
+                self.is_weekend[d] and d.weekday() in position.duty_days)
+            for position in self.department.positions
+            for shift in position.shifts
+        )
+
+        weekend_duties_needed = total_weekend_duties - pre_assigned_weekends
+        doctors_available = sum(
+            1 for doctor in self.department.doctors if not doctor.pre_assignments)
+
+        min_weekend_duties = weekend_duties_needed // doctors_available
+        max_weekend_duties = min_weekend_duties + 1
+
+        for doctor in self.department.doctors:
+            if doctor.pre_assignments:
+                continue
+            assigned_weekends = []
+
+            for day_index, date in enumerate(dates):
+                if not self.is_weekend[date]:
+                    continue
+
+                assigned_weekends.extend(self._get_assignment_vars_for(
+                    doctor=doctor, day_index=day_index))
+
+            self.model.Add(sum(assigned_weekends) <= max_weekend_duties)
+            self.model.Add(sum(assigned_weekends) >= min_weekend_duties)
 
     def create_schedule(self, month: int, year: int):
         pass

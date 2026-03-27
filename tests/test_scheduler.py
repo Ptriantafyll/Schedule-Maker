@@ -74,11 +74,11 @@ def test_hard_constraint_no_consecutive_duties():
         for day_index in range(len(dates) - 1):
             today = any(
                 solver.Value(var)
-                for var in scheduler._get_assignments_for(day_index, doctor=doctor)
+                for var in scheduler._get_assignment_vars_for(day_index, doctor=doctor)
             )
             tomorrow = any(
                 solver.Value(var)
-                for var in scheduler._get_assignments_for(day_index + 1, doctor=doctor)
+                for var in scheduler._get_assignment_vars_for(day_index + 1, doctor=doctor)
             )
             assert not (today and tomorrow), \
                 f"{doctor.name} has consecutive duties on days {day_index} and {day_index + 1}"
@@ -137,7 +137,7 @@ def test_hard_constraint_doctors_per_shift():
             for shift in position.shifts:
                 assigned_count = sum(
                     solver.Value(var)
-                    for var in scheduler._get_assignments_for(day_index, position, shift)
+                    for var in scheduler._get_assignment_vars_for(day_index, position, shift)
                 )
                 assert assigned_count == shift.doctors_per_shift, f"Day {day_index}, {position.name}/{shift.name}: expected {shift.doctors_per_shift} doctor(s), got {assigned_count}"
 
@@ -161,7 +161,7 @@ def test_hard_constraint_doctors_per_shift_multiple():
     for day_index in range(len(dates)):
         assigned_count = sum(
             solver.Value(var)
-            for var in scheduler._get_assignments_for(day_index, position, shift)
+            for var in scheduler._get_assignment_vars_for(day_index, position, shift)
         )
         assert assigned_count == 2, f"Day {day_index}: expected 2 doctors, got {assigned_count}"
 
@@ -191,7 +191,7 @@ def test_hard_constraint_max_duties_per_doc_per_month():
     for doctor in department.doctors:
         total_duties = sum(
             solver.Value(var)
-            for var in scheduler._get_assignments_for(doctor=doctor)
+            for var in scheduler._get_assignment_vars_for(doctor=doctor)
         )
         assert total_duties <= 5, f"{doctor.name} has {total_duties} duties, expected at most 5"
 
@@ -242,11 +242,11 @@ def test_hard_constraint_one_full_weekend_off_per_doctor():
     for doctor in test_department.doctors:
         has_full_weekend_off = False
         for (fri, sat, sun) in weekends:
-            fri_off = not any(solver.Value(var) for var in scheduler._get_assignments_for(
+            fri_off = not any(solver.Value(var) for var in scheduler._get_assignment_vars_for(
                 day_index=fri, doctor=doctor))
-            sat_off = not any(solver.Value(var) for var in scheduler._get_assignments_for(
+            sat_off = not any(solver.Value(var) for var in scheduler._get_assignment_vars_for(
                 day_index=sat, doctor=doctor))
-            sun_off = not any(solver.Value(var) for var in scheduler._get_assignments_for(
+            sun_off = not any(solver.Value(var) for var in scheduler._get_assignment_vars_for(
                 day_index=sun, doctor=doctor))
 
             if fri_off and sat_off and sun_off:
@@ -282,7 +282,49 @@ def test_balanced_total_duties_across_doctors():
 
     for doctor in test_department.doctors:
         doctor_assignments = sum(
-            solver.Value(var) for var in scheduler._get_assignments_for(doctor=doctor)
+            solver.Value(var) for var in scheduler._get_assignment_vars_for(doctor=doctor)
         )
         assert doctor_assignments <= max_duties, f"{doctor.name} has more than the max allowed duties"
         assert doctor_assignments >= min_duties, f"{doctor.name} has more than the min allowed duties"
+
+
+def test_balanced_weekend_duties_across_doctors():
+    """Verifies each doctor's weekend duty count differs by at most 1 from any other."""
+    test_department = _make_test_department()
+
+    scheduler, solver, dates = _build_and_solve(
+        department=test_department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_hard_constraint_one_full_weekend_off_per_doctor",
+            "_add_hard_constraint_balanced_total_duties_across_doctors",
+            "_add_hard_constraint_balanced_weekend_duties_across_doctors"
+        ]
+    )
+
+    total_weekend_duties = sum(
+        shift.doctors_per_shift *
+        sum(1 for d in dates if
+            scheduler.is_weekend[d] and d.weekday() in position.duty_days)
+        for position in scheduler.department.positions
+        for shift in position.shifts
+    )
+
+    doctors_available = sum(
+        1 for doctor in scheduler.department.doctors if not doctor.pre_assignments)
+
+    min_weekend_duties = total_weekend_duties // doctors_available
+    max_weekend_duties = min_weekend_duties + 1
+
+    for doctor in test_department.doctors:
+        total_weekend_assignments = 0
+        for day_index, date in enumerate(dates):
+            if not scheduler.is_weekend[date]:
+                continue
+
+            total_weekend_assignments += sum(
+                solver.Value(var) for var in scheduler._get_assignment_vars_for(doctor=doctor, day_index=day_index)
+            )
+        assert total_weekend_assignments <= max_weekend_duties, f"{doctor.name} has more than the max allowed duties"
+        assert total_weekend_assignments >= min_weekend_duties, f"{doctor.name} has more than the min allowed duties"
