@@ -2,6 +2,7 @@ from models import Department, Doctor
 import datetime
 import calendar
 from ortools.sat.python import cp_model
+import math
 
 
 class ShiftScheduler:
@@ -260,6 +261,55 @@ class ShiftScheduler:
 
                 self.penalties.append(
                     self.department.config.w_every_other_penalty * is_every_other)
+
+    def _add_soft_constraint_spread_duties_across_month(self, dates: list[datetime.date]):
+        """Penalizes uneven distribution of duties across month blocks per doctor."""
+        pre_assigned_duties = sum(len(doctor.pre_assignments)
+                                  for doctor in self.department.doctors if doctor.pre_assignments)
+
+        total_duties = sum(
+            shift.doctors_per_shift *
+            sum(1 for d in dates if d.weekday() in position.duty_days)
+            for position in self.department.positions
+            for shift in position.shifts
+        )
+
+        duties_needed = total_duties - pre_assigned_duties
+        doctors_available = sum(
+            1 for doctor in self.department.doctors if not doctor.pre_assignments)
+
+        total_duties_per_doctor = duties_needed // doctors_available
+
+        num_blocks = self.department.config.month_blocks
+        block_size = math.ceil(len(dates) / num_blocks)
+
+        for block in range(num_blocks):
+            block_start_idx = block*block_size
+            block_end_idx = min((block+1)*block_size, len(dates))
+
+            for doctor in self.department.doctors:
+                if doctor.pre_assignments:
+                    continue
+
+                ideal_block_duties = total_duties_per_doctor / num_blocks
+                block_duties = 0
+                for day_index in range(block_start_idx, block_end_idx):
+                    block_duties += sum(self._get_assignment_vars_for(
+                        day_index=day_index, doctor=doctor))
+
+                if block_duties == 0:
+                    # doctor unavailable for whole block
+                    continue
+
+                rounded_ideal_high = int(math.ceil(ideal_block_duties))
+                rounded_ideal_low = int(math.floor(ideal_block_duties))
+                deviation = self.model.new_int_var(
+                    0, block_size, f"block_{block}_deviation_for_{doctor}")
+                self.model.add(deviation >= block_duties - rounded_ideal_high)
+                self.model.add(deviation >= rounded_ideal_low - block_duties)
+
+                self.penalties.append(
+                    self.department.config.w_block_dev_penalty * deviation)
 
     def create_schedule(self, month: int, year: int):
         pass

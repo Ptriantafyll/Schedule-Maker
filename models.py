@@ -17,6 +17,9 @@ class ScheduleConfig:
     solver_time_limit: int = 120
     max_duties_per_month: int = 7
 
+    # Schedule variables
+    month_blocks = 3
+
 
 @dataclass(eq=False)
 class Shift:
