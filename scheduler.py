@@ -46,6 +46,8 @@ class ShiftScheduler:
         self.model = cp_model.CpModel()
 
         self.shift_assignments = {}
+        self.penalties = []
+        self.rewards = []
 
         for position in self.department.positions:
             position_doctors = position.eligible_doctors if position.eligible_doctors else self.department.doctors
@@ -61,16 +63,19 @@ class ShiftScheduler:
                         if date.weekday() not in position.duty_days:
                             continue
 
-                        self.shift_assignments[(day_index, position, shift, doctor)] = self.model.NewBoolVar(
+                        self.shift_assignments[(day_index, position, shift, doctor)] = self.model.new_bool_var(
                             f"shift_assignment_{day_index}_{position}_{shift}_{doctor}")
 
                         if (date, shift) in pre_assignments:
-                            self.model.Add(self.shift_assignments[(
+                            self.model.add(self.shift_assignments[(
                                 day_index, position, shift, doctor)] == 1)
                         else:
                             if pre_assignments:
-                                self.model.Add(self.shift_assignments[(
+                                self.model.add(self.shift_assignments[(
                                     day_index, position, shift, doctor)] == 0)
+
+    def _combine_objectives(self):
+        self.model.minimize(sum(self.penalties) - sum(self.rewards))
 
     def _add_hard_constraint_doctors_per_shift(self, dates: list[datetime.date]):
         """Adds a hard constraint that a shift must have the exact number of doctor as specified"""
@@ -82,7 +87,7 @@ class ShiftScheduler:
 
                 for shift in position.shifts:
 
-                    self.model.Add(
+                    self.model.add(
                         sum(self._get_assignment_vars_for(
                             day_index, position, shift))
                         == shift.doctors_per_shift
@@ -99,7 +104,7 @@ class ShiftScheduler:
                 tomorrow_shifts = self._get_assignment_vars_for(
                     day_index=day_index + 1, doctor=doctor)
 
-                self.model.Add(sum(today_shifts + tomorrow_shifts) <= 1)
+                self.model.add(sum(today_shifts + tomorrow_shifts) <= 1)
 
     def _add_hard_constraint_max_duties_per_doc_per_month(self, dates: list[datetime.date]):
         """Adds a hard constraint that sets the max duties per month a doctor can do"""
@@ -109,7 +114,7 @@ class ShiftScheduler:
                 continue
 
             shifts = self._get_assignment_vars_for(doctor=doctor)
-            self.model.Add(
+            self.model.add(
                 sum(shifts) <= self.department.config.max_duties_per_month
             )
 
@@ -121,7 +126,7 @@ class ShiftScheduler:
             weekend_off_vars = []
 
             for weekend_index, (fri, sat, sun) in enumerate(weekends):
-                weekend_off = self.model.NewBoolVar(
+                weekend_off = self.model.new_bool_var(
                     f"full_weekend_off_{weekend_index}_{doctor}"
                 )
 
@@ -136,10 +141,10 @@ class ShiftScheduler:
                 )
 
                 weekend_off_vars.append(weekend_off)
-                self.model.Add(sum(psk_shifts) + len(psk_shifts)
+                self.model.add(sum(psk_shifts) + len(psk_shifts)
                                * weekend_off <= len(psk_shifts))
 
-            self.model.Add(sum(weekend_off_vars) >= 1)
+            self.model.add(sum(weekend_off_vars) >= 1)
 
     def _add_hard_constraint_balanced_total_duties_across_doctors(self, dates: list[datetime.date]):
         """Ensures all doctors have the same number of duties (+-1)"""
@@ -165,8 +170,8 @@ class ShiftScheduler:
                 continue
 
             doctor_assignments = self._get_assignment_vars_for(doctor=doctor)
-            self.model.Add(sum(doctor_assignments) <= max_duties)
-            self.model.Add(sum(doctor_assignments) >= min_duties)
+            self.model.add(sum(doctor_assignments) <= max_duties)
+            self.model.add(sum(doctor_assignments) >= min_duties)
 
     def _add_hard_constraint_balanced_weekend_duties_across_doctors(self, dates: list[datetime.date]):
         """Ensures all doctors have the same number of weekend duties (+-1)"""
@@ -207,8 +212,8 @@ class ShiftScheduler:
                 assigned_weekends.extend(self._get_assignment_vars_for(
                     doctor=doctor, day_index=day_index))
 
-            self.model.Add(sum(assigned_weekends) <= max_weekend_duties)
-            self.model.Add(sum(assigned_weekends) >= min_weekend_duties)
+            self.model.add(sum(assigned_weekends) <= max_weekend_duties)
+            self.model.add(sum(assigned_weekends) >= min_weekend_duties)
 
     def _add_hard_constraint_max_one_team_day_off(self, dates: list[datetime.date]):
         """Ensures at most 1 doctor per team has a post-shift day off on the same day."""
@@ -227,7 +232,34 @@ class ShiftScheduler:
                                 yesterday_day_off_shifts.append(
                                     self.shift_assignments[key])
 
-            self.model.Add(sum(yesterday_day_off_shifts) <= 1)
+            self.model.add(sum(yesterday_day_off_shifts) <= 1)
+
+    def _add_soft_constraint_penalize_every_other_day_on_duty(self, dates: list[datetime.date]):
+        """Penalizes on-off-on patterns where a doctor works day N and day N+2."""
+        for doctor in self.department.doctors:
+            if doctor.pre_assignments:
+                continue
+
+            for day_index in range(len(dates) - 2):
+                day_a_var = self._get_assignment_vars_for(
+                    day_index=day_index, doctor=doctor)
+                day_c_var = self._get_assignment_vars_for(
+                    day_index=day_index+2, doctor=doctor)
+
+                if (not day_a_var) or (not day_c_var):
+                    continue
+
+                is_every_other = self.model.new_bool_var(
+                    f"every_other_penalty_{day_index}_{doctor}_"
+                )
+
+                self.model.add(sum(day_a_var) + sum(day_c_var) ==
+                               2).only_enforce_if(is_every_other)
+                self.model.add(sum(day_a_var) + sum(day_c_var) !=
+                               2).only_enforce_if(is_every_other.Not())
+
+                self.penalties.append(
+                    self.department.config.w_every_other_penalty * is_every_other)
 
     def create_schedule(self, month: int, year: int):
         pass
