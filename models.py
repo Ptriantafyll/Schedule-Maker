@@ -15,7 +15,7 @@ class ScheduleConfig:
 
     # Solver settings
     solver_time_limit: int = 120
-    max_duties_per_month: int = 7
+    max_duties_per_month: int = 8
 
     # Schedule variables
     month_blocks = 3
@@ -58,7 +58,10 @@ class Department:
     teams: list[Team] = field(default_factory=list)
     config: ScheduleConfig = field(default_factory=ScheduleConfig)
     backup_department: Optional['Department'] = None
+    teamless_doctors: list[Doctor] = field(default_factory=list)
 
     @property
     def doctors(self) -> list[Doctor]:
-        return [doctor for team in self.teams for doctor in team.doctors]
+        team_doctors = [
+            doctor for team in self.teams for doctor in team.doctors]
+        return team_doctors + self.teamless_doctors
