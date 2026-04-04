@@ -1,15 +1,32 @@
-from models import Department, Doctor, Position, Shift, Team
+"""Shift scheduling engine using Google OR-Tools CP-SAT solver.
+
+Builds and solves a constraint programming model to generate
+optimal monthly duty schedules for a hospital department.
+"""
+
 import datetime
 import calendar
-from ortools.sat.python import cp_model
 import math
+import openpyxl
+from ortools.sat.python import cp_model
+from openpyxl.styles import PatternFill
+from models import Department, Doctor, Position, Shift, Team
 
 
-class ShiftScheduler:
+class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
+    """Shift scheduling engine using Google OR-Tools CP-SAT solver."""
+
     def __init__(self, department: Department):
         self.department = department
+        self.is_weekend = {}
+        self.model = cp_model.CpModel()
+        self.shift_assignments = {}
+        self.penalties = []
+        self.rewards = []
+        self.solver = cp_model.CpSolver()
+        self.dates = []
 
-    def _calculate_days_for_schedule(self, month: int, year: int) -> tuple[list[datetime.date]]:
+    def _calculate_days_for_schedule(self, month: int, year: int) -> list[datetime.date]:
         """Returns the list of dates and a weekend lookup dict for the given month."""
 
         first_day = datetime.date(year, month, 1)
@@ -32,65 +49,80 @@ class ShiftScheduler:
             and (doctor is None or doc == doctor)
         ]
 
-    def _get_weekends(self, dates: list[datetime.date]) -> list[list[int]]:
+    def _get_weekends(self) -> list[list[int]]:
         """Returns list of (fri, sat, sun) day index tuples for complete weekends."""
         weekends = []
 
-        for day_index, date in enumerate(dates):
-            if date.weekday() == 4 and day_index + 2 < len(dates):
+        for day_index, date in enumerate(self.dates):
+            if date.weekday() == 4 and day_index + 2 < len(self.dates):
                 weekends.append([day_index, day_index+1, day_index+2])
 
         return weekends
 
-    def _build_model(self, dates: list[datetime.date]):
+    def _build_model(self):
         """Creates the CP-SAT model and shift assignment variables."""
-        self.model = cp_model.CpModel()
-
-        self.shift_assignments = {}
-        self.penalties = []
-        self.rewards = []
 
         for position in self.department.positions:
             position_doctors = position.eligible_doctors if position.eligible_doctors else self.department.doctors
 
             for doctor in position_doctors:
-                pre_assignments = set(doctor.pre_assignments)
+                self._create_assignment_variable(position, doctor)
 
-                for shift in position.shifts:
-                    for day_index, date in enumerate(dates):
-                        if date in doctor.unavailability:
-                            continue
+    def _create_assignment_variable(self, position: Position, doctor: Doctor):
+        """Creates shift assignment variables for a doctor in a position."""
+        pre_assignments = set(doctor.pre_assignments)
 
-                        if date.weekday() not in position.duty_days:
-                            continue
+        for shift in position.shifts:
+            for day_index, date in enumerate(self.dates):
+                if date in doctor.unavailability:
+                    continue
+                if date.weekday() not in position.duty_days:
+                    continue
 
-                        self.shift_assignments[(day_index, position, shift, doctor)] = self.model.new_bool_var(
-                            f"shift_assignment_{day_index}_{position}_{shift}_{doctor}")
+                var = self.model.new_bool_var(
+                    f"shift_assignment_{day_index}_{position}_{shift}_{doctor}")
+                self.shift_assignments[(
+                    day_index, position, shift, doctor)] = var
 
-                        if (date, shift) in pre_assignments:
-                            self.model.add(self.shift_assignments[(
-                                day_index, position, shift, doctor)] == 1)
-                        else:
-                            if pre_assignments:
-                                self.model.add(self.shift_assignments[(
-                                    day_index, position, shift, doctor)] == 0)
+                if (date, shift) in pre_assignments:
+                    self.model.add(self.shift_assignments[(
+                        day_index, position, shift, doctor)] == 1)
+                else:
+                    if pre_assignments:
+                        self.model.add(self.shift_assignments[(
+                            day_index, position, shift, doctor)] == 0)
+
+    def _calculate_duties_per_doctor(self):
+        """Returns the expected duties per non-pre-assigned doctor."""
+        pre_assigned_duties = sum(len(doctor.pre_assignments)
+                                  for doctor in self.department.doctors if doctor.pre_assignments)
+        total_duties = sum(
+            shift.doctors_per_shift *
+            sum(1 for d in self.dates if d.weekday() in position.duty_days)
+            for position in self.department.positions
+            for shift in position.shifts
+        )
+        duties_needed = total_duties - pre_assigned_duties
+        doctors_available = sum(
+            1 for doctor in self.department.doctors if not doctor.pre_assignments)
+        return duties_needed // doctors_available
 
     def _combine_objectives(self):
         self.model.minimize(sum(self.penalties) - sum(self.rewards))
 
-    def _add_hard_constraint_one_shift_per_doctor_per_day(self, dates: list[datetime.date]):
+    def _add_hard_constraint_one_shift_per_doctor_per_day(self):
         """Ensures a doctor can only be assigned to at most 1 shift per day."""
         for doctor in self.department.doctors:
-            for day_index in range(len(dates)):
+            for day_index in range(len(self.dates)):
                 day_vars = self._get_assignment_vars_for(
                     day_index=day_index, doctor=doctor)
                 if day_vars:
                     self.model.add(sum(day_vars) <= 1)
 
-    def _add_hard_constraint_doctors_per_shift(self, dates: list[datetime.date]):
+    def _add_hard_constraint_doctors_per_shift(self):
         """Adds a hard constraint that a shift must have the exact number of doctor as specified"""
 
-        for day_index, date in enumerate(dates):
+        for day_index, date in enumerate(self.dates):
             for position in self.department.positions:
                 if date.weekday() not in position.duty_days:
                     continue
@@ -103,14 +135,14 @@ class ShiftScheduler:
                         == shift.doctors_per_shift
                     )
 
-    def _add_hard_constraint_no_consecutive_shifts(self, dates: list[datetime.date]):
+    def _add_hard_constraint_no_consecutive_shifts(self):
         """Adds a hard constraint that a doctor cannot be on duty for 2 consecutive days"""
 
         for doctor in self.department.doctors:
             if doctor.pre_assignments:
                 continue
 
-            for day_index in range(len(dates) - 1):
+            for day_index in range(len(self.dates) - 1):
                 today_shifts = self._get_assignment_vars_for(
                     day_index=day_index, doctor=doctor)
 
@@ -119,7 +151,7 @@ class ShiftScheduler:
 
                 self.model.add(sum(today_shifts + tomorrow_shifts) <= 1)
 
-    def _add_hard_constraint_max_duties_per_doc_per_month(self, dates: list[datetime.date]):
+    def _add_hard_constraint_max_duties_per_doc_per_month(self):
         """Adds a hard constraint that sets the max duties per month a doctor can do"""
 
         for doctor in self.department.doctors:
@@ -131,9 +163,9 @@ class ShiftScheduler:
                 sum(shifts) <= self.department.config.max_duties_per_month
             )
 
-    def _add_hard_constraint_one_full_weekend_off_per_doctor(self, dates: list[datetime.date]):
+    def _add_hard_constraint_one_full_weekend_off_per_doctor(self):
         """Ensures every doctor has at least one full weekend (Fri+Sat+Sun) off."""
-        weekends = self._get_weekends(dates=dates)
+        weekends = self._get_weekends()
 
         for doctor in self.department.doctors:
             weekend_off_vars = []
@@ -159,30 +191,15 @@ class ShiftScheduler:
 
             self.model.add(sum(weekend_off_vars) >= 1)
 
-    def _add_hard_constraint_balanced_total_duties_across_doctors(self, dates: list[datetime.date]):
+    def _add_hard_constraint_balanced_total_duties_across_doctors(self):
         """Ensures all doctors have the same number of duties (+-1)"""
-        pre_assigned_duties = sum(len(doctor.pre_assignments)
-                                  for doctor in self.department.doctors if doctor.pre_assignments)
+        min_duties = self._calculate_duties_per_doctor()
+        max_duties = min_duties + 1
 
-        total_duties = sum(
-            shift.doctors_per_shift *
-            sum(1 for d in dates if d.weekday() in position.duty_days)
-            for position in self.department.positions
-            for shift in position.shifts
-        )
+        # min_duties = 5
+        # max_duties = 6
 
-        duties_needed = total_duties - pre_assigned_duties
-        doctors_available = sum(
-            1 for doctor in self.department.doctors if not doctor.pre_assignments)
-
-        # min_duties = duties_needed // doctors_available
-        # max_duties = min_duties + 1
-
-        min_duties = 5
-        max_duties = 6
-
-        print(f"Balance: total_duties={total_duties}, pre_assigned={pre_assigned_duties}, remaining={duties_needed}, doctors={doctors_available}, min={min_duties}, max={max_duties}")
-
+        print(f"Balance: min={min_duties}, max={max_duties}")
 
         for doctor in self.department.doctors:
             if doctor.pre_assignments:
@@ -190,7 +207,6 @@ class ShiftScheduler:
             available = len(self._get_assignment_vars_for(doctor=doctor))
             if available < 4:
                 print(f"  {doctor.name}: only {available} assignment vars")
-
 
         for doctor in self.department.doctors:
             if doctor.pre_assignments:
@@ -200,7 +216,7 @@ class ShiftScheduler:
             self.model.add(sum(doctor_assignments) <= max_duties)
             self.model.add(sum(doctor_assignments) >= min_duties)
 
-    def _add_hard_constraint_balanced_weekend_duties_across_doctors(self, dates: list[datetime.date]):
+    def _add_hard_constraint_balanced_weekend_duties_across_doctors(self):
         """Ensures all doctors have the same number of weekend duties (+-1)"""
         pre_assigned_weekends = 0
 
@@ -214,7 +230,7 @@ class ShiftScheduler:
 
         total_weekend_duties = sum(
             shift.doctors_per_shift *
-            sum(1 for d in dates if
+            sum(1 for d in self.dates if
                 self.is_weekend[d] and d.weekday() in position.duty_days)
             for position in self.department.positions
             for shift in position.shifts
@@ -232,7 +248,7 @@ class ShiftScheduler:
                 continue
             assigned_weekends = []
 
-            for day_index, date in enumerate(dates):
+            for day_index, date in enumerate(self.dates):
                 if not self.is_weekend[date]:
                     continue
 
@@ -242,32 +258,36 @@ class ShiftScheduler:
             self.model.add(sum(assigned_weekends) <= max_weekend_duties)
             self.model.add(sum(assigned_weekends) >= min_weekend_duties)
 
-    def _add_hard_constraint_max_one_team_day_off(self, dates: list[datetime.date]):
+    def _get_day_off_vars_for_team(self, team, day_index):
+        """Returns shift vars from the previous day that grant a day off for a team."""
+        day_off_vars = []
+        for doctor in team.doctors:
+            for position in self.department.positions:
+                for shift in position.shifts:
+                    if not shift.grants_day_off:
+                        continue
+
+                    key = (day_index, position, shift, doctor)
+                    if key in self.shift_assignments:
+                        day_off_vars.append(self.shift_assignments[key])
+
+        return day_off_vars
+
+    def _add_hard_constraint_max_one_team_day_off(self):
         """Ensures at most 1 doctor per team has a post-shift day off on the same day."""
-        for day_index in range(1, len(dates)):
+        for day_index in range(1, len(self.dates)):
             for team in self.department.teams:
-                yesterday_day_off_shifts = []
-
-                for doctor in team.doctors:
-                    for position in self.department.positions:
-                        for shift in position.shifts:
-                            if not shift.grants_day_off:
-                                continue
-
-                            key = (day_index - 1, position, shift, doctor)
-                            if key in self.shift_assignments:
-                                yesterday_day_off_shifts.append(
-                                    self.shift_assignments[key])
-
+                yesterday_day_off_shifts = self._get_day_off_vars_for_team(
+                    team, day_index-1)
             self.model.add(sum(yesterday_day_off_shifts) <= 1)
 
-    def _add_soft_constraint_penalize_every_other_day_on_duty(self, dates: list[datetime.date]):
+    def _add_soft_constraint_penalize_every_other_day_on_duty(self):
         """Penalizes on-off-on patterns where a doctor works day N and day N+2."""
         for doctor in self.department.doctors:
             if doctor.pre_assignments:
                 continue
 
-            for day_index in range(len(dates) - 2):
+            for day_index in range(len(self.dates) - 2):
                 day_a_var = self._get_assignment_vars_for(
                     day_index=day_index, doctor=doctor)
                 day_c_var = self._get_assignment_vars_for(
@@ -288,92 +308,71 @@ class ShiftScheduler:
                 self.penalties.append(
                     self.department.config.w_every_other_penalty * is_every_other)
 
-    def _add_soft_constraint_spread_duties_across_month(self, dates: list[datetime.date]):
+    def _add_soft_constraint_spread_duties_across_month(self):
         """Penalizes uneven distribution of duties across month blocks per doctor."""
-        pre_assigned_duties = sum(len(doctor.pre_assignments)
-                                  for doctor in self.department.doctors if doctor.pre_assignments)
-
-        total_duties = sum(
-            shift.doctors_per_shift *
-            sum(1 for d in dates if d.weekday() in position.duty_days)
-            for position in self.department.positions
-            for shift in position.shifts
-        )
-
-        duties_needed = total_duties - pre_assigned_duties
-        doctors_available = sum(
-            1 for doctor in self.department.doctors if not doctor.pre_assignments)
-
-        total_duties_per_doctor = duties_needed // doctors_available
-
+        duties_per_doctor = self._calculate_duties_per_doctor()
         num_blocks = self.department.config.month_blocks
-        block_size = math.ceil(len(dates) / num_blocks)
+        block_size = math.ceil(len(self.dates) / num_blocks)
+        ideal = duties_per_doctor / num_blocks
 
         for block in range(num_blocks):
-            block_start_idx = block*block_size
-            block_end_idx = min((block+1)*block_size, len(dates))
+            block_start = block * block_size
+            block_end = min((block + 1) * block_size, len(self.dates))
 
             for doctor in self.department.doctors:
                 if doctor.pre_assignments:
                     continue
 
-                ideal_block_duties = total_duties_per_doctor / num_blocks
-                block_duties = 0
-                for day_index in range(block_start_idx, block_end_idx):
-                    block_duties += sum(self._get_assignment_vars_for(
-                        day_index=day_index, doctor=doctor))
+                block_duties = sum(
+                    sum(self._get_assignment_vars_for(
+                        day_index=d, doctor=doctor))
+                    for d in range(block_start, block_end)
+                )
 
-                # if block_duties == 0:
-                #     # doctor unavailable for whole block
-                #     continue
-
-                rounded_ideal_high = int(math.ceil(ideal_block_duties))
-                rounded_ideal_low = int(math.floor(ideal_block_duties))
                 deviation = self.model.new_int_var(
                     0, block_size, f"block_{block}_deviation_for_{doctor}")
-                self.model.add(deviation >= block_duties - rounded_ideal_high)
-                self.model.add(deviation >= rounded_ideal_low - block_duties)
+                self.model.add(deviation >= block_duties -
+                               int(math.ceil(ideal)))
+                self.model.add(deviation >= int(
+                    math.floor(ideal)) - block_duties)
 
                 self.penalties.append(
                     self.department.config.w_block_dev_penalty * deviation)
 
-    def create_schedule(self, month: int, year: int):
-        dates = self._calculate_days_for_schedule(month=month, year=year)
-        self._build_model(dates=dates)
-
-        # Debug: check how many doctors are available per day per position
-        for day_index, date in enumerate(dates):
-            for position in self.department.positions:
-                if date.weekday() not in position.duty_days:
-                    continue
-                available = len(self._get_assignment_vars_for(
-                    day_index=day_index, position=position))
-                needed = sum(s.doctors_per_shift for s in position.shifts)
-                if available < needed:
-                    print(
-                        f"PROBLEM: {date} {position.name} — need {needed} doctors but only {available} available")
-
+    def _debug_print_capacity(self):
+        """Prints debug info about doctor availability per position."""
         for position in self.department.positions:
             eligible = len(position.eligible_doctors) if position.eligible_doctors else len(
                 self.department.doctors)
             duty_day_count = sum(
-                1 for d in dates if d.weekday() in position.duty_days)
+                1 for d in self.dates if d.weekday() in position.duty_days)
             needed_per_day = sum(s.doctors_per_shift for s in position.shifts)
             total_needed = duty_day_count * needed_per_day
             print(f"{position.name}: {eligible} eligible doctors, {duty_day_count} duty days, {total_needed} total assignments needed")
 
+    def create_schedule(self, month: int, year: int):
+        """
+        Main method to create the schedule for the given month and year.
+        Builds the model, adds constraints, and solves it.
+        """
+        dates = self._calculate_days_for_schedule(month=month, year=year)
+        self._build_model()
+        self._debug_print_capacity()
+
         # Check if no-consecutive is feasible per position
         for position in self.department.positions:
             eligible = position.eligible_doctors if position.eligible_doctors else self.department.doctors
-            duty_day_count = sum(1 for d in dates if d.weekday() in position.duty_days)
+            duty_day_count = sum(
+                1 for d in dates if d.weekday() in position.duty_days)
             needed_per_day = sum(s.doctors_per_shift for s in position.shifts)
             # With no-consecutive, a doctor can work at most ceil(duty_days/2) days
             max_per_doctor = (duty_day_count + 1) // 2
-            available_slots = sum(max_per_doctor for d in eligible if not d.pre_assignments)
-            print(f"{position.name}: need {duty_day_count * needed_per_day}, max available ~{available_slots}")
+            available_slots = sum(
+                max_per_doctor for d in eligible if not d.pre_assignments)
+            print(
+                f"{position.name}: need {duty_day_count * needed_per_day}, max available ~{available_slots}")
 
-
-        for day_index, date in enumerate(dates):
+        for _, date in enumerate(dates):
             total = 0
             for position in self.department.positions:
                 if date.weekday() not in position.duty_days:
@@ -382,64 +381,99 @@ class ShiftScheduler:
             if total > 0:
                 print(f"{date} ({date.strftime('%a')}): {total} doctors needed")
 
+        self._add_hard_constraint_doctors_per_shift()
+        self._add_hard_constraint_one_shift_per_doctor_per_day()
+        self._add_hard_constraint_no_consecutive_shifts()
+        self._add_hard_constraint_max_duties_per_doc_per_month()
+        self._add_hard_constraint_balanced_total_duties_across_doctors()
+        self._add_hard_constraint_balanced_weekend_duties_across_doctors()
+        self._add_hard_constraint_max_one_team_day_off()
+        # self._add_hard_constraint_one_full_weekend_off_per_doctor()
+        self._add_soft_constraint_penalize_every_other_day_on_duty()
+        self._add_soft_constraint_spread_duties_across_month()
+        self._combine_objectives()
 
-        self._add_hard_constraint_doctors_per_shift(dates=dates)
-        self._add_hard_constraint_one_shift_per_doctor_per_day(dates=dates)
-        self._add_hard_constraint_no_consecutive_shifts(dates=dates)
-        self._add_hard_constraint_max_duties_per_doc_per_month(dates=dates)
-        self._add_hard_constraint_balanced_total_duties_across_doctors(
-            dates=dates)
-        # self._add_hard_constraint_balanced_weekend_duties_across_doctors(
-        #     dates=dates)
-        # self._add_hard_constraint_max_one_team_day_off(dates=dates)
-        # self._add_hard_constraint_one_full_weekend_off_per_doctor(dates=dates)
-        # self._add_soft_constraint_penalize_every_other_day_on_duty(dates=dates)
-        # self._add_soft_constraint_spread_duties_across_month(dates=dates)
-        # self._combine_objectives()
-
-        self.solver = cp_model.CpSolver()
-        status = self.solver.Solve(self.model)
         self.dates = dates
+        status = self.solver.Solve(self.model)
 
         print(f"Solver status: {status}")
         print(f"Status name: {self.solver.status_name(status)}")
 
         return status
 
-    def _print_schedule(self):
-
+    def _print_daily_assignments(self):
+        """Prints the daily schedule with assignments."""
         for day_index, date in enumerate(self.dates):
             day_total = 0
             assignments = []
             for (day_idx, pos, shift, doc), var in self.shift_assignments.items():
                 if day_idx == day_index and self.solver.value(var) == 1:
-                    assignments.append(f"    {pos.name} / {shift.name}: {doc.name}")
+                    assignments.append(
+                        f"    {pos.name} / {shift.name}: {doc.name}")
                     day_total += 1
-
             print(f"{date} ({date.strftime('%a')}) — {day_total} assigned")
             for a in assignments:
                 print(a)
 
-        print("\n--- Duties per doctor ---")
+    def _print_doctor_workloads(self):
+        """Prints total and weekend duties per doctor."""
         for doctor in self.department.doctors:
             total = sum(
                 self.solver.Value(var)
                 for var in self._get_assignment_vars_for(doctor=doctor)
             )
+            weekend_total = sum(
+                self.solver.Value(var)
+                for (d, p, s, doc), var in self.shift_assignments.items()
+                if doc == doctor and self.is_weekend[self.dates[d]]
+            )
             if total > 0:
-                print(f"  {doctor.name}: {total}")
+                print(f"  {doctor.name}: {total} (weekend: {weekend_total})")
 
-        total_shifts = sum(
-            shift.doctors_per_shift * sum(1 for d in self.dates if d.weekday() in position.duty_days)
-            for position in self.department.positions
-            for shift in position.shifts
-        )
-        total_assigned = sum(
-            self.solver.Value(var)
-            for var in self.shift_assignments.values()
-        )
-        print(f"\nTotal shifts needed: {total_shifts}")
-        print(f"Total assigned: {total_assigned}")
+    def print_schedule(self):
+        """Prints the generated schedule."""
+        self._print_daily_assignments()
+        print("\n--- Duties per doctor ---")
+        self._print_doctor_workloads()
+
+    def export_to_exel(self, filename: str):
+        """
+        Exports the generated schedule to an Excel file. 
+        showing daily assignments and marking doctor unavailability.
+        """
+        schedule = {}
+        for (day_idx, _, shift, doc), var in self.shift_assignments.items():
+            if self.solver.value(var) == 1:
+                schedule[(day_idx, doc)] = shift.name
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+
+        for day_idx, _ in enumerate(self.dates):
+            ws.cell(row=1, column=day_idx+2, value=self.dates[day_idx].day)
+
+        unavailable_fill = PatternFill(
+            start_color="000000", end_color="000000", fill_type="solid")
+
+        for row_idx, doctor in enumerate(self.department.doctor_order):
+            ws.cell(row=row_idx+2, column=1, value=doctor.name)
+            print(f"Doctor: {doctor.name}")
+            for day_idx, _ in enumerate(self.dates):
+                cell = ws.cell(row=row_idx + 2, column=day_idx + 2)
+                if self.dates[day_idx] in doctor.unavailability:
+                    cell.fill = unavailable_fill
+                else:
+                    cell.value = schedule.get((day_idx, doctor), "")
+
+        for row_idx, doctor in enumerate(self.department.doctor_order):
+            for day_idx, _ in enumerate(self.dates):
+                cell_value = schedule.get((day_idx, doctor), "")
+                ws.cell(row=row_idx+2, column=day_idx+2, value=cell_value)
+
+            # weekend_fill = PatternFill(
+            #     start_color="000000", end_color="000000", fill_type="solid")
+            # weekend_font = Font(color="FFFFFF", bold=True)
+        wb.save(filename)
 
 
 if __name__ == "__main__":
@@ -731,7 +765,7 @@ if __name__ == "__main__":
         datetime.date(2026, 3, 22),
     ]
 
-    shifts = {
+    test_shifts = {
         "ER1": Shift(name="ER1", doctors_per_shift=5, grants_day_off=False),
         "ER2": Shift(name="ER2", doctors_per_shift=4, grants_day_off=True),
         "Orofos": Shift(name="Orofos", doctors_per_shift=2, grants_day_off=True),
@@ -740,46 +774,46 @@ if __name__ == "__main__":
     }
 
     erotokritou_pre_assignemnts = [
-        (datetime.date(2026, 3, 2), shifts["ER1"]),
-        (datetime.date(2026, 3, 4), shifts["ER1"]),
-        (datetime.date(2026, 3, 6), shifts["ER1"]),
-        (datetime.date(2026, 3, 9), shifts["ER1"]),
-        (datetime.date(2026, 3, 11), shifts["ER1"]),
+        (datetime.date(2026, 3, 2), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 4), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 6), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 9), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 11), test_shifts["ER1"]),
     ]
 
     genikos1_pre_assignments = [
-        (datetime.date(2026, 3, 2), shifts["ER1"]),
-        (datetime.date(2026, 3, 4), shifts["ER1"]),
-        (datetime.date(2026, 3, 6), shifts["ER1"]),
-        (datetime.date(2026, 3, 9), shifts["ER1"]),
-        (datetime.date(2026, 3, 11), shifts["ER1"]),
-        (datetime.date(2026, 3, 13), shifts["ER1"]),
-        (datetime.date(2026, 3, 16), shifts["ER1"]),
-        (datetime.date(2026, 3, 18), shifts["ER1"]),
-        (datetime.date(2026, 3, 20), shifts["ER1"]),
-        (datetime.date(2026, 3, 23), shifts["ER1"]),
-        (datetime.date(2026, 3, 27), shifts["ER1"]),
-        (datetime.date(2026, 3, 30), shifts["ER1"]),
+        (datetime.date(2026, 3, 2), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 4), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 6), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 9), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 11), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 13), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 16), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 18), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 20), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 23), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 27), test_shifts["ER1"]),
+        (datetime.date(2026, 3, 30), test_shifts["ER1"]),
     ]
 
     genikos2_pre_assignments = [
-        (datetime.date(2026, 3, 2), shifts["ER2"]),
-        (datetime.date(2026, 3, 4), shifts["ER2"]),
-        (datetime.date(2026, 3, 6), shifts["ER2"]),
-        (datetime.date(2026, 3, 9), shifts["ER2"]),
-        (datetime.date(2026, 3, 11), shifts["ER2"]),
-        (datetime.date(2026, 3, 13), shifts["ER2"]),
-        (datetime.date(2026, 3, 16), shifts["ER2"]),
-        (datetime.date(2026, 3, 18), shifts["ER2"]),
-        (datetime.date(2026, 3, 20), shifts["ER2"]),
-        (datetime.date(2026, 3, 23), shifts["ER2"]),
-        (datetime.date(2026, 3, 25), shifts["ER2"]),
-        (datetime.date(2026, 3, 27), shifts["ER2"]),
-        (datetime.date(2026, 3, 30), shifts["ER2"]),
-        (datetime.date(2026, 3, 7), shifts["ER2"]),
-        (datetime.date(2026, 3, 14), shifts["ER2"]),
-        (datetime.date(2026, 3, 21), shifts["ER2"]),
-        (datetime.date(2026, 3, 28), shifts["ER2"]),
+        (datetime.date(2026, 3, 2), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 4), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 6), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 9), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 11), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 13), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 16), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 18), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 20), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 23), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 25), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 27), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 30), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 7), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 14), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 21), test_shifts["ER2"]),
+        (datetime.date(2026, 3, 28), test_shifts["ER2"]),
     ]
 
     # genikos3_pre_assignments = [
@@ -837,7 +871,7 @@ if __name__ == "__main__":
         Doctor(name="Florou", email="florou@test.com",
                unavailability=florou_unavailability),
         Doctor(name="Spiliotopoulos", email="florou@test.com",
-               unavailability=[]),
+               unavailability=spiliotopoulos_unavailability),
         Doctor(name="Xrysanthakopoulou", email="xrys@test.com",
                unavailability=xrysanthakopoulos_unavailability),
         Doctor(name="Pandi", email="pandi@test.com",
@@ -849,7 +883,9 @@ if __name__ == "__main__":
         Doctor(name="Papadopoulos", email="papadop@test.com",
                unavailability=papadopoulos_unavailability),
         Doctor(name="Erotokritou", email="eroto@test.com",
-               unavailability=erotokritou_unavailability, pre_assignments=erotokritou_pre_assignemnts),
+               unavailability=erotokritou_unavailability,
+               pre_assignments=erotokritou_pre_assignemnts
+               ),
         Doctor(name="Sideratou", email="sidera@test.com",
                unavailability=sideridou_unavailability),
         Doctor(name="Zafeiratou", email="zaf@test.com",
@@ -867,14 +903,14 @@ if __name__ == "__main__":
     ]
 
     positions = [
-        Position(name="Orofos", shifts=[shifts["Orofos"]], eligible_doctors=[
+        Position(name="Orofos", shifts=[test_shifts["Orofos"]], eligible_doctors=[
                  doctors[14], *doctors[16:26]]),
         Position(name="Eisagogeas",
-                 shifts=[shifts["Eisagogeas"]], eligible_doctors=doctors[2:9], duty_days=set(
+                 shifts=[test_shifts["Eisagogeas"]], eligible_doctors=doctors[2:9], duty_days=set(
                      [0, 2, 4, 5])),
         Position(name="Voitheia",
-                 shifts=[shifts["Voitheia"]], eligible_doctors=doctors[2:9], duty_days={6}),
-        Position(name="ER", shifts=[shifts["ER1"], shifts["ER2"]], duty_days=set(
+                 shifts=[test_shifts["Voitheia"]], eligible_doctors=doctors[2:9], duty_days={6}),
+        Position(name="ER", shifts=[test_shifts["ER1"], test_shifts["ER2"]], duty_days=set(
             [0, 2, 4, 5]), eligible_doctors=[*doctors[0:16], *doctors[26:]]),
     ]
 
@@ -885,13 +921,24 @@ if __name__ == "__main__":
         Team(name="Team B1", doctors=[doctors[3], doctors[13], doctors[17]]),
         Team(name="Team B2", doctors=[doctors[11], doctors[22], doctors[12]]),
         Team(name="Team D", doctors=[
-             doctors[6], doctors[5], doctors[9], doctors[14], doctors[15], doctors[20], doctors[22]]),
+             doctors[6], doctors[5], doctors[9], doctors[14], doctors[15], doctors[20], doctors[22]
+             ]),
     ]
 
-    department = Department(name="Pathologia", positions=positions, teams=teams, teamless_doctors=[
-                            *doctors[0:3], doctors[4], doctors[8], doctors[19], doctors[21], *doctors[26:]])
+    # department = Department(name="Pathologia", positions=positions, teams=teams, teamless_doctors=[
+    #                         *doctors[0:3], doctors[4], doctors[8], doctors[19], doctors[21], *doctors[26:]])
 
-    app = ShiftScheduler(department=department)
+    test_department = Department(
+        name="Pathologia",
+        positions=positions,
+        teams=teams,
+        doctor_order=doctors,
+        teamless_doctors=[
+            *doctors[0:3], doctors[4], doctors[8], doctors[19], doctors[21], *doctors[26:]
+        ]
+    )
+
+    app = ShiftScheduler(department=test_department)
     app.create_schedule(month=3, year=2026)
     print(app.dates[0], "→", app.dates[-1])
     print("Days in month:", len(app.dates))
@@ -900,4 +947,6 @@ if __name__ == "__main__":
 
     print("\n\n")
     print("--------Schedule---------\n")
-    app._print_schedule()
+    app.print_schedule()
+
+    app.export_to_exel("schedule.xlsx")
