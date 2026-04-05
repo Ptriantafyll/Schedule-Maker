@@ -15,8 +15,15 @@ def _build_and_solve(department, month=4, year=2026, constraint_names=None):
     scheduler = ShiftScheduler(department=department)
     scheduler._calculate_days_for_schedule(month=month, year=year)
     scheduler._build_model()
+
+    has_soft_constraints = any(name.startswith(
+        "_add_soft_constraint") for name in (constraint_names or []))
+    
+    if has_soft_constraints:
+        scheduler._combine_objectives()
+
     for name in (constraint_names or []):
-        getattr(scheduler, name)(scheduler.dates)
+        getattr(scheduler, name)()
     solver = cp_model.CpSolver()
     status = solver.Solve(scheduler.model)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE), \
@@ -404,3 +411,72 @@ def test_max_one_day_off_team():
                     position, day_index, doctor, scheduler, solver)
 
             assert yesterday_day_off_count <= 1, f"{team.name} has more than 1 doctor with the day off"
+
+
+def get_full_weekend_off_count_for_doctor(doctor: Doctor, weekends: list, scheduler: ShiftScheduler, solver: cp_model.CpSolver) -> int:
+    """Helper to calculate how many full weekends off a doctor has."""
+    full_weekend_off_count = 0
+    for (fri, sat, sun) in weekends:
+        fri_off = not any(solver.Value(var) for var in scheduler._get_assignment_vars_for(
+            day_index=fri, doctor=doctor))
+        sat_off = not any(solver.Value(var) for var in scheduler._get_assignment_vars_for(
+            day_index=sat, doctor=doctor))
+        sun_off = not any(solver.Value(var) for var in scheduler._get_assignment_vars_for(
+            day_index=sun, doctor=doctor))
+
+        if fri_off and sat_off and sun_off:
+            full_weekend_off_count += 1
+
+    return full_weekend_off_count
+
+
+def test_reward_full_weekends_off():
+    """Verifies that the soft constraint for balancing full weekends off is working"""
+    test_department = _make_test_department()
+    scheduler, solver = _build_and_solve(
+        department=test_department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_hard_constraint_one_full_weekend_off_per_doctor",
+            "_add_hard_constraint_balanced_total_duties_across_doctors",
+            "_add_hard_constraint_balanced_weekend_duties_across_doctors",
+            "_add_hard_constraint_max_one_team_day_off",
+        ]
+    )
+
+    weekends = scheduler._get_weekends()
+
+    full_weekend_off_counts = []
+    for doctor in test_department.doctors:
+        full_weekend_off_count = get_full_weekend_off_count_for_doctor(
+            doctor, weekends, scheduler, solver)
+        full_weekend_off_counts.append(full_weekend_off_count)
+
+    min_full_weekends_off = min(full_weekend_off_counts)
+    max_full_weekends_off = max(full_weekend_off_counts)
+
+    scheduler, solver = _build_and_solve(
+        department=test_department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_hard_constraint_one_full_weekend_off_per_doctor",
+            "_add_hard_constraint_balanced_total_duties_across_doctors",
+            "_add_hard_constraint_balanced_weekend_duties_across_doctors",
+            "_add_hard_constraint_max_one_team_day_off",
+            "_add_soft_constraint_reward_full_weekends_off"
+        ]
+    )
+
+    full_weekend_off_counts_with_soft = []
+    for doctor in test_department.doctors:
+        full_weekend_off_count = get_full_weekend_off_count_for_doctor(
+            doctor, weekends, scheduler, solver)
+        full_weekend_off_counts_with_soft.append(full_weekend_off_count)
+
+    min_full_weekends_off_with_soft = min(full_weekend_off_counts_with_soft)
+    max_full_weekends_off_with_soft = max(full_weekend_off_counts_with_soft)
+
+    assert max_full_weekends_off_with_soft - min_full_weekends_off_with_soft <= max_full_weekends_off - min_full_weekends_off, \
+        "Soft constraint did not improve balance of full weekends off"
