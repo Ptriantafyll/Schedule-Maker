@@ -336,6 +336,28 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
                 self.penalties.append(
                     self.department.config.w_block_dev_penalty * deviation)
 
+    def _add_soft_constraint_reward_full_weekends_off(self):
+        """Rewards doctors for having full weekends (Fri+Sat+Sun) off."""
+        weekends = self._get_weekends()
+
+        for doctor in self.department.doctors:
+            for weekend_index, (fri, sat, sun) in enumerate(weekends):
+                weekend_off = self.model.new_bool_var(
+                    f"full_weekend_off_{weekend_index}_{doctor}")
+
+                psk_shifts = (
+                    self._get_assignment_vars_for(day_index=fri, doctor=doctor)
+                    + self._get_assignment_vars_for(day_index=sat, doctor=doctor)
+                    + self._get_assignment_vars_for(day_index=sun, doctor=doctor)
+                )
+
+                self.model.add(sum(psk_shifts) + len(psk_shifts)
+                            * weekend_off <= len(psk_shifts))
+
+                self.rewards.append(
+                    self.department.config.w_full_wkend_off_bonus * weekend_off)
+
+
     def _debug_print_capacity(self):
         """Prints debug info about doctor availability per position."""
         for position in self.department.positions:
@@ -378,6 +400,8 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
             if total > 0:
                 print(f"{date} ({date.strftime('%a')}): {total} doctors needed")
 
+        self._debug_check_weekend_feasibility()
+
         self._add_hard_constraint_doctors_per_shift()
         self._add_hard_constraint_one_shift_per_doctor_per_day()
         self._add_hard_constraint_no_consecutive_shifts()
@@ -388,6 +412,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         # self._add_hard_constraint_one_full_weekend_off_per_doctor()
         self._add_soft_constraint_penalize_every_other_day_on_duty()
         self._add_soft_constraint_spread_duties_across_month()
+        self._add_soft_constraint_reward_full_weekends_off()
         self._combine_objectives()
 
         status = self.solver.Solve(self.model)
@@ -426,6 +451,21 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
             if total > 0:
                 print(f"  {doctor.name}: {total} (weekend: {weekend_total})")
 
+    def _debug_check_weekend_feasibility(self):
+        """Warns if any doctor cannot have a full weekend off."""
+        weekends = self._get_weekends()
+        for doctor in self.department.doctors:
+            available_weekends = 0
+            for fri, sat, sun in weekends:
+                fri_free = self.dates[fri] not in doctor.unavailability
+                sat_free = self.dates[sat] not in doctor.unavailability
+                sun_free = self.dates[sun] not in doctor.unavailability
+                if fri_free and sat_free and sun_free:
+                    available_weekends += 1
+            if available_weekends == 0:
+                print(f"WEEKEND PROBLEM: {doctor.name} has 0 full weekends available")
+
+
     def print_schedule(self):
         """Prints the generated schedule."""
         self._print_daily_assignments()
@@ -445,17 +485,24 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         wb = openpyxl.Workbook()
         ws = wb.active
 
-        for day_idx, _ in enumerate(self.dates):
-            ws.cell(row=1, column=day_idx+2, value=self.dates[day_idx].day)
-
         unavailable_fill = PatternFill(
             start_color="000000", end_color="000000", fill_type="solid")
 
+
+        # Row 1: day of week
+        for day_idx, date in enumerate(self.dates):
+            ws.cell(row=1, column=day_idx + 2, value=date.strftime('%a'))
+
+        # Row 2: day number
+        for day_idx, date in enumerate(self.dates):
+            ws.cell(row=2, column=day_idx + 2, value=date.day)
+
+
         for row_idx, doctor in enumerate(self.department.doctor_order):
-            ws.cell(row=row_idx+2, column=1, value=doctor.name)
+            ws.cell(row=row_idx+3, column=1, value=doctor.name)
             print(f"Doctor: {doctor.name}")
             for day_idx, _ in enumerate(self.dates):
-                cell = ws.cell(row=row_idx + 2, column=day_idx + 2)
+                cell = ws.cell(row=row_idx + 3, column=day_idx + 2)
                 if self.dates[day_idx] in doctor.unavailability:
                     cell.fill = unavailable_fill
                 else:
@@ -464,7 +511,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         for row_idx, doctor in enumerate(self.department.doctor_order):
             for day_idx, _ in enumerate(self.dates):
                 cell_value = schedule.get((day_idx, doctor), "")
-                ws.cell(row=row_idx+2, column=day_idx+2, value=cell_value)
+                ws.cell(row=row_idx+3, column=day_idx+2, value=cell_value)
 
             # weekend_fill = PatternFill(
             #     start_color="000000", end_color="000000", fill_type="solid")
