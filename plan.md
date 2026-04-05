@@ -122,6 +122,18 @@ The `shift_assignment` assignment variable becomes keyed on `(day_index, shift, 
 
 ---
 
+## Code Quality & CI Pipeline
+
+Before deploying, run the following checks in order:
+
+1. **Ruff** — fast linter and formatter (catches style issues, import ordering, etc.)
+2. **Pylint** — deeper static analysis (design smells, naming conventions, complexity)
+3. **Vulture** — detect dead/unused code
+4. **Radon** — code complexity and maintainability statistics
+5. **SonarQube / Snyk** — security and code quality scanning (post-deployment / CI)
+
+---
+
 ## Steps
 
 1. Refactor current script into OOP (`ScheduleConfig`, `Doctor`, `Department`, `ShiftScheduler`)

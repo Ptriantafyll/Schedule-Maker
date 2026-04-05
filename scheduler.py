@@ -30,14 +30,11 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         """Returns the list of dates and a weekend lookup dict for the given month."""
 
         first_day = datetime.date(year, month, 1)
-        days_in_month = calendar.monthrange(
-            year, month)[1]
-        dates = [first_day + datetime.timedelta(days=i)
+        days_in_month = calendar.monthrange(year, month)[1]
+        self.dates = [first_day + datetime.timedelta(days=i)
                  for i in range(days_in_month)]
 
-        # Identify weekends
-        self.is_weekend = {d: (d.weekday() >= 5) for d in dates}
-        return dates
+        self.is_weekend = {d: (d.weekday() >= 5) for d in self.dates}
 
     def _get_assignment_vars_for(self, day_index=None, position=None, shift=None, doctor=None):
         """Returns all shift assignment variables matching the given filters."""
@@ -355,7 +352,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         Main method to create the schedule for the given month and year.
         Builds the model, adds constraints, and solves it.
         """
-        dates = self._calculate_days_for_schedule(month=month, year=year)
+        self._calculate_days_for_schedule(month=month, year=year)
         self._build_model()
         self._debug_print_capacity()
 
@@ -363,7 +360,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         for position in self.department.positions:
             eligible = position.eligible_doctors if position.eligible_doctors else self.department.doctors
             duty_day_count = sum(
-                1 for d in dates if d.weekday() in position.duty_days)
+                1 for d in self.dates if d.weekday() in position.duty_days)
             needed_per_day = sum(s.doctors_per_shift for s in position.shifts)
             # With no-consecutive, a doctor can work at most ceil(duty_days/2) days
             max_per_doctor = (duty_day_count + 1) // 2
@@ -372,7 +369,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
             print(
                 f"{position.name}: need {duty_day_count * needed_per_day}, max available ~{available_slots}")
 
-        for _, date in enumerate(dates):
+        for _, date in enumerate(self.dates):
             total = 0
             for position in self.department.positions:
                 if date.weekday() not in position.duty_days:
@@ -393,7 +390,6 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         self._add_soft_constraint_spread_duties_across_month()
         self._combine_objectives()
 
-        self.dates = dates
         status = self.solver.Solve(self.model)
 
         print(f"Solver status: {status}")
