@@ -32,7 +32,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         first_day = datetime.date(year, month, 1)
         days_in_month = calendar.monthrange(year, month)[1]
         self.dates = [first_day + datetime.timedelta(days=i)
-                 for i in range(days_in_month)]
+                      for i in range(days_in_month)]
 
         self.is_weekend = {d: (d.weekday() >= 5) for d in self.dates}
 
@@ -161,30 +161,33 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
             )
 
     def _add_hard_constraint_one_full_weekend_off_per_doctor(self):
-        """Ensures every doctor has at least one full weekend (Fri+Sat+Sun) off."""
+        """Ensures every doctor has at least one weekend (Sat+Sun) off."""
         weekends = self._get_weekends()
 
         for doctor in self.department.doctors:
+            if doctor.pre_assignments:
+                continue
             weekend_off_vars = []
 
-            for weekend_index, (fri, sat, sun) in enumerate(weekends):
+            for weekend_index, (_, sat, sun) in enumerate(weekends):
                 weekend_off = self.model.new_bool_var(
                     f"full_weekend_off_{weekend_index}_{doctor}"
                 )
 
                 psk_shifts = (
                     self._get_assignment_vars_for(
-                        day_index=fri, doctor=doctor
-                    ) + self._get_assignment_vars_for(
                         day_index=sat, doctor=doctor
                     ) + self._get_assignment_vars_for(
                         day_index=sun, doctor=doctor
                     )
                 )
 
+                if not psk_shifts:
+                    self.model.add(weekend_off == 1)
+                else:
+                    self.model.add(sum(psk_shifts) + len(psk_shifts)
+                                   * weekend_off <= len(psk_shifts))
                 weekend_off_vars.append(weekend_off)
-                self.model.add(sum(psk_shifts) + len(psk_shifts)
-                               * weekend_off <= len(psk_shifts))
 
             self.model.add(sum(weekend_off_vars) >= 1)
 
@@ -351,15 +354,17 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
                     + self._get_assignment_vars_for(day_index=sun, doctor=doctor)
                 )
 
-                self.model.add(sum(psk_shifts) + len(psk_shifts)
-                            * weekend_off <= len(psk_shifts))
+                if not psk_shifts:
+                    self.model.add(weekend_off == 1)
+                else:
+                    self.model.add(sum(psk_shifts) + len(psk_shifts)
+                                   * weekend_off <= len(psk_shifts))
 
                 self.rewards.append(
                     self.department.config.w_full_wkend_off_bonus * weekend_off)
-                
+
     def _add_soft_constraint_balance_full_weekends_off(self):
         pass
-
 
     def _debug_print_capacity(self):
         """Prints debug info about doctor availability per position."""
@@ -403,8 +408,6 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
             if total > 0:
                 print(f"{date} ({date.strftime('%a')}): {total} doctors needed")
 
-        self._debug_check_weekend_feasibility()
-
         self._add_hard_constraint_doctors_per_shift()
         self._add_hard_constraint_one_shift_per_doctor_per_day()
         self._add_hard_constraint_no_consecutive_shifts()
@@ -412,7 +415,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         self._add_hard_constraint_balanced_total_duties_across_doctors()
         self._add_hard_constraint_balanced_weekend_duties_across_doctors()
         self._add_hard_constraint_max_one_team_day_off()
-        # self._add_hard_constraint_one_full_weekend_off_per_doctor()
+        self._add_hard_constraint_one_full_weekend_off_per_doctor()
         self._add_soft_constraint_penalize_every_other_day_on_duty()
         self._add_soft_constraint_spread_duties_across_month()
         self._add_soft_constraint_reward_full_weekends_off()
@@ -454,21 +457,6 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
             if total > 0:
                 print(f"  {doctor.name}: {total} (weekend: {weekend_total})")
 
-    def _debug_check_weekend_feasibility(self):
-        """Warns if any doctor cannot have a full weekend off."""
-        weekends = self._get_weekends()
-        for doctor in self.department.doctors:
-            available_weekends = 0
-            for fri, sat, sun in weekends:
-                fri_free = self.dates[fri] not in doctor.unavailability
-                sat_free = self.dates[sat] not in doctor.unavailability
-                sun_free = self.dates[sun] not in doctor.unavailability
-                if fri_free and sat_free and sun_free:
-                    available_weekends += 1
-            if available_weekends == 0:
-                print(f"WEEKEND PROBLEM: {doctor.name} has 0 full weekends available")
-
-
     def print_schedule(self):
         """Prints the generated schedule."""
         self._print_daily_assignments()
@@ -491,7 +479,6 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         unavailable_fill = PatternFill(
             start_color="000000", end_color="000000", fill_type="solid")
 
-
         # Row 1: day of week
         for day_idx, date in enumerate(self.dates):
             ws.cell(row=1, column=day_idx + 2, value=date.strftime('%a'))
@@ -499,7 +486,6 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         # Row 2: day number
         for day_idx, date in enumerate(self.dates):
             ws.cell(row=2, column=day_idx + 2, value=date.day)
-
 
         for row_idx, doctor in enumerate(self.department.doctor_order):
             ws.cell(row=row_idx+3, column=1, value=doctor.name)
