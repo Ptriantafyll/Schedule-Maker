@@ -344,6 +344,9 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         weekends = self._get_weekends()
 
         for doctor in self.department.doctors:
+            if doctor.pre_assignments:
+                continue
+
             for weekend_index, (fri, sat, sun) in enumerate(weekends):
                 weekend_off = self.model.new_bool_var(
                     f"full_weekend_off_{weekend_index}_{doctor}")
