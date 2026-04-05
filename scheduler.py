@@ -356,6 +356,9 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
 
                 self.rewards.append(
                     self.department.config.w_full_wkend_off_bonus * weekend_off)
+                
+    def _add_soft_constraint_balance_full_weekends_off(self):
+        pass
 
 
     def _debug_print_capacity(self):
