@@ -1,21 +1,27 @@
-from models import Department, Team, Doctor, Position, Shift, ScheduleConfig
+# pylint: disable=protected-access
+# pylint: disable=line-too-long
+"""
+Unit tests for ShiftScheduler constraints and date calculations.
+"""
+
 import datetime
 from ortools.sat.python import cp_model
 from scheduler import ShiftScheduler
+from models import Department, Team, Doctor, Position, Shift, ScheduleConfig
 
 
 def _build_and_solve(department, month=4, year=2026, constraint_names=None):
     """Helper that builds model, adds constraints by method name, solves, and returns (scheduler, solver, dates)."""
     scheduler = ShiftScheduler(department=department)
-    dates = scheduler._calculate_days_for_schedule(month=month, year=year)
-    scheduler._build_model(dates)
+    scheduler._calculate_days_for_schedule(month=month, year=year)
+    scheduler._build_model()
     for name in (constraint_names or []):
-        getattr(scheduler, name)(dates)
+        getattr(scheduler, name)(scheduler.dates)
     solver = cp_model.CpSolver()
     status = solver.Solve(scheduler.model)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE), \
         "Solver failed to find a solution"
-    return scheduler, solver, dates
+    return scheduler, solver
 
 
 def _make_test_department():
@@ -34,19 +40,22 @@ def _make_test_department():
 
 
 def test_april_has_30_days():
+    """Verifies correct number of days are generated for April 2026."""
     scheduler = ShiftScheduler(department=Department(name="test"))
-    dates = scheduler._calculate_days_for_schedule(month=4, year=2026)
-    assert len(dates) == 30
+    scheduler._calculate_days_for_schedule(month=4, year=2026)
+    assert len(scheduler.dates) == 30
 
 
 def test_first_and_last_date():
+    """Verifies first and last dates are correct for April 2026."""
     scheduler = ShiftScheduler(department=Department(name="test"))
-    dates = scheduler._calculate_days_for_schedule(month=4, year=2026)
-    assert dates[0] == datetime.date(2026, 4, 1)
-    assert dates[-1] == datetime.date(2026, 4, 30)
+    scheduler._calculate_days_for_schedule(month=4, year=2026)
+    assert scheduler.dates[0] == datetime.date(2026, 4, 1)
+    assert scheduler.dates[-1] == datetime.date(2026, 4, 30)
 
 
 def test_weekends_identified_correctly():
+    """Verifies weekends are correctly identified for April 2026."""
     scheduler = ShiftScheduler(department=Department(name="test"))
     scheduler._calculate_days_for_schedule(month=4, year=2026)
     assert scheduler.is_weekend[datetime.date(2026, 4, 4)] is True
@@ -54,15 +63,16 @@ def test_weekends_identified_correctly():
 
 
 def test_leap_year_identified_correctly():
+    """Verifies February 2024 has 29 days due to leap year."""
     scheduler = ShiftScheduler(department=Department(name="test"))
-    dates = scheduler._calculate_days_for_schedule(month=2, year=2024)
-    assert len(dates) == 29
+    scheduler._calculate_days_for_schedule(month=2, year=2024)
+    assert len(scheduler.dates) == 29
 
 
 def test_hard_constraint_no_consecutive_duties():
     """Verifies no doctor is assigned on two consecutive days."""
     department = _make_test_department()
-    scheduler, solver, dates = _build_and_solve(
+    scheduler, solver = _build_and_solve(
         department,
         constraint_names=[
             "_add_hard_constraint_no_consecutive_shifts",
@@ -71,7 +81,7 @@ def test_hard_constraint_no_consecutive_duties():
     )
 
     for doctor in department.doctors:
-        for day_index in range(len(dates) - 1):
+        for day_index in range(len(scheduler.dates) - 1):
             today = any(
                 solver.Value(var)
                 for var in scheduler._get_assignment_vars_for(day_index, doctor=doctor)
@@ -105,7 +115,7 @@ def test_pre_assignments():
     position = Position(name="ER", shifts=[shift])
     department = Department(name="test", teams=[team], positions=[position])
 
-    scheduler, solver, dates = _build_and_solve(
+    scheduler, solver = _build_and_solve(
         department,
         constraint_names=[
             "_add_hard_constraint_no_consecutive_shifts",
@@ -114,9 +124,9 @@ def test_pre_assignments():
         ]
     )
 
-    for (day_index, pos, sh, doc), var in scheduler.shift_assignments.items():
+    for (day_index, _, sh, doc), var in scheduler.shift_assignments.items():
         if doc == doctors[5]:
-            if (dates[day_index], sh) in doctors[5].pre_assignments:
+            if (scheduler.dates[day_index], sh) in doctors[5].pre_assignments:
                 assert solver.Value(
                     var) == 1, f"Should be assigned on day {day_index}"
             else:
@@ -127,12 +137,12 @@ def test_pre_assignments():
 def test_hard_constraint_doctors_per_shift():
     """Verifies each shift has exactly the required number of doctors per night."""
     department = _make_test_department()
-    scheduler, solver, dates = _build_and_solve(
+    scheduler, solver = _build_and_solve(
         department,
         constraint_names=["_add_hard_constraint_doctors_per_shift"]
     )
 
-    for day_index in range(len(dates)):
+    for day_index in range(len(scheduler.dates)):
         for position in department.positions:
             for shift in position.shifts:
                 assigned_count = sum(
@@ -153,12 +163,12 @@ def test_hard_constraint_doctors_per_shift_multiple():
     position = Position(name="ER", shifts=[shift])
     department = Department(name="Test", teams=[team], positions=[position])
 
-    scheduler, solver, dates = _build_and_solve(
+    scheduler, solver = _build_and_solve(
         department,
         constraint_names=["_add_hard_constraint_doctors_per_shift"]
     )
 
-    for day_index in range(len(dates)):
+    for day_index in range(len(scheduler.dates)):
         assigned_count = sum(
             solver.Value(var)
             for var in scheduler._get_assignment_vars_for(day_index, position, shift)
@@ -179,7 +189,7 @@ def test_hard_constraint_max_duties_per_doc_per_month():
     department = Department(name="Test", teams=[team], positions=[
         position], config=config)
 
-    scheduler, solver, dates = _build_and_solve(
+    scheduler, solver = _build_and_solve(
         department=department,
         constraint_names=[
             "_add_hard_constraint_no_consecutive_shifts",
@@ -199,8 +209,8 @@ def test_hard_constraint_max_duties_per_doc_per_month():
 def test_get_weekends_april_2026():
     """April 2026: first Friday is Apr 3, last full weekend ends Apr 26."""
     scheduler = ShiftScheduler(department=Department(name="test"))
-    dates = scheduler._calculate_days_for_schedule(month=4, year=2026)
-    weekends = scheduler._get_weekends(dates)
+    scheduler._calculate_days_for_schedule(month=4, year=2026)
+    weekends = scheduler._get_weekends()
 
     # April 2026 has 4 full Fri-Sat-Sun weekends
     assert len(weekends) == 4
@@ -210,26 +220,29 @@ def test_get_weekends_april_2026():
 
     # Verify all weekends start on a Friday
     for fri, sat, sun in weekends:
-        assert dates[fri].weekday() == 4, f"Day {fri} is not a Friday"
-        assert dates[sat].weekday() == 5, f"Day {sat} is not a Saturday"
-        assert dates[sun].weekday() == 6, f"Day {sun} is not a Sunday"
+        assert scheduler.dates[fri].weekday(
+        ) == 4, f"Day {fri} is not a Friday"
+        assert scheduler.dates[sat].weekday(
+        ) == 5, f"Day {sat} is not a Saturday"
+        assert scheduler.dates[sun].weekday(
+        ) == 6, f"Day {sun} is not a Sunday"
 
 
 def test_get_weekends_month_starting_saturday():
     """August 2025 starts on a Friday — first weekend should be complete."""
     scheduler = ShiftScheduler(department=Department(name="test"))
-    dates = scheduler._calculate_days_for_schedule(month=8, year=2025)
-    weekends = scheduler._get_weekends(dates)
+    scheduler._calculate_days_for_schedule(month=8, year=2025)
+    weekends = scheduler._get_weekends()
 
     # Aug 1 2025 is a Friday, so first weekend is day 0, 1, 2
     assert weekends[0] == [0, 1, 2]
-    assert dates[0].weekday() == 4
+    assert scheduler.dates[0].weekday() == 4
 
 
 def test_hard_constraint_one_full_weekend_off_per_doctor():
     """Verifies every doctor has at least one full weekend (Fri+Sat+Sun) off."""
     test_department = _make_test_department()
-    scheduler, solver, dates = _build_and_solve(
+    scheduler, solver = _build_and_solve(
         department=test_department,
         constraint_names=[
             "_add_hard_constraint_no_consecutive_shifts",
@@ -238,7 +251,7 @@ def test_hard_constraint_one_full_weekend_off_per_doctor():
         ]
     )
 
-    weekends = scheduler._get_weekends(dates=dates)
+    weekends = scheduler._get_weekends()
     for doctor in test_department.doctors:
         has_full_weekend_off = False
         for (fri, sat, sun) in weekends:
@@ -257,9 +270,10 @@ def test_hard_constraint_one_full_weekend_off_per_doctor():
 
 
 def test_balanced_total_duties_across_doctors():
+    """Verifies total duties per doctor differ by at most 1 across all doctors."""
     test_department = _make_test_department()
 
-    scheduler, solver, dates = _build_and_solve(
+    scheduler, solver = _build_and_solve(
         department=test_department,
         constraint_names=[
             "_add_hard_constraint_no_consecutive_shifts",
@@ -272,7 +286,7 @@ def test_balanced_total_duties_across_doctors():
     number_of_doctors = len(test_department.doctors)
     total_duties = sum(
         shift.doctors_per_shift *
-        sum(1 for d in dates if d.weekday() in position.duty_days)
+        sum(1 for d in scheduler.dates if d.weekday() in position.duty_days)
         for position in test_department.positions
         for shift in position.shifts
     )
@@ -292,7 +306,7 @@ def test_balanced_weekend_duties_across_doctors():
     """Verifies each doctor's weekend duty count differs by at most 1 from any other."""
     test_department = _make_test_department()
 
-    scheduler, solver, dates = _build_and_solve(
+    scheduler, solver = _build_and_solve(
         department=test_department,
         constraint_names=[
             "_add_hard_constraint_no_consecutive_shifts",
@@ -305,7 +319,7 @@ def test_balanced_weekend_duties_across_doctors():
 
     total_weekend_duties = sum(
         shift.doctors_per_shift *
-        sum(1 for d in dates if
+        sum(1 for d in scheduler.dates if
             scheduler.is_weekend[d] and d.weekday() in position.duty_days)
         for position in scheduler.department.positions
         for shift in position.shifts
@@ -319,7 +333,7 @@ def test_balanced_weekend_duties_across_doctors():
 
     for doctor in test_department.doctors:
         total_weekend_assignments = 0
-        for day_index, date in enumerate(dates):
+        for day_index, date in enumerate(scheduler.dates):
             if not scheduler.is_weekend[date]:
                 continue
 
@@ -328,6 +342,21 @@ def test_balanced_weekend_duties_across_doctors():
             )
         assert total_weekend_assignments <= max_weekend_duties, f"{doctor.name} has more than the max allowed duties"
         assert total_weekend_assignments >= min_weekend_duties, f"{doctor.name} has more than the min allowed duties"
+
+
+def calculate_yesterday_day_off_count(position: Position, day_index: int, doctor: Doctor, scheduler: ShiftScheduler, solver: cp_model.CpSolver) -> int:
+    """Helper to calculate how many doctors in the team had a day off yesterday due to a shift that grants day off."""
+    yesterday_day_off_count = 0
+    for shift in position.shifts:
+        if not shift.grants_day_off:
+            continue
+
+        key = (day_index - 1, position, shift, doctor)
+        if key in scheduler.shift_assignments:
+            if solver.Value(scheduler.shift_assignments[key]):
+                yesterday_day_off_count += 1
+
+    return yesterday_day_off_count
 
 
 def test_max_one_day_off_team():
@@ -355,7 +384,7 @@ def test_max_one_day_off_team():
     test_department = Department(
         name="Test", teams=teams, positions=[position])
 
-    scheduler, solver, dates = _build_and_solve(
+    scheduler, solver = _build_and_solve(
         department=test_department,
         constraint_names=[
             "_add_hard_constraint_no_consecutive_shifts",
@@ -367,17 +396,11 @@ def test_max_one_day_off_team():
         ]
     )
 
-    for day_index in range(1, len(dates)):
+    for day_index in range(1, len(scheduler.dates)):
         for team in teams:
             yesterday_day_off_count = 0
             for doctor in team.doctors:
-                for shift in position.shifts:
-                    if not shift.grants_day_off:
-                        continue
-
-                    key = (day_index - 1, position, shift, doctor)
-                    if key in scheduler.shift_assignments:
-                        if solver.Value(scheduler.shift_assignments[key]):
-                            yesterday_day_off_count += 1
+                yesterday_day_off_count += calculate_yesterday_day_off_count(
+                    position, day_index, doctor, scheduler, solver)
 
             assert yesterday_day_off_count <= 1, f"{team.name} has more than 1 doctor with the day off"
