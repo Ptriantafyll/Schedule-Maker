@@ -25,6 +25,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         self.rewards = []
         self.solver = cp_model.CpSolver()
         self.dates = []
+        self.weekend_off_vars = {}
 
     def _calculate_days_for_schedule(self, month: int, year: int) -> list[datetime.date]:
         """Returns the list of dates and a weekend lookup dict for the given month."""
@@ -188,6 +189,8 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
                     self.model.add(sum(psk_shifts) + len(psk_shifts)
                                    * weekend_off <= len(psk_shifts))
                 weekend_off_vars.append(weekend_off)
+
+            self.weekend_off_vars[doctor] = weekend_off_vars
 
             self.model.add(sum(weekend_off_vars) >= 1)
 
@@ -367,7 +370,31 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
                     self.department.config.w_full_wkend_off_bonus * weekend_off)
 
     def _add_soft_constraint_balance_full_weekends_off(self):
-        pass
+        """Penalizes if the number of full weekends off is not balanced across doctors."""
+        weekends = self._get_weekends()
+        doctor_weekend_counts = []
+
+        for doctor in self.department.doctors:
+            if doctor.pre_assignments:
+                continue
+            vars_for_doctor = self.weekend_off_vars.get(doctor, [])
+            if not vars_for_doctor:
+                continue
+            count_var = self.model.new_int_var(
+                0, len(weekends), f"weekend_off_count_{doctor}")
+            self.model.add(count_var == sum(vars_for_doctor))
+            doctor_weekend_counts.append(count_var)
+
+        if len(doctor_weekend_counts) < 2:
+            return
+
+        min_var = self.model.new_int_var(0, len(weekends), "min_weekends_off")
+        max_var = self.model.new_int_var(0, len(weekends), "max_weekends_off")
+        self.model.add_min_equality(min_var, doctor_weekend_counts)
+        self.model.add_max_equality(max_var, doctor_weekend_counts)
+
+        self.penalties.append(
+            self.department.config.w_balance_full_wkends_off * (max_var - min_var))
 
     def _debug_print_capacity(self):
         """Prints debug info about doctor availability per position."""
@@ -422,6 +449,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         self._add_soft_constraint_penalize_every_other_day_on_duty()
         self._add_soft_constraint_spread_duties_across_month()
         self._add_soft_constraint_reward_full_weekends_off()
+        self._add_soft_constraint_balance_full_weekends_off()
         self._combine_objectives()
 
         status = self.solver.Solve(self.model)
