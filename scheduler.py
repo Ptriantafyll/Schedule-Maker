@@ -487,6 +487,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         self._add_soft_constraint_spread_duties_across_month()
         self._add_soft_constraint_reward_full_weekends_off()
         self._add_soft_constraint_balance_full_weekends_off()
+        self._add_soft_constraint_balance_saturday_sunday_duties()
         self._combine_objectives()
 
         status = self.solver.Solve(self.model)
