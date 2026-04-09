@@ -18,7 +18,7 @@ def _build_and_solve(department, month=4, year=2026, constraint_names=None):
 
     has_soft_constraints = any(name.startswith(
         "_add_soft_constraint") for name in (constraint_names or []))
-   
+
     for name in (constraint_names or []):
         getattr(scheduler, name)()
 
@@ -489,7 +489,8 @@ def test_balance_full_weekends_off():
 
     weekends = scheduler_balanced._get_weekends()
     counts_balanced = [
-        get_full_weekend_off_count_for_doctor(doc, weekends, scheduler_balanced, solver_balanced)
+        get_full_weekend_off_count_for_doctor(
+            doc, weekends, scheduler_balanced, solver_balanced)
         for doc in department.doctors
     ]
     spread_balanced = max(counts_balanced) - min(counts_balanced)
@@ -500,3 +501,55 @@ def test_balance_full_weekends_off():
     # Verify the constraint actually added penalties (not just a pass)
     assert len(scheduler_balanced.penalties) > 0, \
         "Balance constraint did not add any penalties"
+
+  
+def test_balance_saturday_sunday_duties():
+    """Verifies Saturday vs Sunday duty balance is at most 2 with the balance constraint."""
+    # April 2026 weekends (Fri-Sat-Sun): Apr 3-5, 10-12, 17-19, 24-26
+    # Give 3 doctors unavailability on weekend days to create natural imbalance
+    doctors = [
+        Doctor(name="Dr. A", email="a@test.com",
+               unavailability={datetime.date(2026, 4, 3), datetime.date(2026, 4, 10)}),
+        Doctor(name="Dr. B", email="b@test.com",
+               unavailability={datetime.date(2026, 4, 4), datetime.date(2026, 4, 17)}),
+        Doctor(name="Dr. C", email="c@test.com",
+               unavailability={datetime.date(2026, 4, 11), datetime.date(2026, 4, 18)}),
+        Doctor(name="Dr. D", email="d@test.com"),
+        Doctor(name="Dr. E", email="e@test.com"),
+        Doctor(name="Dr. F", email="f@test.com"),
+        Doctor(name="Dr. G", email="g@test.com"),
+        Doctor(name="Dr. H", email="h@test.com"),
+        Doctor(name="Dr. I", email="i@test.com"),
+        Doctor(name="Dr. J", email="j@test.com"),
+    ]
+    team = Team(name="Team 1", doctors=doctors)
+    shift = Shift(name="Night", doctors_per_shift=1)
+    position = Position(name="ER", shifts=[shift])
+    department = Department(name="Test", teams=[team], positions=[position])
+
+    scheduler, solver = _build_and_solve(
+        department=department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_soft_constraint_balance_saturday_sunday_duties",
+        ]
+    )
+
+    for doctor in department.doctors:
+        saturday_duties = sum(
+            solver.Value(var)
+            for day_index, date in enumerate(scheduler.dates)
+            if scheduler.is_weekend[date] and date.weekday() == 5
+            for var in scheduler._get_assignment_vars_for(doctor=doctor, day_index=day_index)
+        )
+        sunday_duties = sum(
+            solver.Value(var)
+            for day_index, date in enumerate(scheduler.dates)
+            if scheduler.is_weekend[date] and date.weekday() == 6
+            for var in scheduler._get_assignment_vars_for(doctor=doctor, day_index=day_index)
+        )
+        balance = abs(saturday_duties - sunday_duties)
+        assert balance <= 2, f"{doctor.name} has unbalanced Saturday vs Sunday duties: {saturday_duties} vs {sunday_duties} (balance {balance})"
+
+    assert len(scheduler.penalties) > 0, "Balance constraint did not add any penalties"

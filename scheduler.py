@@ -396,6 +396,43 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         self.penalties.append(
             self.department.config.w_balance_full_wkends_off * (max_var - min_var))
 
+    def _add_soft_constraint_balance_saturday_sunday_duties(self):
+        """Penalizes if a doctor has unbalanced Saturday vs Sunday duties."""
+
+        for doctor in self.department.doctors:
+            if doctor.pre_assignments:
+                continue
+
+            saturday_duties = sum(
+                vars
+                for day in range(len(self.dates))
+                if self.dates[day].weekday() == 5
+                for vars in self._get_assignment_vars_for(day_index=day, doctor=doctor)
+            )
+
+            sunday_duties = sum(
+                vars
+                for day in range(len(self.dates))
+                if self.dates[day].weekday() == 6
+                for vars in self._get_assignment_vars_for(day_index=day, doctor=doctor)
+            )
+
+            saturdays_of_month = sum(
+                1 for d in self.dates if d.weekday() == 5)
+            sundays_of_month = sum(
+                1 for d in self.dates if d.weekday() == 6)
+
+            sat_sun_deviation = self.model.new_int_var(
+                0, max(saturdays_of_month, sundays_of_month), f"sat_sun_deviation_{doctor}")
+
+            self.model.add(sat_sun_deviation >=
+                           saturday_duties - sunday_duties)
+            self.model.add(sat_sun_deviation >=
+                           sunday_duties - saturday_duties)
+
+            self.penalties.append(
+                self.department.config.w_diff_wkend_duty_day * sat_sun_deviation)
+
     def _debug_print_capacity(self):
         """Prints debug info about doctor availability per position."""
         for position in self.department.positions:
