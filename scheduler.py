@@ -311,6 +311,9 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
                 self.penalties.append(
                     self.department.config.w_every_other_penalty * is_every_other)
 
+    def _add_soft_constraint_penalize_short_gaps_between_duties(self):
+        pass
+
     def _add_soft_constraint_spread_duties_across_month(self):
         """Penalizes uneven distribution of duties across month blocks per doctor."""
         duties_per_doctor = self._calculate_duties_per_doctor()

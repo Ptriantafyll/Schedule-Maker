@@ -502,7 +502,7 @@ def test_balance_full_weekends_off():
     assert len(scheduler_balanced.penalties) > 0, \
         "Balance constraint did not add any penalties"
 
-  
+
 def test_balance_saturday_sunday_duties():
     """Verifies Saturday vs Sunday duty balance is at most 2 with the balance constraint."""
     # April 2026 weekends (Fri-Sat-Sun): Apr 3-5, 10-12, 17-19, 24-26
@@ -552,4 +552,57 @@ def test_balance_saturday_sunday_duties():
         balance = abs(saturday_duties - sunday_duties)
         assert balance <= 2, f"{doctor.name} has unbalanced Saturday vs Sunday duties: {saturday_duties} vs {sunday_duties} (balance {balance})"
 
-    assert len(scheduler.penalties) > 0, "Balance constraint did not add any penalties"
+    assert len(
+        scheduler.penalties) > 0, "Balance constraint did not add any penalties"
+
+
+def count_gap_patterns(doctor: Doctor, gap_size: int, scheduler: ShiftScheduler, solver: cp_model.CpSolver) -> int:
+    """Counts how many times a doctor works day N and day N+gap_size."""
+    pattern_count = 0
+    for day_index in range(len(scheduler.dates) - gap_size - 1):
+        day_a = any(solver.Value(var) for var in scheduler._get_assignment_vars_for(
+            day_index=day_index, doctor=doctor))
+
+        day_b = any(solver.Value(var) for var in scheduler._get_assignment_vars_for(
+            day_index=day_index + gap_size, doctor=doctor))
+
+        if day_a and day_b:
+            pattern_count += 1
+
+    return pattern_count
+
+
+def test_penalize_short_gaps_between_duties():
+    """Verifies the short gap constraint adds penalties and solver still finds a solution."""
+    doctors = [
+        Doctor(name=f"Dr. {c}", email=f"{c}@test.com")
+        for c in "ABCDEFGH"
+    ]
+    team = Team(name="Team 1", doctors=doctors)
+    shift = Shift(name="Night", doctors_per_shift=1)
+    position = Position(name="ER", shifts=[shift])
+    department = Department(name="Test", teams=[team], positions=[position])
+
+    scheduler, _ = _build_and_solve(
+        department=department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_soft_constraint_penalize_every_other_day_on_duty",
+        ]
+    )
+
+    assert len(scheduler.penalties) > 0, \
+        "Constraint did not add any penalties"
+
+    scheduler, _ = _build_and_solve(
+        department=department,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_soft_constraint_penalize_short_gaps_between_duties",
+        ]
+    )
+
+    assert len(scheduler.penalties) > 0, \
+        "Constraint did not add any penalties"
