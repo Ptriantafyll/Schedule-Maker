@@ -311,8 +311,43 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
                 self.penalties.append(
                     self.department.config.w_every_other_penalty * is_every_other)
 
+    def _add_soft_constraint_penalize_duty_gap(self, gap_size: int, weight: int):
+        """
+        Penalizes short gaps between duties, 
+        e.g. working on day N and then again on day N+2 with only one day off in between.
+        """
+        for doctor in self.department.doctors:
+            if doctor.pre_assignments:
+                continue
+
+            for day_index in range(len(self.dates) - gap_size):
+                day_a_var = self._get_assignment_vars_for(
+                    day_index=day_index, doctor=doctor)
+                day_c_var = self._get_assignment_vars_for(
+                    day_index=day_index+gap_size, doctor=doctor)
+
+                if (not day_a_var) or (not day_c_var):
+                    continue
+
+                is_short_gap = self.model.new_bool_var(
+                    f"duty_gap_{day_index}_{doctor}_"
+                )
+
+                self.model.add(sum(day_a_var) + sum(day_c_var) ==
+                               2).only_enforce_if(is_short_gap)
+                self.model.add(sum(day_a_var) + sum(day_c_var) !=
+                               2).only_enforce_if(is_short_gap.Not())
+
+                self.penalties.append(weight * is_short_gap)
+
+    # Wrappers for tests
+    def _add_soft_constraint_penalize_every_other_day_on_duty(self):
+        self._add_soft_constraint_penalize_duty_gap(
+            2, self.department.config.w_every_other_penalty)
+
     def _add_soft_constraint_penalize_short_gaps_between_duties(self):
-        pass
+        self._add_soft_constraint_penalize_duty_gap(
+            3, self.department.config.w_gap_penalty)
 
     def _add_soft_constraint_spread_duties_across_month(self):
         """Penalizes uneven distribution of duties across month blocks per doctor."""
