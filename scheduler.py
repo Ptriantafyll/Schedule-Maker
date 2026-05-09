@@ -284,33 +284,6 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
                     team, day_index-1)
             self.model.add(sum(yesterday_day_off_shifts) <= 1)
 
-    def _add_soft_constraint_penalize_every_other_day_on_duty(self):
-        """Penalizes on-off-on patterns where a doctor works day N and day N+2."""
-        for doctor in self.department.doctors:
-            if doctor.pre_assignments:
-                continue
-
-            for day_index in range(len(self.dates) - 2):
-                day_a_var = self._get_assignment_vars_for(
-                    day_index=day_index, doctor=doctor)
-                day_c_var = self._get_assignment_vars_for(
-                    day_index=day_index+2, doctor=doctor)
-
-                if (not day_a_var) or (not day_c_var):
-                    continue
-
-                is_every_other = self.model.new_bool_var(
-                    f"every_other_penalty_{day_index}_{doctor}_"
-                )
-
-                self.model.add(sum(day_a_var) + sum(day_c_var) ==
-                               2).only_enforce_if(is_every_other)
-                self.model.add(sum(day_a_var) + sum(day_c_var) !=
-                               2).only_enforce_if(is_every_other.Not())
-
-                self.penalties.append(
-                    self.department.config.w_every_other_penalty * is_every_other)
-
     def _add_soft_constraint_penalize_duty_gap(self, gap_size: int, weight: int):
         """
         Penalizes short gaps between duties, 
