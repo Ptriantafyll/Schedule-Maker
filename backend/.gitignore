@@ -3,3 +3,5 @@ send_email.py
 *.ics
 **/__pycache__/**
 .venv/
+.gemini/*
+.claude/*
