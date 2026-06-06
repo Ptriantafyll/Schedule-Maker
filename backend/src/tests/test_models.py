@@ -1,24 +1,47 @@
+import pytest
 import uuid
 import datetime
 from sqlmodel import SQLModel, create_engine, Session
-from db_models import Department
+from db_models import Department, Doctor
 
 
-def test_sync_base_fields():
-    """Verify that models inheriting from SyncBase automatically get UUID and sync metadata."""
+@pytest.fixture(name="session")
+def session_fixture():
+    """Creates a fresh in-memory database session for each test."""
     engine = create_engine("sqlite:///:memory:")
     SQLModel.metadata.create_all(engine)
-
     with Session(engine) as session:
-        # Create a test department
-        dept = Department(name="Cardiology", code="CARD")
-        session.add(dept)
-        session.commit()
-        session.refresh(dept)
+        yield session
 
-        # Verify SyncBase properties
-        assert isinstance(dept.id, uuid.UUID)
-        assert dept.is_deleted is False
-        assert dept.sync_status is False
-        assert isinstance(dept.created_at, datetime.datetime)
-        assert isinstance(dept.updated_at, datetime.datetime)
+
+def test_sync_base_fields(session):
+    """Verify that models inheriting from SyncBase automatically get UUID and sync metadata."""
+    dept = Department(name="Cardiology", code="CARD")
+    session.add(dept)
+    session.commit()
+    session.refresh(dept)
+
+    assert isinstance(dept.id, uuid.UUID)
+    assert dept.is_deleted is False
+    assert dept.sync_status is False
+    assert isinstance(dept.created_at, datetime.datetime)
+    assert isinstance(dept.updated_at, datetime.datetime)
+
+
+def test_doctor_has_department_foreign_key(session):
+    """Test that doctors can be associated with a department and retrieved correctly."""
+    dept = Department(name="Emergency", code="ER")
+    session.add(dept)
+    session.commit()
+    session.refresh(dept)
+
+    doctor = Doctor(name="Dr. Smith", email="smith@test.com",
+                    department_id=dept.id)
+    session.add(doctor)
+    session.commit()
+    session.refresh(doctor)
+
+    assert isinstance(doctor.id, uuid.UUID)
+    assert doctor.department_id == dept.id
+    assert doctor.name == "Dr. Smith"
+    assert doctor.email == "smith@test.com"

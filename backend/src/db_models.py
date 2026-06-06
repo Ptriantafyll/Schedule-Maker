@@ -15,7 +15,7 @@ from sqlmodel import SQLModel, Field
 
 class SyncBase(SQLModel):
     """Abstract base class providing synchronization metadata for all tables.
-    
+
     All database tables inherit from this class to get:
     - A client-generated UUID primary key (avoids ID collisions during sync)
     - Timestamps for conflict resolution during sync
@@ -37,3 +37,10 @@ class Department(SyncBase, table=True):
     """Represents a hospital department stored in the database."""
     name: str = Field(index=True, unique=True)
     code: str
+
+
+class Doctor(SyncBase, table=True):
+    """Represents a doctor stored in the database."""
+    name: str
+    email: str
+    department_id: uuid.UUID = Field(foreign_key="department.id")
