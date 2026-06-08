@@ -1,8 +1,11 @@
+"""
+Unit tests for db models defined in db_models.py. These tests verify that the SQLModel models correctly implement the expected fields, relationships, and behaviors. The tests use an in-memory SQLite database to ensure isolation and repeatability. 
+"""
 import pytest
 import uuid
 import datetime
 from sqlmodel import SQLModel, create_engine, Session
-from db_models import Department, Doctor
+from backend.src.db.schemas import Department, Doctor
 
 
 @pytest.fixture(name="session")

@@ -6,7 +6,7 @@ Unit tests for ShiftScheduler constraints and date calculations.
 
 import datetime
 from ortools.sat.python import cp_model
-from scheduler import ShiftScheduler
+from backend.src.utils.scheduler import ShiftScheduler
 from models import Department, Team, Doctor, Position, Shift, ScheduleConfig
 
 
