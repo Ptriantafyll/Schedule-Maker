@@ -4,7 +4,7 @@ Description: Utility functions for exporting schedules to Excel files. This modu
 - A header row indicating the day of the week and date.
 """
 
-from scheduler import Scheduler
+from scheduler import ShiftScheduler
 import openpyxl
 from openpyxl.styles import PatternFill
 
@@ -12,7 +12,7 @@ from openpyxl.styles import PatternFill
 class ExcelUtils:
     """Utility class for exporting schedules to Excel files."""
 
-    def export_schedule_to_excel(self, filename: str, scheduler: Scheduler):
+    def export_schedule_to_excel(self, filename: str, scheduler: ShiftScheduler):
         """
         Exports the generated schedule to an Excel file. 
         showing daily assignments and marking doctor unavailability.
