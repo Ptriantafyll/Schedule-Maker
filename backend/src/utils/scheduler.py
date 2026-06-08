@@ -7,9 +7,7 @@ optimal monthly duty schedules for a hospital department.
 import datetime
 import calendar
 import math
-import openpyxl
 from ortools.sat.python import cp_model
-from openpyxl.styles import PatternFill
 from models import Department, Doctor, Position, Shift, Team
 
 
@@ -543,50 +541,6 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         print("\n--- Duties per doctor ---")
         self._print_doctor_workloads()
 
-    def export_to_exel(self, filename: str):
-        """
-        Exports the generated schedule to an Excel file. 
-        showing daily assignments and marking doctor unavailability.
-        """
-        schedule = {}
-        for (day_idx, _, shift, doc), var in self.shift_assignments.items():
-            if self.solver.value(var) == 1:
-                schedule[(day_idx, doc)] = shift.name
-
-        wb = openpyxl.Workbook()
-        ws = wb.active
-
-        unavailable_fill = PatternFill(
-            start_color="000000", end_color="000000", fill_type="solid")
-
-        # Row 1: day of week
-        for day_idx, date in enumerate(self.dates):
-            ws.cell(row=1, column=day_idx + 2, value=date.strftime('%a'))
-
-        # Row 2: day number
-        for day_idx, date in enumerate(self.dates):
-            ws.cell(row=2, column=day_idx + 2, value=date.day)
-
-        for row_idx, doctor in enumerate(self.department.doctor_order):
-            ws.cell(row=row_idx+3, column=1, value=doctor.name)
-            print(f"Doctor: {doctor.name}")
-            for day_idx, _ in enumerate(self.dates):
-                cell = ws.cell(row=row_idx + 3, column=day_idx + 2)
-                if self.dates[day_idx] in doctor.unavailability:
-                    cell.fill = unavailable_fill
-                else:
-                    cell.value = schedule.get((day_idx, doctor), "")
-
-        for row_idx, doctor in enumerate(self.department.doctor_order):
-            for day_idx, _ in enumerate(self.dates):
-                cell_value = schedule.get((day_idx, doctor), "")
-                ws.cell(row=row_idx+3, column=day_idx+2, value=cell_value)
-
-            # weekend_fill = PatternFill(
-            #     start_color="000000", end_color="000000", fill_type="solid")
-            # weekend_font = Font(color="FFFFFF", bold=True)
-        wb.save(filename)
-
 
 if __name__ == "__main__":
     polyzou_unavailability = [
@@ -1060,5 +1014,3 @@ if __name__ == "__main__":
     print("\n\n")
     print("--------Schedule---------\n")
     app.print_schedule()
-
-    app.export_to_exel("schedule.xlsx")
