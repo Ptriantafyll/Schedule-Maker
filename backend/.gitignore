@@ -5,3 +5,4 @@ send_email.py
 .venv/
 .gemini/*
 .claude/*
+*.db
