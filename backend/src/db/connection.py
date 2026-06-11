@@ -18,10 +18,8 @@ engine = create_engine(DATABASE_URL, echo=True, connect_args=connect_args)
 
 
 def init_db() -> None:
-    """Physically creates the tables in the target database if they do not exist.
-
-    Note: We must import our schemas inside this function so SQLModel's metadata
-    registry knows they exist before calling create_all.
+    """
+    Physically creates the tables in the target database if they do not exist.
     """
     from src.db.schemas import Department, Doctor, Position, Shift, Team  # pylint: disable=unused-import
 

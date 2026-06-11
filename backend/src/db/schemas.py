@@ -109,3 +109,10 @@ class Department(SyncBase, table=True):
 
     backup_department_id: Optional[uuid.UUID] = Field(
         default=None, foreign_key="department.id")
+
+
+class ShiftAssignment(SyncBase, table=True):
+    """Represents the final schedule assignments after the solver runs."""
+    doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
+    shift_id: uuid.UUID = Field(foreign_key="shift.id")
+    date: str  # ISO Format: YYYY-MM-DD
