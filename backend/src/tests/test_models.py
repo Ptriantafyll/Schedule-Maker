@@ -5,7 +5,7 @@ import pytest
 import uuid
 import datetime
 from sqlmodel import SQLModel, create_engine, Session
-from backend.src.db.schemas import Department, Doctor
+from db.schemas import Department, Doctor, Team
 
 
 @pytest.fixture(name="session")
@@ -38,8 +38,13 @@ def test_doctor_has_department_foreign_key(session):
     session.commit()
     session.refresh(dept)
 
+    team = Team(name="ER Team A", department_id=dept.id)
+    session.add(team)
+    session.commit()
+    session.refresh(team)
+
     doctor = Doctor(name="Dr. Smith", email="smith@test.com",
-                    department_id=dept.id)
+                    department_id=dept.id, team_id=team.id)
     session.add(doctor)
     session.commit()
     session.refresh(doctor)
