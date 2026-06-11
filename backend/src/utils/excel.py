@@ -1,7 +1,6 @@
 """
 Module: excel.py
-Description: Utility functions for exporting schedules to Excel files. This module provides functionality to take the generated schedule from the Scheduler class and create a visually organized Excel file that shows daily assignments for each doctor, while also marking any days they are unavailable. This allows for easy sharing and review of the schedule in a familiar format. The Excel export includes features such as:
-- A header row indicating the day of the week and date.
+Description: Utility functions for Excel files.
 """
 
 from scheduler import ShiftScheduler
@@ -10,7 +9,7 @@ from openpyxl.styles import PatternFill
 
 
 class ExcelUtils:
-    """Utility class for exporting schedules to Excel files."""
+    """Utility class for Excel files."""
 
     def export_schedule_to_excel(self, filename: str, scheduler: ShiftScheduler):
         """
