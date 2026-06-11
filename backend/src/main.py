@@ -7,11 +7,12 @@ It sets up the API server, configures CORS middleware, and defines a simple heal
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from src.department import routes as department_routes
 from src.db.connection import init_db
 
 
 @asynccontextmanager
-async def lifespan(_app_instance: FastAPI):  # Renamed and prefixed with underscore
+async def lifespan(_app_instance: FastAPI):
     """Handles application startup and shutdown lifecycles safely."""
     print("[Startup] Initializing database tables...")
     init_db()
@@ -34,6 +35,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(department_routes.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["System"])
