@@ -6,7 +6,8 @@ import uuid
 import datetime
 from sqlmodel import SQLModel, create_engine, Session
 from src.department.models import Department
-from src.db.schemas import Doctor, Team
+from src.team.models import Team
+from src.db.schemas import Doctor
 
 
 @pytest.fixture(name="session")

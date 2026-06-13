@@ -95,12 +95,6 @@ class DoctorPosition(SyncBase, table=True):
     position_id: uuid.UUID = Field(foreign_key="position.id")
 
 
-class Team(SyncBase, table=True):
-    """Represents a team of doctors stored in the database."""
-    name: str
-    department_id: uuid.UUID = Field(foreign_key="department.id")
-
-
 class ShiftAssignment(SyncBase, table=True):
     """Represents the final schedule assignments after the solver runs."""
     doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
