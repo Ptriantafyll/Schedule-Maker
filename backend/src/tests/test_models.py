@@ -5,7 +5,8 @@ import pytest
 import uuid
 import datetime
 from sqlmodel import SQLModel, create_engine, Session
-from db.schemas import Department, Doctor, Team
+from src.department.models import Department
+from src.db.schemas import Doctor, Team
 
 
 @pytest.fixture(name="session")
