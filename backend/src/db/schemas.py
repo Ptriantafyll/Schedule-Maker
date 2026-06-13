@@ -8,7 +8,6 @@ models.py. These db_models will eventually replace them once the API layer is
 fully wired up.
 """
 
-from typing import Optional
 import uuid
 import datetime
 from sqlmodel import Column, SQLModel, Field, JSON
@@ -100,15 +99,6 @@ class Team(SyncBase, table=True):
     """Represents a team of doctors stored in the database."""
     name: str
     department_id: uuid.UUID = Field(foreign_key="department.id")
-
-
-class Department(SyncBase, table=True):
-    """Represents a hospital department stored in the database."""
-    name: str = Field(index=True, unique=True)
-    code: str
-
-    backup_department_id: Optional[uuid.UUID] = Field(
-        default=None, foreign_key="department.id")
 
 
 class ShiftAssignment(SyncBase, table=True):
