@@ -9,22 +9,9 @@ from __future__ import annotations
 
 from typing import Optional
 import uuid
-import datetime
 
-from sqlmodel import SQLModel, Field
-
-
-class SyncBase(SQLModel):
-    """Base fields used for sync/metadata across tables."""
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    created_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
-    )
-    updated_at: datetime.datetime = Field(
-        default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
-    )
-    is_deleted: bool = Field(default=False)
-    sync_status: bool = Field(default=False)
+from sqlmodel import Field
+from src.db.schemas import SyncBase
 
 
 class Department(SyncBase, table=True):
@@ -43,4 +30,4 @@ class Department(SyncBase, table=True):
     )
 
 
-__all__ = ["Department", "SyncBase"]
+__all__ = ["Department"]
