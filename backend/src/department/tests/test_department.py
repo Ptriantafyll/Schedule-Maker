@@ -6,14 +6,13 @@ from fastapi.testclient import TestClient
 import uuid
 import datetime
 from src.main import app
-from src.department.repository import create_department
+from src.department.repository import create_department, get_active_departments, get_department_by_name
 from src.department.schemas import DepartmentCreate
-from src.department.models import Department as DepartmentModel
 
 # Session fixture for database tests
 import pytest
 from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel, create_engine, Session, select
+from sqlmodel import SQLModel, create_engine, Session
 
 
 @pytest.fixture(name="session")
@@ -52,11 +51,9 @@ def test_get_department_by_name(session):
     dept_data = DepartmentCreate(name="Neurology", code="NEURO")
     new_dept = create_department(session, dept_data)
 
-    retrieved_dept = session.exec(
-        select(DepartmentModel).where(DepartmentModel.name == "Neurology")
-    )
+    retrieved_dept = get_department_by_name(session, "Neurology")
 
-    assert retrieved_dept.first() == new_dept
+    assert retrieved_dept == new_dept
 
 
 def test_get_active_departments(session):
@@ -71,10 +68,7 @@ def test_get_active_departments(session):
     session.add(dept2)
     session.commit()
 
-    active_departments = session.exec(
-        select(DepartmentModel).where(DepartmentModel.is_deleted == False)
-    ).all()
-
+    active_departments = get_active_departments(session)
     assert dept1 in active_departments
     assert dept2 not in active_departments
 
