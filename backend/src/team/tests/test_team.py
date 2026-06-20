@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, create_engine, Session
 
 from src.team.schemas import TeamCreate
-from src.team.repository import create_team
+from src.team.repository import create_team, get_team_by_name
 from src.department.schemas import DepartmentCreate
 from src.department.repository import create_department
 
@@ -46,3 +46,17 @@ def test_create_team(session):
     assert new_team.sync_status is False
     assert isinstance(new_team.created_at, datetime.datetime)
     assert isinstance(new_team.updated_at, datetime.datetime)
+
+
+def test_get_team_by_name(session):
+    """ Tests retrieving a team by its name."""
+    dept_data = DepartmentCreate(name="Neurology", code="NEURO")
+    new_dept = create_department(session, dept_data)
+
+    team_data = TeamCreate(name="Neuro Team B", department_id=new_dept.id)
+    new_team = create_team(session, team_data)
+
+    retrieved_team = get_team_by_name(session, "Neuro Team B")
+
+    assert retrieved_team is not None
+    assert retrieved_team.id == new_team.id
