@@ -206,3 +206,9 @@ def test_get_team_by_id_route(session, client):
     assert "id" in data
     assert "created_at" in data
     assert "updated_at" in data
+
+
+def test_list_teams_route():
+    """Tests the GET /teams/ route"""
+    # TODO
+    pass
