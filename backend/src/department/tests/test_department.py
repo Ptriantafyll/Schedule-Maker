@@ -161,3 +161,26 @@ def test_create_department_route_invalid_payload(client):
     response = client.post(
         "api/v1/departments/", json={"code": "URO"})  # Missing 'name'
     assert response.status_code == 422
+
+
+def test_get_department_by_id_route(session, client):
+    """Tests that the GET /departments/{department_id} route returns a department"""
+
+    dept_data = DepartmentCreate(name="Radiology", code="RAD")
+    new_dept = create_department(session, dept_data)
+
+    response = client.get(
+        f"/api/v1/departments/{new_dept.id}"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Radiology"
+    assert data["code"] == "RAD"
+    assert "created_at" in data
+    assert "updated_at" in data
+
+
+def test_list_departments_route():
+    # TODO
+    pass

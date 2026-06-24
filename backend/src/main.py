@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from src.department import routes as department_routes
+from src.team import routes as team_routes
 from src.db.connection import init_db
 
 
@@ -37,6 +38,7 @@ app.add_middleware(
 )
 
 app.include_router(department_routes.router, prefix="/api/v1")
+app.include_router(team_routes.router, prefix="/api/v1")
 
 
 @app.get("/health", tags=["System"])
