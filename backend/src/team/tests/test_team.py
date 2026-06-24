@@ -9,7 +9,7 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, create_engine, Session
 
 from src.team.schemas import TeamCreate
-from src.team.repository import create_team, get_team_by_name
+from src.team.repository import create_team, get_active_teams, get_team_by_name
 from src.department.schemas import DepartmentCreate
 from src.department.repository import create_department
 
@@ -60,3 +60,25 @@ def test_get_team_by_name(session):
 
     assert retrieved_team is not None
     assert retrieved_team.id == new_team.id
+
+
+def test_get_active_teams(session):
+    """ Tests retrieving only active (non-deleted) teams."""
+    dept_data = DepartmentCreate(name="Oncology", code="ONC")
+    new_dept = create_department(session, dept_data)
+
+    team1_data = TeamCreate(name="Onco Team C", department_id=new_dept.id)
+    team1 = create_team(session, team1_data)
+
+    team2_data = TeamCreate(name="Onco Team D", department_id=new_dept.id)
+    team2 = create_team(session, team2_data)
+
+    # Mark team2 as deleted
+    team2.is_deleted = True
+    session.add(team2)
+    session.commit()
+
+    active_teams = get_active_teams(session)
+
+    assert team1 in active_teams
+    assert team2 not in active_teams
