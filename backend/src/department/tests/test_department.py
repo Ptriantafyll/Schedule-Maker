@@ -184,4 +184,3 @@ def test_get_department_by_id_route(session, client):
 def test_list_departments_route():
     """Tests the GET /departments/ route"""
     # TODO
-    pass

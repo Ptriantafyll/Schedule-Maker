@@ -29,33 +29,35 @@ def session_fixture():
         yield session
 
 
+@pytest.fixture(name="department")
+def department_fixture(session):
+    """Creates a reusable department for team tests."""
+    dept_data = DepartmentCreate(name="Cardiology", code="CARD")
+    return create_department(session, dept_data)
+
+
 ################################
 # Repository tests
 ################################
-def test_create_team(session):
+def test_create_team(session, department):
     """Test creating a team and verifying its fields."""
 
-    dept_data = DepartmentCreate(name="Cardiology", code="CARD")
-    new_dept = create_department(session, dept_data)
-
-    team_data = TeamCreate(name="ER Team A", department_id=new_dept.id)
+    team_data = TeamCreate(name="ER Team A", department_id=department.id)
     new_team = create_team(session, team_data)
 
     assert isinstance(new_team.id, uuid.UUID)
     assert new_team.name == "ER Team A"
-    assert new_team.department_id == new_dept.id
+    assert new_team.department_id == department.id
     assert new_team.is_deleted is False
     assert new_team.sync_status is False
     assert isinstance(new_team.created_at, datetime.datetime)
     assert isinstance(new_team.updated_at, datetime.datetime)
 
 
-def test_get_team_by_name(session):
+def test_get_team_by_name(session, department):
     """ Tests retrieving a team by its name."""
-    dept_data = DepartmentCreate(name="Neurology", code="NEURO")
-    new_dept = create_department(session, dept_data)
 
-    team_data = TeamCreate(name="Neuro Team B", department_id=new_dept.id)
+    team_data = TeamCreate(name="Neuro Team B", department_id=department.id)
     new_team = create_team(session, team_data)
 
     retrieved_team = get_team_by_name(session, "Neuro Team B")
@@ -64,15 +66,13 @@ def test_get_team_by_name(session):
     assert retrieved_team.id == new_team.id
 
 
-def test_get_active_teams(session):
+def test_get_active_teams(session, department):
     """ Tests retrieving only active (non-deleted) teams."""
-    dept_data = DepartmentCreate(name="Oncology", code="ONC")
-    new_dept = create_department(session, dept_data)
 
-    team1_data = TeamCreate(name="Onco Team C", department_id=new_dept.id)
+    team1_data = TeamCreate(name="Onco Team C", department_id=department.id)
     team1 = create_team(session, team1_data)
 
-    team2_data = TeamCreate(name="Onco Team D", department_id=new_dept.id)
+    team2_data = TeamCreate(name="Onco Team D", department_id=department.id)
     team2 = create_team(session, team2_data)
 
     # Mark team2 as deleted
@@ -89,12 +89,10 @@ def test_get_active_teams(session):
 #######################
 # Controller tests
 #######################
-def test_create_team_controller_duplicate_name(session):
+def test_create_team_controller_duplicate_name(session, department):
     """Test that creating a team with a duplicate name raises an error."""
-    dept_data = DepartmentCreate(name="Radiology", code="RAD")
-    new_dept = create_department(session, dept_data)
 
-    team_data = TeamCreate(name="Rad Team E", department_id=new_dept.id)
+    team_data = TeamCreate(name="Rad Team E", department_id=department.id)
 
     create_team(session, team_data)
 
@@ -120,13 +118,10 @@ def test_get_team_controller_nonexistent(session):
     assert "not found" in exc_info.value.detail
 
 
-def test_get_team_controller_deleted(session):
+def test_get_team_controller_deleted(session, department):
     """Test that fetching a deleted team raises a 404 error"""
 
-    dept_data = DepartmentCreate(name="Radiology", code="RAD")
-    new_dept = create_department(session, dept_data)
-
-    team_data = TeamCreate(name="Rad Team E", department_id=new_dept.id)
+    team_data = TeamCreate(name="Rad Team E", department_id=department.id)
     new_team = create_team(session, team_data)
 
     new_team.is_deleted = True
@@ -160,19 +155,17 @@ def client_fixture(session):
     app.dependency_overrides.clear()
 
 
-def test_create_team_route(session, client):
+def test_create_team_route(session, client, department):
     """Test the POST /teams/ route for creating a team."""
-    dept_data = DepartmentCreate(name="Radiology", code="RAD")
-    new_dept = create_department(session, dept_data)
 
     response = client.post(
-        "/api/v1/teams", json={"name": "Rad Team E", "department_id": str(new_dept.id)}
+        "/api/v1/teams", json={"name": "Rad Team E", "department_id": str(department.id)}
     )
 
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Rad Team E"
-    assert data["department_id"] == str(new_dept.id)
+    assert data["department_id"] == str(department.id)
     assert "id" in data
     assert "created_at" in data
     assert "updated_at" in data
@@ -187,12 +180,10 @@ def test_create_team_route_invalid_payload(client):
     assert response.status_code == 422
 
 
-def test_get_team_by_id_route(session, client):
+def test_get_team_by_id_route(session, client, department):
     """Tests that the GET /teams/{team_id} route returns a team"""
-    dept_data = DepartmentCreate(name="Radiology", code="RAD")
-    new_dept = create_department(session, dept_data)
 
-    team_data = TeamCreate(name="Rad Team E", department_id=new_dept.id)
+    team_data = TeamCreate(name="Rad Team E", department_id=department.id)
     new_team = create_team(session, team_data)
 
     response = client.get(
@@ -202,7 +193,7 @@ def test_get_team_by_id_route(session, client):
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "Rad Team E"
-    assert data["department_id"] == str(new_dept.id)
+    assert data["department_id"] == str(department.id)
     assert "id" in data
     assert "created_at" in data
     assert "updated_at" in data
@@ -211,4 +202,4 @@ def test_get_team_by_id_route(session, client):
 def test_list_teams_route():
     """Tests the GET /teams/ route"""
     # TODO
-    pass
+  
