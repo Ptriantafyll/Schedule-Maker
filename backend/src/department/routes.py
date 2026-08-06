@@ -1,5 +1,5 @@
 """
-Module: departments.py
+Module: routes.py
 Description: This module defines the API routes for managing hospital departments.
 """
 import uuid
