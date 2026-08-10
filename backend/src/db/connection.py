@@ -24,12 +24,14 @@ def init_db() -> None:
     """
     Physically creates the tables in the target database if they do not exist.
     """
-    from src.db.schemas import ScheduleConfig, Doctor, Position, Shift  # pylint: disable=unused-import
+    from src.db.schemas import ScheduleConfig, Position, Shift  # pylint: disable=unused-import
     from src.department.models import Department  # pylint: disable=unused-import
     from src.team.models import Team  # pylint: disable=unused-import
+    from src.doctor.models import Doctor  # pylint: disable=unused-import
 
     SQLModel.metadata.create_all(engine)
     logger.info("Database initialized")
+
 
 def get_session() -> Generator[Session, None, None]:
     """Dependency provider for FastAPI routes to yield an isolated database session.

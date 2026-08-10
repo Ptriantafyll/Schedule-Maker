@@ -5,21 +5,19 @@ Tests for the doctor module
 from fastapi.testclient import TestClient
 import uuid
 import datetime
-from src.main import app
+import pytest
+# Session fixture for database tests
+from sqlalchemy.pool import StaticPool
+from sqlmodel import SQLModel, create_engine, Session
 
+
+from src.main import app
 from src.department.schemas import DepartmentCreate
 from src.department.repository import create_department
 from src.team.schemas import TeamCreate
 from src.team.repository import create_team
 from src.doctor.schemas import DoctorCreate
-from src.db.schemas import Doctor
-from src.department.models import Department
-from src.team.models import Team
-
-# Session fixture for database tests
-import pytest
-from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel, create_engine, Session
+from src.doctor.repository import create_doctor
 
 
 @pytest.fixture(name="session")
@@ -33,6 +31,7 @@ def session_fixture():
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         yield session
+
 
 @pytest.fixture(name="department")
 def department_fixture(session):
@@ -54,31 +53,40 @@ def team_fixture(session, department):
 
 def test_create_doctor(session):
     """Test creating a doctor and verifying their fields"""
-    doctor_data = DoctorCreate()
+    # doctor_data = DoctorCreate()
+
 
 def test_get_doctor_by_name(session):
     """Test retrieving a doctor by name"""
 
+
 def test_get_doctor_by_id(session):
     """Test retrieving a doctor by id"""
+
 
 def test_get_active_doctors(session):
     """Test retrieving all active doctors"""
 
+
 def test_create_doctor_pre_assignment(session):
     """Test creating pre assignments for a doctor"""
+
 
 def test_get_doctor_pre_assignment(session):
     """Test retrieving a doctor's pre assignments"""
 
+
 def test_create_doctor_unavailability(session):
     """Test creating unavailability dates for a doctor"""
+
 
 def test_get_doctor_unavailability(session):
     """Test retrieving unavailability dates for a doctor"""
 
+
 def test_create_doctor_position(session):
     """Test creating a position for a doctor"""
+
 
 def test_doctor_has_department_foreign_key(session):
     """Test that doctors can be associated with a department and retrieved correctly."""
@@ -113,4 +121,136 @@ def test_doctor_has_department_foreign_key(session):
 #######################
 # Route tests
 #######################
-    
+@pytest.fixture(name="client")
+def client_fixture(session):
+    """Creates a TestClient for the FastAPI app with dependency override."""
+    from src.db.connection import get_session
+
+    def override_get_session():
+        yield session
+    app.dependency_overrides[get_session] = override_get_session
+
+    with TestClient(app) as test_client:
+        yield test_client
+
+    app.dependency_overrides.clear()
+
+
+def test_create_doctor_route(client, department, team):
+    """Test the POST /doctors/ route for creating a doctor"""
+
+    # response = client.post(
+    #     "api/v1/doctors",
+    #     json={
+    #         "name": "Dr Panos",
+    #         "email": "drpanos@gmeil.com",
+    #         "department_id": department.id,
+    #         "team_id": team.id
+    #     }
+    # )
+
+    # assert response.status_code == 201
+    # data = response.json()
+    # assert data["name"] == "Dr Panos"
+    # assert data["email"] == "drpanos@gmeil.com"
+    # assert data["department_id"] == department.id
+    # assert data["team_id"] == team.id
+    # assert "id" in data
+    # assert "created_at" in data
+    # assert "updated_at" in data
+
+
+def test_create_doctor_route_invalid_payload(client, department, team):
+    """Test the POST /doctors/ route rejects invalid payload"""
+
+    # response = client.post(
+    #     "api/v1/doctors",
+    #     json={
+    #         "name": "Dr Panos",
+    #         "department_id": department.id,
+    #         "team_id": team.id,
+    #     }
+    # )
+    # assert response.status_code == 422
+
+
+def test_get_doctor_by_id_route(client, department, team, session):
+    """Tests that the GET /doctors/{doctor_id} route returns a doctor"""
+
+    # doctor_data = DoctorCreate(
+    #     name="Dr Panos",
+    #     email="drpanos@gmail.com",
+    #     department_id=department.id,
+    #     team_id=team.id
+    # )
+
+    # new_doctor = create_doctor(session, doctor_data)
+
+    # response = client.get(
+    #     f"/api/v1/doctors/{new_doctor.id}"
+    # )
+
+    # assert response.status_code == 200
+    # data = response.json()
+    # assert data["name"] == "Dr Panos"
+    # assert data["email"] == "drpanos@gmeil.com"
+    # assert data["department_id"] == department.id
+    # assert data["team_id"] == team.id
+    # assert "id" in data
+    # assert "created_at" in data
+    # assert "updated_at" in data
+
+
+def test_get_doctor_by_id_route_nonexistent(client):
+    """Test the GET /doctors/{doctor_id} route returns error when given a nonexistent id"""
+    # TODO
+
+
+def test_list_doctors_route():
+    """Tests the GET /doctors/ route"""
+    # TODO
+
+
+def test_create_doctor_pre_assignments_route():
+    """Tests the POST /doctors/{doctor_id}/pre-assignments route"""
+    # TODO
+
+
+def test_create_doctor_pre_assignments_route_invalid_payload():
+    """Tests the POST /doctors/{doctor_id}/pre-assignments route rejects invalid payload"""
+    # TODO
+
+
+def test_get_doctor_pre_assigments_route():
+    """Tests the GET /doctors/{doctor_id}/pre-assignments route"""
+    # TODO
+
+
+def test_create_doctor_unavailability_route():
+    """Tests the POST /doctors/{doctor_id}/unavailability route"""
+    # TODO
+
+
+def test_create_doctor_unavailability_route_invalid_payload():
+    """Tests the POST /doctors/{doctor_id}/unavailability route rejects invalid payload"""
+    # TODO
+
+
+def test_get_doctor_unavailability_route():
+    """Tests the GET /doctors/{doctor_id}/unavailability route"""
+    # TODO
+
+
+def test_create_doctor_position_route():
+    """Tests the POST /doctors/{doctor_id}/position route"""
+    # TODO
+
+
+def test_create_doctor_position_route_invalid_payload():
+    """Tests the POST /doctors/{doctor_id}/position route rejects invalid payload"""
+    # TODO
+
+
+def test_get_doctor_position_route():
+    """Tests the GET /doctors/{doctor_id}/position route"""
+    # TODO

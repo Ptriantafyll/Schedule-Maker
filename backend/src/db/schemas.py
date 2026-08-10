@@ -12,7 +12,6 @@ import uuid
 import datetime
 from sqlmodel import Column, SQLModel, Field, JSON
 
-
 class SyncBase(SQLModel):
     """Abstract base class providing synchronization metadata for all tables.
 
@@ -60,13 +59,6 @@ class Shift(SyncBase, table=True):
     grants_day_off: bool = False
     position_id: uuid.UUID = Field(foreign_key="position.id")
 
-
-class Doctor(SyncBase, table=True):
-    """Represents a doctor stored in the database."""
-    name: str
-    email: str
-    department_id: uuid.UUID = Field(foreign_key="department.id")
-    team_id: uuid.UUID = Field(foreign_key="team.id", default=None)
 
 
 class DoctorUnavailability(SyncBase, table=True):
