@@ -4,8 +4,11 @@ Description: This module sets up the database connection and session management 
 """
 
 import os
+import logging
 from collections.abc import Generator
 from sqlmodel import Session, SQLModel, create_engine
+
+logger = logging.getLogger(__name__)
 
 # Default to local SQLite for development; swap to Postgres in production via env variables
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///hospital_schedule.db")
@@ -26,7 +29,7 @@ def init_db() -> None:
     from src.team.models import Team  # pylint: disable=unused-import
 
     SQLModel.metadata.create_all(engine)
-
+    logger.info("Database initialized")
 
 def get_session() -> Generator[Session, None, None]:
     """Dependency provider for FastAPI routes to yield an isolated database session.
