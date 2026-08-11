@@ -18,6 +18,7 @@ from src.team.schemas import TeamCreate
 from src.team.repository import create_team
 from src.doctor.schemas import DoctorCreate
 from src.doctor import repository as doctor_repository
+from src.doctor import controllers as doctor_controllers
 
 
 @pytest.fixture(name="session")
@@ -83,10 +84,12 @@ def test_get_doctor_by_email(session, department, team):
     )
     new_doctor = doctor_repository.create_doctor(session, doctor_data)
 
-    retrieved_doctor = doctor_repository.get_doctor_by_email(session, "drpanos@gmail.com")
+    retrieved_doctor = doctor_repository.get_doctor_by_email(
+        session, "drpanos@gmail.com")
 
     assert retrieved_doctor is not None
     assert retrieved_doctor.id == new_doctor.id
+
 
 def test_get_doctor_by_id(session, department, team):
     """Test retrieving a doctor by id"""
@@ -99,14 +102,40 @@ def test_get_doctor_by_id(session, department, team):
     )
     new_doctor = doctor_repository.create_doctor(session, doctor_data)
 
-    retrieved_doctor = doctor_repository.get_doctor_by_id(session, new_doctor.id)
+    retrieved_doctor = doctor_repository.get_doctor_by_id(
+        session, new_doctor.id)
 
     assert retrieved_doctor is not None
     assert retrieved_doctor.id == new_doctor.id
 
 
-def test_get_active_doctors(session):
+def test_get_active_doctors(session, team, department):
     """Test retrieving all active doctors"""
+    
+    doctor_data = DoctorCreate(
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=department.id,
+        team_id=team.id
+    )
+    new_doctor1 = doctor_repository.create_doctor(session, doctor_data)
+
+    doctor_data = DoctorCreate(
+        name="Dr Panagiotis",
+        email="drpanagiotis@gmail.com",
+        department_id=department.id,
+        team_id=team.id
+    )
+    new_doctor2 = doctor_repository.create_doctor(session, doctor_data)
+
+    new_doctor2.is_deleted = True
+    session.add(new_doctor2)
+    session.commit()
+
+    active_doctors = doctor_repository.get_active_doctors(session)
+
+    assert new_doctor1 in active_doctors
+    assert new_doctor2 not in active_doctors
 
 
 def test_create_doctor_pre_assignment(session):
@@ -159,6 +188,38 @@ def test_doctor_has_department_foreign_key(session):
 #######################
 
 
+def test_create_doctor_controller_duplicate_name(session, department, team):
+    """Test that creating a doctor with a duplicate email raises an error."""
+
+    doctor_data = DoctorCreate(
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=department.id,
+        team_id=team.id
+    )
+    new_doctor = doctor_repository.create_doctor(session, doctor_data)
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_controller(doctor_data, session)
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 400
+    assert "already exists" in exc_info.value.detail
+
+
+def test_get_doctor_controller_nonexistent(session):
+    """Test that retrieving a non-existent doctor raises a 404 error"""
+    # non_existent_id = uuid.uuid4()
+    pass
+    # with pytest.raises(Exception) as exc_info:
+    #     doctor_controllers.
+
+
+def test_get_doctor_controller_deleted(session):
+    """Test that retrieving a deleted team raises a 404 error"""
+    pass
+
+
 #######################
 # Route tests
 #######################
@@ -180,39 +241,39 @@ def client_fixture(session):
 def test_create_doctor_route(client, department, team):
     """Test the POST /doctors/ route for creating a doctor"""
 
-    # response = client.post(
-    #     "api/v1/doctors",
-    #     json={
-    #         "name": "Dr Panos",
-    #         "email": "drpanos@gmeil.com",
-    #         "department_id": department.id,
-    #         "team_id": team.id
-    #     }
-    # )
+    response = client.post(
+        "api/v1/doctors",
+        json={
+            "name": "Dr Panos",
+            "email": "drpanos@gmeil.com",
+            "department_id": str(department.id),
+            "team_id": str(team.id)
+        }
+    )
 
-    # assert response.status_code == 201
-    # data = response.json()
-    # assert data["name"] == "Dr Panos"
-    # assert data["email"] == "drpanos@gmeil.com"
-    # assert data["department_id"] == department.id
-    # assert data["team_id"] == team.id
-    # assert "id" in data
-    # assert "created_at" in data
-    # assert "updated_at" in data
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == "Dr Panos"
+    assert data["email"] == "drpanos@gmeil.com"
+    assert data["department_id"] == str(department.id)
+    assert data["team_id"] == str(team.id)
+    assert "id" in data
+    assert "created_at" in data
+    assert "updated_at" in data
 
 
 def test_create_doctor_route_invalid_payload(client, department, team):
     """Test the POST /doctors/ route rejects invalid payload"""
 
-    # response = client.post(
-    #     "api/v1/doctors",
-    #     json={
-    #         "name": "Dr Panos",
-    #         "department_id": department.id,
-    #         "team_id": team.id,
-    #     }
-    # )
-    # assert response.status_code == 422
+    response = client.post(
+        "api/v1/doctors",
+        json={
+            "name": "Dr Panos",
+            "department_id": str(department.id),
+            "team_id": str(team.id),
+        }
+    )
+    assert response.status_code == 422
 
 
 def test_get_doctor_by_id_route(client, department, team, session):
@@ -242,14 +303,32 @@ def test_get_doctor_by_id_route(client, department, team, session):
     # assert "updated_at" in data
 
 
-def test_get_doctor_by_id_route_nonexistent(client):
+def test_get_doctor_by_id_route_nonexistent(client, team, department):
     """Test the GET /doctors/{doctor_id} route returns error when given a nonexistent id"""
-    # TODO
+    pass
 
 
-def test_list_doctors_route():
+def test_list_doctors_route(client, team, department, session):
     """Tests the GET /doctors/ route"""
-    # TODO
+    doctor_data = DoctorCreate(
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=department.id,
+        team_id=team.id
+    )
+    doctor_repository.create_doctor(session, doctor_data)
+
+    doctor_data = DoctorCreate(
+        name="Dr Panagiotis",
+        email="drpanagiotis@gmail.com",
+        department_id=department.id,
+        team_id=team.id
+    )
+    doctor_repository.create_doctor(session, doctor_data)
+
+    response = client.get("api/v1/doctors")
+
+    assert response.status_code == 200
 
 
 def test_create_doctor_pre_assignments_route():
