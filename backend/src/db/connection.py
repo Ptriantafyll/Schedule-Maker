@@ -27,7 +27,7 @@ def init_db() -> None:
     from src.db.schemas import ScheduleConfig, Position, Shift  # pylint: disable=unused-import
     from src.department.models import Department  # pylint: disable=unused-import
     from src.team.models import Team  # pylint: disable=unused-import
-    from src.doctor.models import Doctor  # pylint: disable=unused-import
+    from src.doctor.models import Doctor, DoctorPosition, DoctorPreAssignment, DoctorUnavailability  # pylint: disable=unused-import
 
     SQLModel.metadata.create_all(engine)
     logger.info("Database initialized")

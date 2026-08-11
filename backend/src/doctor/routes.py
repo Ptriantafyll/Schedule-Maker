@@ -25,66 +25,66 @@ def create_doctor(doctor_data: DoctorCreate, session: Session = Depends(get_sess
     return doctor_controllers.create_doctor_controller(doctor_data, session)
 
 
-@router.get("/", response_model=list[DoctorRead])
-def list_doctors(session: Session = Depends(get_session)):
-    """
-    Retrieves all active doctors
-    """
-    return doctor_controllers.list_doctors_controller(session)
+# @router.get("/", response_model=list[DoctorRead])
+# def list_doctors(session: Session = Depends(get_session)):
+#     """
+#     Retrieves all active doctors
+#     """
+#     return doctor_controllers.list_doctors_controller(session)
 
 
-@router.get("/{doctor_id}", response_model=DoctorRead)
-def get_doctor(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
-    """
-    Retrieves a doctor by their UUID.
-    """
-    return doctor_controllers.get_doctor_controller(doctor_id, session)
+# @router.get("/{doctor_id}", response_model=DoctorRead)
+# def get_doctor(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+#     """
+#     Retrieves a doctor by their UUID.
+#     """
+#     return doctor_controllers.get_doctor_controller(doctor_id, session)
 
 
-@router.post("/{doctor_id}/pre-assignments", response_model=DoctorPreAssignmentCreate)
-def create_doctor_pre_assignments(doctor_id: uuid.UUID, pre_assignment_data: DoctorPreAssignmentCreate, session: Session = Depends(get_session)):
-    """
-    Creates pre assignments for a doctor.
-    """
-    return doctor_controllers.create_doctor_pre_assignment_controller(doctor_id, pre_assignment_data, session)
+# @router.post("/{doctor_id}/pre-assignments", response_model=DoctorPreAssignmentCreate)
+# def create_doctor_pre_assignments(doctor_id: uuid.UUID, pre_assignment_data: DoctorPreAssignmentCreate, session: Session = Depends(get_session)):
+#     """
+#     Creates pre assignments for a doctor.
+#     """
+#     return doctor_controllers.create_doctor_pre_assignment_controller(doctor_id, pre_assignment_data, session)
 
 
-@router.get("/{doctor_id}/pre-assignments", response_model=list[DoctorPreAssignmentRead])
-def list_doctor_pre_assignments(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
-    """
-    Lists the pre assignment dates of a doctor
-    """
-    return doctor_controllers.list_doctor_pre_assignments(doctor_id, session)
+# @router.get("/{doctor_id}/pre-assignments", response_model=list[DoctorPreAssignmentRead])
+# def list_doctor_pre_assignments(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+#     """
+#     Lists the pre assignment dates of a doctor
+#     """
+#     return doctor_controllers.list_doctor_pre_assignments(doctor_id, session)
 
 
-@router.post("/{doctor_id}/unavailability", response_model=DoctorUnavailabilityRead)
-def create_doctor_unavailability(doctor_id: uuid.UUID, doctor_unavailability_data: DoctorUnavailabilityCreate, session: Session = Depends(get_session)):
-    """
-    Creates unavailability for a doctor on a specific date
-    """
-    return doctor_controllers.create_doctor_unavailablity_controller(doctor_id, doctor_unavailability_data, session)
+# @router.post("/{doctor_id}/unavailability", response_model=DoctorUnavailabilityRead)
+# def create_doctor_unavailability(doctor_id: uuid.UUID, doctor_unavailability_data: DoctorUnavailabilityCreate, session: Session = Depends(get_session)):
+#     """
+#     Creates unavailability for a doctor on a specific date
+#     """
+#     return doctor_controllers.create_doctor_unavailablity_controller(doctor_id, doctor_unavailability_data, session)
 
 
-@router.get("/{doctor_id}/unavailability", response_model=list[DoctorUnavailabilityRead])
-def list_doctor_unavailabilities(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
-    """
-    Lists the unavailability dates of a doctor
-    """
-    return doctor_controllers.list_doctor_unavailability_controller(doctor_id, session)
-    # todo: make this give a month and return the unav for the month
+# @router.get("/{doctor_id}/unavailability", response_model=list[DoctorUnavailabilityRead])
+# def list_doctor_unavailabilities(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+#     """
+#     Lists the unavailability dates of a doctor
+#     """
+#     return doctor_controllers.list_doctor_unavailability_controller(doctor_id, session)
+#     # todo: make this give a month and return the unav for the month
 
 
-@router.post("/{doctor_id}/position", response_model=DoctorPositionRead)
-def create_doctor_position(doctor_id: uuid.UUID, doctor_position_data: DoctorPositionCreate, session: Session = Depends(get_session)):
-    """
-    Assigns a position to a doctor
-    """
-    return doctor_controllers.create_doctor_position_controller(doctor_id, doctor_position_data, session)
+# @router.post("/{doctor_id}/position", response_model=DoctorPositionRead)
+# def create_doctor_position(doctor_id: uuid.UUID, doctor_position_data: DoctorPositionCreate, session: Session = Depends(get_session)):
+#     """
+#     Assigns a position to a doctor
+#     """
+#     return doctor_controllers.create_doctor_position_controller(doctor_id, doctor_position_data, session)
 
 
-@router.get("/{doctor_id}/position", response_model=list[DoctorPositionRead])
-def list_doctor_positions(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
-    """
-    Lists the positions of a doctor
-    """
-    return doctor_controllers.list_doctor_positions_controller(doctor_id, session)
+# @router.get("/{doctor_id}/position", response_model=list[DoctorPositionRead])
+# def list_doctor_positions(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+#     """
+#     Lists the positions of a doctor
+#     """
+#     return doctor_controllers.list_doctor_positions_controller(doctor_id, session)

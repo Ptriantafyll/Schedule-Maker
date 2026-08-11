@@ -19,14 +19,33 @@ class Doctor(SyncBase, table=True):
     """
     Represents a hospital doctor
 
-    Fileds mirror the DB-level needs used by the application:
+    Fields mirror the DB-level needs used by the application:
     - `name` 
-    - `email`
-    - `department_id`
-    - `team_id`
+    - `email` is indexed and unique
+    - `department_id` references a Department row
+    - `team_id` references a Team row
     """
 
     name: str = Field(index=True)
     email: str = Field(index=True, unique=True)
     department_id: uuid.UUID = Field(foreign_key="department.id")
     team_id: uuid.UUID = Field(foreign_key="team.id")
+
+
+class DoctorUnavailability(SyncBase, table=True):
+    """Tracks specific dates a doctor cannot work for a given month."""
+    doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
+    date: str  # ISO Format: YYYY-MM-DD
+
+
+class DoctorPreAssignment(SyncBase, table=True):
+    """Hard constraints: locked-in (date, shift) assignments before solver runs."""
+    doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
+    shift_id: uuid.UUID = Field(foreign_key="shift.id")
+    date: str  # ISO Format: YYYY-MM-DD
+
+
+class DoctorPosition(SyncBase, table=True):
+    """Association table for the many-to-many relationship between doctors and positions."""
+    doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
+    position_id: uuid.UUID = Field(foreign_key="position.id")

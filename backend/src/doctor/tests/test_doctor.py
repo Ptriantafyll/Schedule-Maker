@@ -17,7 +17,7 @@ from src.department.repository import create_department
 from src.team.schemas import TeamCreate
 from src.team.repository import create_team
 from src.doctor.schemas import DoctorCreate
-from src.doctor.repository import create_doctor
+from src.doctor.repository import create_doctor, get_doctor_by_email
 
 
 @pytest.fixture(name="session")
@@ -51,14 +51,42 @@ def team_fixture(session, department):
 #####################
 
 
-def test_create_doctor(session):
+def test_create_doctor(session, department, team):
     """Test creating a doctor and verifying their fields"""
-    # doctor_data = DoctorCreate()
+    doctor_data = DoctorCreate(
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=department.id,
+        team_id=team.id
+    )
+    new_doctor = create_doctor(session, doctor_data)
+
+    assert isinstance(new_doctor.id, uuid.UUID)
+    assert new_doctor.name == "Dr Panos"
+    assert new_doctor.email == "drpanos@gmail.com"
+    assert new_doctor.department_id == department.id
+    assert new_doctor.team_id == team.id
+    assert new_doctor.is_deleted is False
+    assert new_doctor.sync_status is False
+    assert isinstance(new_doctor.created_at, datetime.datetime)
+    assert isinstance(new_doctor.updated_at, datetime.datetime)
 
 
-def test_get_doctor_by_name(session):
+def test_get_doctor_by_email(session, department, team):
     """Test retrieving a doctor by name"""
 
+    doctor_data = DoctorCreate(
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=department.id,
+        team_id=team.id
+    )
+    new_doctor = create_doctor(session, doctor_data)
+
+    retrieved_doctor = get_doctor_by_email(session, "drpanos@gmail.com")
+
+    assert retrieved_doctor is not None
+    assert retrieved_doctor.id == new_doctor.id
 
 def test_get_doctor_by_id(session):
     """Test retrieving a doctor by id"""

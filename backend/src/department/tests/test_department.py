@@ -2,9 +2,9 @@
 Tests for the department module
 """
 
-from fastapi.testclient import TestClient
-import uuid
 import datetime
+import uuid
+from fastapi.testclient import TestClient
 from src.main import app
 from src.department.repository import create_department, get_active_departments, get_department_by_name
 from src.department.schemas import DepartmentCreate

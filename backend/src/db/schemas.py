@@ -12,6 +12,7 @@ import uuid
 import datetime
 from sqlmodel import Column, SQLModel, Field, JSON
 
+
 class SyncBase(SQLModel):
     """Abstract base class providing synchronization metadata for all tables.
 
@@ -60,31 +61,11 @@ class Shift(SyncBase, table=True):
     position_id: uuid.UUID = Field(foreign_key="position.id")
 
 
-
-class DoctorUnavailability(SyncBase, table=True):
-    """Tracks specific dates a doctor cannot work for a given month."""
-    doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
-    date: str  # ISO Format: YYYY-MM-DD
-
-
-class DoctorPreAssignment(SyncBase, table=True):
-    """Hard constraints: locked-in (date, shift) assignments before solver runs."""
-    doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
-    shift_id: uuid.UUID = Field(foreign_key="shift.id")
-    date: str  # ISO Format: YYYY-MM-DD
-
-
 class Position(SyncBase, table=True):
     """Represents a position that needs to be staffed, such as "ER" or "ICU", stored in the database."""
     name: str
     department_id: uuid.UUID = Field(foreign_key="department.id")
     duty_days: list[int] = Field(default_factory=list, sa_column=Column(JSON))
-
-
-class DoctorPosition(SyncBase, table=True):
-    """Association table for the many-to-many relationship between doctors and positions."""
-    doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
-    position_id: uuid.UUID = Field(foreign_key="position.id")
 
 
 class ShiftAssignment(SyncBase, table=True):
