@@ -32,3 +32,9 @@ def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> Doc
         )
 
     return doctor_repository.create_doctor(session, doctor_data)
+
+
+def list_doctors_controller(session: Session) -> list[DoctorModel]:
+    """Handles logicf or listing all active doctors"""
+    return doctor_repository.get_active_doctors(session)
+    

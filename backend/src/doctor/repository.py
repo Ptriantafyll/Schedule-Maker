@@ -17,12 +17,17 @@ def get_doctor_by_email(session: Session, email: str) -> DoctorModel:
         select(DoctorModel).where(DoctorModel.email == email)
     ).first()
 
-# def get_doctor_by_id(session: Session, doctor_id: str) -> DoctorModel:
-#     pass
+
+def get_doctor_by_id(session: Session, doctor_id: str) -> DoctorModel:
+    """Retrieves a doctor by their unique id"""
+    return session.exec(
+        select(DoctorModel).where(DoctorModel.id == doctor_id)
+    ).first()
 
 
-# def get_active_doctors(session: Session) -> list[DoctorModel]:
-#     pass
+def get_active_doctors(session: Session) -> list[DoctorModel]:
+    """Retrieves all active doctors"""
+    return list(session.exec(select(DoctorModel).where(not_(DoctorModel.is_deleted))).all())
 
 
 def create_doctor(session: Session, doctor_data: DoctorCreate) -> DoctorModel:

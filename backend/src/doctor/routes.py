@@ -25,12 +25,12 @@ def create_doctor(doctor_data: DoctorCreate, session: Session = Depends(get_sess
     return doctor_controllers.create_doctor_controller(doctor_data, session)
 
 
-# @router.get("/", response_model=list[DoctorRead])
-# def list_doctors(session: Session = Depends(get_session)):
-#     """
-#     Retrieves all active doctors
-#     """
-#     return doctor_controllers.list_doctors_controller(session)
+@router.get("/", response_model=list[DoctorRead])
+def list_doctors(session: Session = Depends(get_session)):
+    """
+    Retrieves all active doctors
+    """
+    return doctor_controllers.list_doctors_controller(session)
 
 
 # @router.get("/{doctor_id}", response_model=DoctorRead)
