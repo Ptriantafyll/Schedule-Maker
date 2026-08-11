@@ -13,11 +13,11 @@ from sqlmodel import SQLModel, create_engine, Session
 
 from src.main import app
 from src.department.schemas import DepartmentCreate
-from src.department.repository import create_department
+from src.department import repository as department_repository
 from src.team.schemas import TeamCreate
 from src.team.repository import create_team
 from src.doctor.schemas import DoctorCreate
-from src.doctor.repository import create_doctor, get_doctor_by_email
+from src.doctor import repository as doctor_repository
 
 
 @pytest.fixture(name="session")
@@ -37,7 +37,7 @@ def session_fixture():
 def department_fixture(session):
     """Creates a reusable department for tests"""
     dept_data = DepartmentCreate(name="Cardiology", code="CARD")
-    return create_department(session, dept_data)
+    return department_repository.create_department(session, dept_data)
 
 
 @pytest.fixture(name="team")
@@ -59,7 +59,7 @@ def test_create_doctor(session, department, team):
         department_id=department.id,
         team_id=team.id
     )
-    new_doctor = create_doctor(session, doctor_data)
+    new_doctor = doctor_repository.create_doctor(session, doctor_data)
 
     assert isinstance(new_doctor.id, uuid.UUID)
     assert new_doctor.name == "Dr Panos"
@@ -81,15 +81,28 @@ def test_get_doctor_by_email(session, department, team):
         department_id=department.id,
         team_id=team.id
     )
-    new_doctor = create_doctor(session, doctor_data)
+    new_doctor = doctor_repository.create_doctor(session, doctor_data)
 
-    retrieved_doctor = get_doctor_by_email(session, "drpanos@gmail.com")
+    retrieved_doctor = doctor_repository.get_doctor_by_email(session, "drpanos@gmail.com")
 
     assert retrieved_doctor is not None
     assert retrieved_doctor.id == new_doctor.id
 
-def test_get_doctor_by_id(session):
+def test_get_doctor_by_id(session, department, team):
     """Test retrieving a doctor by id"""
+
+    doctor_data = DoctorCreate(
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=department.id,
+        team_id=team.id
+    )
+    new_doctor = doctor_repository.create_doctor(session, doctor_data)
+
+    retrieved_doctor = doctor_repository.get_doctor_by_id(session, new_doctor.id)
+
+    assert retrieved_doctor is not None
+    assert retrieved_doctor.id == new_doctor.id
 
 
 def test_get_active_doctors(session):
