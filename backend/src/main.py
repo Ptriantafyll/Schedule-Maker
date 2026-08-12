@@ -8,8 +8,9 @@ import logging
 from uuid import uuid4
 from time import perf_counter
 from collections.abc import Awaitable, Callable
-
 from contextlib import asynccontextmanager
+
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -24,6 +25,7 @@ from src.utils.misc import elapsed_ms
 
 configure_logging()
 logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(_app_instance: FastAPI):
@@ -99,6 +101,30 @@ async def log_requests(request: Request, call_next):
         request_id_var.reset(token)
 
 
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Log HTTP exceptions with context before returning the response."""
+    fields = request_fields(
+        request,
+        event="http.error",
+        status_code=exc.status_code,
+    )
+    fields["detail"] = exc.detail
+
+    # Log as WARNING for client errors (4xx), ERROR for server errors (5xx)
+    if exc.status_code >= 500:
+        logger.error("HTTP %s: %s", exc.status_code, exc.detail, extra=fields)
+    else:
+        logger.warning("HTTP %s: %s", exc.status_code,
+                       exc.detail, extra=fields)
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+        headers=getattr(exc, "headers", None),
+    )
+
+
 @app.exception_handler
 async def log_validation_error(
     request: Request,
@@ -117,7 +143,6 @@ async def log_validation_error(
     fields["error_count"] = len(exc.errors())
     logger.warning("Request validation failed", extra=fields)
     return await request_validation_exception_handler(request, exc)
-
 
 
 @app.get("/health", tags=["System"])

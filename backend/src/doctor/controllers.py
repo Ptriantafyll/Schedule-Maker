@@ -5,7 +5,6 @@ Doctor controller functions for handling business logic related to doctor manage
 """
 
 import uuid
-import logging
 from fastapi import HTTPException, status
 from sqlmodel import Session
 from src.doctor import repository as doctor_repository
@@ -16,7 +15,6 @@ from src.department import repository as department_repository
 # from src.shift import repository as shift_repository
 from src.team import repository as team_repository
 
-logger = logging.getLogger(__name__)
 
 
 def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> DoctorModel:

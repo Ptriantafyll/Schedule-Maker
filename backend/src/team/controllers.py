@@ -2,12 +2,10 @@
 Team controller functions for handling business logic related to team management.
 """
 
-import logging
 from fastapi import HTTPException, status
 
 from src.team import repository
 
-logger = logging.getLogger(__name__)
 
 
 def create_team_controller(team_data, session):
