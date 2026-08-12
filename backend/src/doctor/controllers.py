@@ -16,7 +16,6 @@ from src.department import repository as department_repository
 from src.team import repository as team_repository
 
 
-
 def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> DoctorModel:
     """Handles the business logic for creating a new doctor"""
     existing_doctor = doctor_repository.get_doctor_by_email(
@@ -86,3 +85,8 @@ def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UU
         doctor_id=doctor_id,
         pre_assignment_data=pre_assignment_data
     )
+
+
+def list_doctor_pre_assignments(session: Session, doctor_id: uuid.UUID) -> DoctorPreAssignmentModel:
+    """List all doctor pre assignments"""
+    return doctor_repository.get_doctor_pre_assignments(session, doctor_id)

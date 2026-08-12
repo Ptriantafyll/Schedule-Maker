@@ -48,13 +48,15 @@ def create_doctor_pre_assignments(doctor_id: uuid.UUID, pre_assignment_data: Doc
     """
     return doctor_controllers.create_doctor_pre_assignment_controller(session, doctor_id, pre_assignment_data)
 
+# todo: add month to get pre assignments for
 
-# @router.get("/{doctor_id}/pre-assignments", response_model=list[DoctorPreAssignmentRead])
-# def list_doctor_pre_assignments(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
-#     """
-#     Lists the pre assignment dates of a doctor
-#     """
-#     return doctor_controllers.list_doctor_pre_assignments(doctor_id, session)
+
+@router.get("/{doctor_id}/pre-assignments", response_model=list[DoctorPreAssignmentRead])
+def list_doctor_pre_assignments(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+    """
+    Lists the pre assignment dates of a doctor
+    """
+    return doctor_controllers.list_doctor_pre_assignments(session, doctor_id)
 
 
 # @router.post("/{doctor_id}/unavailability", response_model=DoctorUnavailabilityRead)

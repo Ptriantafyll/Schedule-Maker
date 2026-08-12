@@ -55,8 +55,16 @@ def create_doctor_pre_assignment(session: Session, doctor_id: uuid.UUID, pre_ass
     return new_pre_assignment
 
 
-# def get_doctor_pre_assignments(session: Session, doctor_id: str) -> list[DoctorPreAssignmentModel]:
-#     pass
+# todo: add a month to get pre assignments for
+def get_doctor_pre_assignments(session: Session, doctor_id: str) -> list[DoctorPreAssignmentModel]:
+    """Retrieves all the pre assignments of a doctor"""
+    return list(
+        session.exec(
+            select(DoctorPreAssignmentModel).where(
+                DoctorPreAssignmentModel.doctor_id == doctor_id)
+        ).all()
+    )
+
 
 def get_doctor_pre_assignment_by_id(session: Session, pre_assignment_id: str) -> DoctorPreAssignmentModel:
     """Retrieves a pre assignment by its unique id"""

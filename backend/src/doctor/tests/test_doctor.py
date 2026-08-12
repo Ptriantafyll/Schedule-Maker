@@ -166,7 +166,7 @@ def test_create_doctor_pre_assignment(session, team, department, shift):
 
     pre_assignment_data = DoctorPreAssignmentCreate(
         date="2026-08-12",
-        shift_id=shift.id  # todo, add new shift
+        shift_id=shift.id   
     )
 
     new_pre_assignment = doctor_repository.create_doctor_pre_assignment(
@@ -178,8 +178,24 @@ def test_create_doctor_pre_assignment(session, team, department, shift):
     assert new_pre_assignment.doctor_id == new_doctor.id
 
 
-def test_get_doctor_pre_assignment(session):
+def test_get_doctor_pre_assignment(session, department, team, shift):
     """Test retrieving a doctor's pre assignments"""
+    new_doctor = create_new_doctor(
+        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
+
+    pre_assignment_data = DoctorPreAssignmentCreate(
+        date="2026-08-12",
+        shift_id=shift.id   
+    )
+
+    new_pre_assignment = doctor_repository.create_doctor_pre_assignment(
+        session, new_doctor.id, pre_assignment_data
+    )
+
+    pre_assignments = doctor_repository.get_doctor_pre_assignments(session, new_doctor.id)
+
+    assert isinstance(pre_assignments, list)
+    assert new_pre_assignment in pre_assignments
 
 
 def test_create_doctor_unavailability(session):
