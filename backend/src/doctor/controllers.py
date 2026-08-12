@@ -8,10 +8,11 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session
 from src.doctor import repository as doctor_repository
-from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate
+from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate, DoctorPositionCreate
 from src.doctor.models import Doctor as DoctorModel
 from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
+from src.doctor.models import DoctorPosition as DoctorPositionModel
 from src.department import repository as department_repository
 # from src.shift import repository as shift_repository
 from src.team import repository as team_repository
@@ -129,4 +130,33 @@ def list_doctor_unavailability_controller(session: Session, doctor_id: uuid.UUID
     return doctor_repository.get_doctor_unavailability(
         session=session,
         doctor_id=doctor_id
+    )
+
+
+def create_doctor_position_controller(session: Session, doctor_id: uuid.UUID, doctor_pos_data: DoctorPositionCreate) -> DoctorPositionModel:
+    """Handles the logic for creating a new doctor-position assosiation"""
+
+    existing_doctor_pos = doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=doctor_id,
+        position_id=doctor_pos_data.position_id
+    )
+
+    if existing_doctor_pos:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The doctor is already assigned to this position"
+        )
+
+    doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
+    if not doctor:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Doctor does not exist"
+        )
+
+    return doctor_repository.create_doctor_position(
+        session=session,
+        doctor_id=doctor_id,
+        doctor_pos_data=doctor_pos_data,
     )

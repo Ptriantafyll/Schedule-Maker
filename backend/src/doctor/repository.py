@@ -9,7 +9,7 @@ from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUn
 from src.doctor.models import Doctor as DoctorModel
 from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
-# from src.doctor.models import DoctorPosition as DoctorPositionModel
+from src.doctor.models import DoctorPosition as DoctorPositionModel
 
 
 def get_doctor_by_email(session: Session, email: str) -> DoctorModel:
@@ -119,9 +119,25 @@ def get_doctor_unavailability(session: Session, doctor_id: str) -> list[DoctorUn
     return session.exec(statement).all()
 
 
-# def create_doctor_position(session: Session, doctor_pos_data: DoctorPositionCreate) -> DoctorPositionModel:
-#     pass
+def create_doctor_position(session: Session, doctor_id:str, doctor_pos_data: DoctorPositionCreate) -> DoctorPositionModel:
+    """Creates a doctor-position entry"""
+
+    new_doctor_pos = DoctorPositionModel(
+        position_id=doctor_pos_data.position_id,
+        doctor_id=doctor_id
+    )
+
+    session.add(new_doctor_pos)
+    session.commit()
+    session.refresh(new_doctor_pos)
+    return new_doctor_pos
 
 
-# def get_doctor_position(session: Session, doctor_id: str) -> DoctorPositionModel:
-#     pass
+def get_doctor_position_by_id(session: Session, doctor_id: str, position_id: str) -> DoctorPositionModel:
+    """Retrieves a doctor-position"""
+    statement = select(DoctorPositionModel).where(
+        DoctorPositionModel.doctor_id == doctor_id,
+        DoctorPositionModel.position_id == position_id,
+    )
+
+    return session.exec(statement).first()

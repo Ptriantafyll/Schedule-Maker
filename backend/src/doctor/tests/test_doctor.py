@@ -20,7 +20,7 @@ from src.shift import repository as shift_repository
 from src.shift.schemas import ShiftCreate
 from src.position import repository as position_repository
 from src.position.schemas import PositionCreate
-from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate
+from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate, DoctorPositionCreate
 from src.doctor import repository as doctor_repository
 from src.doctor import controllers as doctor_controllers
 
@@ -244,8 +244,33 @@ def test_get_doctor_unavailability(session, team, department):
     assert new_unavailability in doctor_unavailabilities
 
 
-def test_create_doctor_position(session):
+def test_create_doctor_position(session, team, department):
     """Test creating a position for a doctor"""
+    new_doctor = create_new_doctor(
+        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
+
+    position_data = PositionCreate(
+        duty_days=[1,2,3],
+        department_id=department.id,
+        name="ER"
+    )
+    new_position = position_repository.create_position(
+        session=session,
+        position_data=position_data
+    )
+
+    doctor_pos_data= DoctorPositionCreate(
+        position_id=new_position.id
+    )
+    new_doctor_pos = doctor_repository.create_doctor_position(
+        session=session,
+        doctor_id=new_doctor.id,
+        doctor_pos_data=doctor_pos_data
+    )
+
+    assert isinstance(new_doctor_pos.id, uuid.UUID)
+    assert new_doctor_pos.position_id == new_position.id
+    assert new_doctor_pos.doctor_id == new_doctor.id
 
 
 def test_doctor_has_department_foreign_key(session):
