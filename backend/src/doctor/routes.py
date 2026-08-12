@@ -67,13 +67,13 @@ def create_doctor_unavailability(doctor_id: uuid.UUID, doctor_unavailability_dat
     return doctor_controllers.create_doctor_unavailabilty_controller(session, doctor_id, doctor_unavailability_data)
 
 
-# @router.get("/{doctor_id}/unavailability", response_model=list[DoctorUnavailabilityRead])
-# def list_doctor_unavailabilities(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
-#     """
-#     Lists the unavailability dates of a doctor
-#     """
-#     return doctor_controllers.list_doctor_unavailability_controller(doctor_id, session)
-#     # todo: make this give a month and return the unav for the month
+@router.get("/{doctor_id}/unavailability", response_model=list[DoctorUnavailabilityRead])
+def list_doctor_unavailabilities(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+    """
+    Lists the unavailability dates of a doctor
+    """
+    return doctor_controllers.list_doctor_unavailability_controller(session, doctor_id)
+    # todo: make this give a month and return the unav for the month
 
 
 # @router.post("/{doctor_id}/position", response_model=DoctorPositionRead)

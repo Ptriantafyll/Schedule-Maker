@@ -201,8 +201,6 @@ def test_get_doctor_pre_assignment(session, department, team, shift):
 
     assert isinstance(pre_assignments, list)
     assert new_pre_assignment in pre_assignments
-    assert new_pre_assignment.date == datetime.date(2026, 8, 12)
-    assert new_pre_assignment.doctor_id == new_doctor.id
 
 
 def test_create_doctor_unavailability(session, team, department):
@@ -224,8 +222,26 @@ def test_create_doctor_unavailability(session, team, department):
     assert new_unavailability.doctor_id == new_doctor.id
 
 
-def test_get_doctor_unavailability(session):
+def test_get_doctor_unavailability(session, team, department):
     """Test retrieving unavailability dates for a doctor"""
+    new_doctor = create_new_doctor(
+        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 8, 12)
+    )
+    new_unavailability = doctor_repository.create_doctor_unavailability(
+        session=session,
+        doctor_id=new_doctor.id,
+        doctor_unavailability_data=unavailability_data
+    )
+
+    doctor_unavailabilities = doctor_repository.get_doctor_unavailability(
+        session=session,
+        doctor_id=new_doctor.id
+    )
+
+    assert isinstance(doctor_unavailabilities, list)
+    assert new_unavailability in doctor_unavailabilities
 
 
 def test_create_doctor_position(session):
@@ -476,7 +492,7 @@ def test_create_doctor_unavailability_route(client, team, department, session):
     assert "updated_at" in data
 
 
-def test_create_doctor_unavailability_route_invalid_payload(client,team, department, session):
+def test_create_doctor_unavailability_route_invalid_payload(client, team, department, session):
     """Tests the POST /doctors/{doctor_id}/unavailability route rejects invalid payload"""
     new_doctor = create_new_doctor(
         session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)

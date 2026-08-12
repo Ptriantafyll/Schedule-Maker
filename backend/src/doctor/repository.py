@@ -107,8 +107,16 @@ def get_doctor_unavailability_by_date(session: Session, doctor_id: str, target_d
 
     return session.exec(statement).first()
 
-# def get_doctor_unavailability(session: Session, doctor_id: str) -> list[DoctorUnavailabilityModel]:
+# def get_doctor_unavailability_by_id(session: Session, doctor_id: str) -> list[DoctorUnavailabilityModel]:
 #     pass
+
+def get_doctor_unavailability(session: Session, doctor_id: str) -> list[DoctorUnavailabilityModel]:
+    """Retrieves the unavailability dates of a doctor"""
+    statement = select(DoctorUnavailabilityModel).where(
+        DoctorUnavailabilityModel.doctor_id == doctor_id
+    )
+
+    return session.exec(statement).all()
 
 
 # def create_doctor_position(session: Session, doctor_pos_data: DoctorPositionCreate) -> DoctorPositionModel:

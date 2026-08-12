@@ -122,3 +122,11 @@ def create_doctor_unavailabilty_controller(session: Session, doctor_id: uuid.UUI
         doctor_id=doctor_id,
         doctor_unavailability_data=unavailability_data
     )
+
+
+def list_doctor_unavailability_controller(session: Session, doctor_id: uuid.UUID) -> list[DoctorUnavailabilityModel]:
+    """Handles the logic for listing all the unavailabilities of a doctor"""
+    return doctor_repository.get_doctor_unavailability(
+        session=session,
+        doctor_id=doctor_id
+    )
