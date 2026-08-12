@@ -8,9 +8,10 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session
 from src.doctor import repository as doctor_repository
-from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate
+from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate
 from src.doctor.models import Doctor as DoctorModel
 from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
+from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 from src.department import repository as department_repository
 # from src.shift import repository as shift_repository
 from src.team import repository as team_repository
@@ -62,14 +63,16 @@ def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UU
     """Handles logic for creating a pre assignment for a doctor"""
 
     # todo: test existing pre assignment by doctor id and assignment
-    # existing_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_id(
-    #     session=session, pre_assignment_id=my_id
-    # )
-    # if existing_pre_assignment:
-    #     raise HTTPException(
-    #         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-    #         detail="Pre assignment already exists"
-    #     )
+    existing_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        target_date=pre_assignment_data.date,
+        doctor_id=doctor_id
+    )
+    if existing_pre_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Pre assignment already exists"
+        )
 
     doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
     # shift = shift_repository.get_shift_by_id
@@ -87,6 +90,35 @@ def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UU
     )
 
 
-def list_doctor_pre_assignments(session: Session, doctor_id: uuid.UUID) -> DoctorPreAssignmentModel:
+def list_doctor_pre_assignments_controller(session: Session, doctor_id: uuid.UUID) -> DoctorPreAssignmentModel:
     """List all doctor pre assignments"""
     return doctor_repository.get_doctor_pre_assignments(session, doctor_id)
+
+
+def create_doctor_unavailabilty_controller(session: Session, doctor_id: uuid.UUID, unavailability_data: DoctorUnavailabilityCreate) -> DoctorUnavailabilityModel:
+    """Handles the logic to create a new unavailability for a doctor"""
+
+    existing_doc_unavailability = doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=doctor_id,
+        target_date=unavailability_data.date
+    )
+
+    if existing_doc_unavailability:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unavailability already exists"
+        )
+
+    doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
+    if not doctor:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Doctor does not exist"
+        )
+
+    return doctor_repository.create_doctor_unavailability(
+        session=session,
+        doctor_id=doctor_id,
+        doctor_unavailability_data=unavailability_data
+    )

@@ -56,15 +56,15 @@ def list_doctor_pre_assignments(doctor_id: uuid.UUID, session: Session = Depends
     """
     Lists the pre assignment dates of a doctor
     """
-    return doctor_controllers.list_doctor_pre_assignments(session, doctor_id)
+    return doctor_controllers.list_doctor_pre_assignments_controller(session, doctor_id)
 
 
-# @router.post("/{doctor_id}/unavailability", response_model=DoctorUnavailabilityRead)
-# def create_doctor_unavailability(doctor_id: uuid.UUID, doctor_unavailability_data: DoctorUnavailabilityCreate, session: Session = Depends(get_session)):
-#     """
-#     Creates unavailability for a doctor on a specific date
-#     """
-#     return doctor_controllers.create_doctor_unavailablity_controller(doctor_id, doctor_unavailability_data, session)
+@router.post("/{doctor_id}/unavailability", response_model=DoctorUnavailabilityRead, status_code=status.HTTP_201_CREATED)
+def create_doctor_unavailability(doctor_id: uuid.UUID, doctor_unavailability_data: DoctorUnavailabilityCreate, session: Session = Depends(get_session)):
+    """
+    Creates unavailability for a doctor on a specific date
+    """
+    return doctor_controllers.create_doctor_unavailabilty_controller(session, doctor_id, doctor_unavailability_data)
 
 
 # @router.get("/{doctor_id}/unavailability", response_model=list[DoctorUnavailabilityRead])

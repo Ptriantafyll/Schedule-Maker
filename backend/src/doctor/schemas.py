@@ -33,12 +33,16 @@ class DoctorBase(BaseModel):
     team_id: uuid.UUID
 
 
-class DoctorCreate(DoctorBase):
+class DoctorCreate(BaseModel):
     """
     Schema for doctor creation requests
 
     Inherits all required fields from `DoctorBase`. Use this DTO as the request body for POST /departments.
     """
+    name: str
+    email: str
+    department_id: uuid.UUID
+    team_id: uuid.UUID
 
 
 class DoctorUpdate(BaseModel):
@@ -86,7 +90,7 @@ class DoctorUnavailabilityBase(BaseModel):
     """
 
     doctor_id: uuid.UUID
-    date: str                        # ISO YYYY-MM-DD
+    date: datetime.date
 
 
 class DoctorUnavailabilityCreate(BaseModel):
@@ -96,14 +100,14 @@ class DoctorUnavailabilityCreate(BaseModel):
     Use this DTO as the request body for POST /doctors/{id}/unavailabilities
     doctor_id comes from the path, not the body.
     """
-    date: str
-    id: uuid.UUID
+    date: datetime.date
 
 
 class DoctorUnavailabilityRead(DoctorUnavailabilityBase):
     """
     Schema returned to clients for doctor unavailability resources.
     """
+    id: uuid.UUID
 
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -125,7 +129,7 @@ class DoctorPreAssignmentBase(BaseModel):
     """
     doctor_id: uuid.UUID
     shift_id: uuid.UUID
-    date: str
+    date: datetime.date
 
 
 class DoctorPreAssignmentCreate(BaseModel):
@@ -134,7 +138,7 @@ class DoctorPreAssignmentCreate(BaseModel):
     doctor_id comes from the path, not the body.
     """
     shift_id: uuid.UUID
-    date: str
+    date: datetime.date
 
 
 class DoctorPreAssignmentRead(DoctorPreAssignmentBase):
@@ -144,6 +148,8 @@ class DoctorPreAssignmentRead(DoctorPreAssignmentBase):
     id: uuid.UUID
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    is_deleted: bool = False
+    sync_status: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -178,5 +184,7 @@ class DoctorPositionRead(DoctorPositionBase):
     id: uuid.UUID
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    is_deleted: bool = False
+    sync_status: bool = False
 
     model_config = ConfigDict(from_attributes=True)

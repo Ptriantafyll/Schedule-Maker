@@ -20,7 +20,7 @@ from src.shift import repository as shift_repository
 from src.shift.schemas import ShiftCreate
 from src.position import repository as position_repository
 from src.position.schemas import PositionCreate
-from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate
+from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate
 from src.doctor import repository as doctor_repository
 from src.doctor import controllers as doctor_controllers
 
@@ -74,16 +74,18 @@ def team_fixture(session, department):
     team_data = TeamCreate(name="ER Team A", department_id=department.id)
     return create_team(session, team_data)
 
+
 @pytest.fixture(name="position")
 def position_fixture(session, department):
     """Creates a reusable position for tests"""
     position_data = PositionCreate(
         name="ER",
         department_id=department.id,
-        duty_days=[1,3,5],
+        duty_days=[1, 3, 5],
     )
 
     return position_repository.create_position(session, position_data)
+
 
 @pytest.fixture(name="shift")
 def shift_fixture(session, position):
@@ -100,6 +102,8 @@ def shift_fixture(session, position):
 #####################
 # Repository tests
 #####################
+
+
 def test_create_doctor(session, department, team):
     """Test creating a doctor and verifying their fields"""
     new_doctor = create_new_doctor(
@@ -165,15 +169,15 @@ def test_create_doctor_pre_assignment(session, team, department, shift):
         session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
 
     pre_assignment_data = DoctorPreAssignmentCreate(
-        date="2026-08-12",
-        shift_id=shift.id   
+        date=datetime.date(2026, 8, 12),
+        shift_id=shift.id
     )
 
     new_pre_assignment = doctor_repository.create_doctor_pre_assignment(
         session, new_doctor.id, pre_assignment_data
     )
     assert isinstance(new_pre_assignment.id, uuid.UUID)
-    assert new_pre_assignment.date == "2026-08-12"
+    assert new_pre_assignment.date == datetime.date(2026, 8, 12)
     assert new_pre_assignment.shift_id == shift.id
     assert new_pre_assignment.doctor_id == new_doctor.id
 
@@ -184,22 +188,40 @@ def test_get_doctor_pre_assignment(session, department, team, shift):
         session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
 
     pre_assignment_data = DoctorPreAssignmentCreate(
-        date="2026-08-12",
-        shift_id=shift.id   
+        date=datetime.date(2026, 8, 12),
+        shift_id=shift.id
     )
 
     new_pre_assignment = doctor_repository.create_doctor_pre_assignment(
         session, new_doctor.id, pre_assignment_data
     )
 
-    pre_assignments = doctor_repository.get_doctor_pre_assignments(session, new_doctor.id)
+    pre_assignments = doctor_repository.get_doctor_pre_assignments(
+        session, new_doctor.id)
 
     assert isinstance(pre_assignments, list)
     assert new_pre_assignment in pre_assignments
+    assert new_pre_assignment.date == datetime.date(2026, 8, 12)
+    assert new_pre_assignment.doctor_id == new_doctor.id
 
 
-def test_create_doctor_unavailability(session):
+def test_create_doctor_unavailability(session, team, department):
     """Test creating unavailability dates for a doctor"""
+    new_doctor = create_new_doctor(
+        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
+
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 8, 12)
+    )
+    new_unavailability = doctor_repository.create_doctor_unavailability(
+        session=session,
+        doctor_id=new_doctor.id,
+        doctor_unavailability_data=unavailability_data
+    )
+
+    assert isinstance(new_unavailability.id, uuid.UUID)
+    assert new_unavailability.date == datetime.date(2026, 8, 12)
+    assert new_unavailability.doctor_id == new_doctor.id
 
 
 def test_get_doctor_unavailability(session):
@@ -396,7 +418,7 @@ def test_create_doctor_pre_assignments_route(client, team, department, shift, se
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/pre-assignments",
         json={
-            "date": "2026-08-12",
+            "date": str(datetime.date(2026, 8, 12)),
             "doctor_id": str(new_doctor.id),
             "shift_id": str(shift.id)
         }
@@ -404,7 +426,7 @@ def test_create_doctor_pre_assignments_route(client, team, department, shift, se
 
     assert response.status_code == 201
     data = response.json()
-    assert data["date"] == "2026-08-12"
+    assert data["date"] == str(datetime.date(2026, 8, 12))
     assert data["doctor_id"] == str(new_doctor.id)
     assert data["shift_id"] == str(shift.id)
     assert "id" in data
@@ -421,7 +443,7 @@ def test_create_doctor_pre_assignments_route_invalid_payload(client, team, depar
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/pre-assignments",
         json={
-            "date": "2026-08-12",
+            "date": str(datetime.date(2026, 8, 12)),
             "doctor_id": str(new_doctor.id),
         }
     )
@@ -433,14 +455,37 @@ def test_get_doctor_pre_assigments_route():
     # TODO
 
 
-def test_create_doctor_unavailability_route():
+def test_create_doctor_unavailability_route(client, team, department, session):
     """Tests the POST /doctors/{doctor_id}/unavailability route"""
-    # TODO
+    new_doctor = create_new_doctor(
+        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
+
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        json={
+            "date": str(datetime.date(2026, 8, 12)),
+        }
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["date"] == str(datetime.date(2026, 8, 12))
+    assert data["doctor_id"] == str(new_doctor.id)
+    assert "id" in data
+    assert "created_at" in data
+    assert "updated_at" in data
 
 
-def test_create_doctor_unavailability_route_invalid_payload():
+def test_create_doctor_unavailability_route_invalid_payload(client,team, department, session):
     """Tests the POST /doctors/{doctor_id}/unavailability route rejects invalid payload"""
-    # TODO
+    new_doctor = create_new_doctor(
+        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
+
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        json={}
+    )
+    assert response.status_code == 422
 
 
 def test_get_doctor_unavailability_route():

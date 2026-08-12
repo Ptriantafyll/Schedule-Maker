@@ -3,11 +3,12 @@ Doctor repository function for handling database operations.
 """
 
 import uuid
+import datetime
 from sqlmodel import Session, not_, select
 from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate, DoctorPositionCreate
 from src.doctor.models import Doctor as DoctorModel
 from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
-# from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
+from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 # from src.doctor.models import DoctorPosition as DoctorPositionModel
 
 
@@ -54,8 +55,20 @@ def create_doctor_pre_assignment(session: Session, doctor_id: uuid.UUID, pre_ass
     session.refresh(new_pre_assignment)
     return new_pre_assignment
 
-
 # todo: add a month to get pre assignments for
+
+
+def get_doctor_pre_assignment_by_date(session: Session, doctor_id: str, target_date: datetime.date) -> DoctorPreAssignmentModel:
+    """Retrieves the unavailability of a doctor given a date"""
+
+    statement = select(DoctorPreAssignmentModel).where(
+        DoctorPreAssignmentModel.doctor_id == doctor_id,
+        DoctorPreAssignmentModel.date == target_date
+    )
+
+    return session.exec(statement).first()
+
+
 def get_doctor_pre_assignments(session: Session, doctor_id: str) -> list[DoctorPreAssignmentModel]:
     """Retrieves all the pre assignments of a doctor"""
     return list(
@@ -71,9 +84,28 @@ def get_doctor_pre_assignment_by_id(session: Session, pre_assignment_id: str) ->
     return session.get(DoctorPreAssignmentModel, pre_assignment_id)
 
 
-# def create_doctor_unavailability(session: Session, doctor_unavailability_data: DoctorUnavailabilityCreate) -> DoctorUnavailabilityModel:
-#     pass
+def create_doctor_unavailability(session: Session, doctor_id: str, doctor_unavailability_data: DoctorUnavailabilityCreate) -> DoctorUnavailabilityModel:
+    """Creates an unavailability for a doctor and date"""
+    new_doc_unavailability = DoctorUnavailabilityModel(
+        date=doctor_unavailability_data.date,
+        doctor_id=doctor_id
+    )
 
+    session.add(new_doc_unavailability)
+    session.commit()
+    session.refresh(new_doc_unavailability)
+    return new_doc_unavailability
+
+
+def get_doctor_unavailability_by_date(session: Session, doctor_id: str, target_date: datetime.date):
+    """Retrieves the unavailability of a doctor given a date"""
+
+    statement = select(DoctorUnavailabilityModel).where(
+        DoctorUnavailabilityModel.doctor_id == doctor_id,
+        DoctorUnavailabilityModel.date == target_date,
+    )
+
+    return session.exec(statement).first()
 
 # def get_doctor_unavailability(session: Session, doctor_id: str) -> list[DoctorUnavailabilityModel]:
 #     pass

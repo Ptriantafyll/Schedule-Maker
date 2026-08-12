@@ -10,8 +10,9 @@ extraction). Keep migrations in sync manually if you change this schema.
 from __future__ import annotations
 
 import uuid
-
+import datetime
 from sqlmodel import Field
+
 from src.db.schemas import SyncBase
 
 
@@ -35,14 +36,14 @@ class Doctor(SyncBase, table=True):
 class DoctorUnavailability(SyncBase, table=True):
     """Tracks specific dates a doctor cannot work for a given month."""
     doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
-    date: str  # ISO Format: YYYY-MM-DD
+    date: datetime.date
 
 
 class DoctorPreAssignment(SyncBase, table=True):
     """Hard constraints: locked-in (date, shift) assignments before solver runs."""
     doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
     shift_id: uuid.UUID = Field(foreign_key="shift.id")
-    date: str  # ISO Format: YYYY-MM-DD
+    date: datetime.date
 
 
 class DoctorPosition(SyncBase, table=True):
