@@ -4,6 +4,7 @@ Module doctor.controllers.py
 Doctor controller functions for handling business logic related to doctor management.
 """
 
+import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session
 from src.doctor import repository as doctor_repository
@@ -35,6 +36,19 @@ def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> Doc
 
 
 def list_doctors_controller(session: Session) -> list[DoctorModel]:
-    """Handles logicf or listing all active doctors"""
+    """Handles logic of listing all active doctors"""
     return doctor_repository.get_active_doctors(session)
-    
+
+
+def get_doctor_controller(session: Session, doctor_id: uuid.UUID) -> DoctorModel:
+    """Handles logic for retrieving a specific doctor by their UUID"""
+
+    doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
+
+    if not doctor or doctor.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor not found"
+        )
+
+    return doctor

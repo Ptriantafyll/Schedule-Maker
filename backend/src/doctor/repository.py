@@ -20,10 +20,7 @@ def get_doctor_by_email(session: Session, email: str) -> DoctorModel:
 
 def get_doctor_by_id(session: Session, doctor_id: str) -> DoctorModel:
     """Retrieves a doctor by their unique id"""
-    return session.exec(
-        select(DoctorModel).where(DoctorModel.id == doctor_id)
-    ).first()
-
+    return session.get(DoctorModel, doctor_id)
 
 def get_active_doctors(session: Session) -> list[DoctorModel]:
     """Retrieves all active doctors"""

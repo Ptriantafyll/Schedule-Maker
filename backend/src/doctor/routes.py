@@ -33,12 +33,12 @@ def list_doctors(session: Session = Depends(get_session)):
     return doctor_controllers.list_doctors_controller(session)
 
 
-# @router.get("/{doctor_id}", response_model=DoctorRead)
-# def get_doctor(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
-#     """
-#     Retrieves a doctor by their UUID.
-#     """
-#     return doctor_controllers.get_doctor_controller(doctor_id, session)
+@router.get("/{doctor_id}", response_model=DoctorRead)
+def get_doctor(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+    """
+    Retrieves a doctor by their UUID.
+    """
+    return doctor_controllers.get_doctor_controller(session=session, doctor_id=doctor_id)
 
 
 # @router.post("/{doctor_id}/pre-assignments", response_model=DoctorPreAssignmentCreate)

@@ -111,7 +111,7 @@ def test_get_doctor_by_id(session, department, team):
 
 def test_get_active_doctors(session, team, department):
     """Test retrieving all active doctors"""
-    
+
     doctor_data = DoctorCreate(
         name="Dr Panos",
         email="drpanos@gmail.com",
@@ -209,10 +209,14 @@ def test_create_doctor_controller_duplicate_name(session, department, team):
 
 def test_get_doctor_controller_nonexistent(session):
     """Test that retrieving a non-existent doctor raises a 404 error"""
-    # non_existent_id = uuid.uuid4()
-    pass
-    # with pytest.raises(Exception) as exc_info:
-    #     doctor_controllers.
+    non_existent_id = uuid.uuid4()
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.get_doctor_controller(
+            session=session, doctor_id=non_existent_id)
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert "not found" in exc_info.value.detail
 
 
 def test_get_doctor_controller_deleted(session):
@@ -245,7 +249,7 @@ def test_create_doctor_route(client, department, team):
         "api/v1/doctors",
         json={
             "name": "Dr Panos",
-            "email": "drpanos@gmeil.com",
+            "email": "drpanos@gmail.com",
             "department_id": str(department.id),
             "team_id": str(team.id)
         }
@@ -254,7 +258,7 @@ def test_create_doctor_route(client, department, team):
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Dr Panos"
-    assert data["email"] == "drpanos@gmeil.com"
+    assert data["email"] == "drpanos@gmail.com"
     assert data["department_id"] == str(department.id)
     assert data["team_id"] == str(team.id)
     assert "id" in data
@@ -279,33 +283,33 @@ def test_create_doctor_route_invalid_payload(client, department, team):
 def test_get_doctor_by_id_route(client, department, team, session):
     """Tests that the GET /doctors/{doctor_id} route returns a doctor"""
 
-    # doctor_data = DoctorCreate(
-    #     name="Dr Panos",
-    #     email="drpanos@gmail.com",
-    #     department_id=department.id,
-    #     team_id=team.id
-    # )
+    doctor_data = DoctorCreate(
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=department.id,
+        team_id=team.id
+    )
 
-    # new_doctor = create_doctor(session, doctor_data)
+    new_doctor = doctor_repository.create_doctor(session, doctor_data)
 
-    # response = client.get(
-    #     f"/api/v1/doctors/{new_doctor.id}"
-    # )
+    response = client.get(
+        f"/api/v1/doctors/{new_doctor.id}"
+    )
 
-    # assert response.status_code == 200
-    # data = response.json()
-    # assert data["name"] == "Dr Panos"
-    # assert data["email"] == "drpanos@gmeil.com"
-    # assert data["department_id"] == department.id
-    # assert data["team_id"] == team.id
-    # assert "id" in data
-    # assert "created_at" in data
-    # assert "updated_at" in data
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Dr Panos"
+    assert data["email"] == "drpanos@gmail.com"
+    assert data["department_id"] == str(department.id)
+    assert data["team_id"] == str(team.id)
+    assert "id" in data
+    assert "created_at" in data
+    assert "updated_at" in data
 
 
-def test_get_doctor_by_id_route_nonexistent(client, team, department):
-    """Test the GET /doctors/{doctor_id} route returns error when given a nonexistent id"""
-    pass
+# def test_get_doctor_by_id_route_nonexistent(client, team, department):
+#     """Test the GET /doctors/{doctor_id} route returns error when given a nonexistent id"""
+#     pass
 
 
 def test_list_doctors_route(client, team, department, session):
