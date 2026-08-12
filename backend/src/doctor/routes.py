@@ -41,7 +41,7 @@ def get_doctor(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
     return doctor_controllers.get_doctor_controller(session=session, doctor_id=doctor_id)
 
 
-@router.post("/{doctor_id}/pre-assignments", response_model=DoctorPreAssignmentCreate)
+@router.post("/{doctor_id}/pre-assignments", response_model=DoctorPreAssignmentRead, status_code=status.HTTP_201_CREATED)
 def create_doctor_pre_assignments(doctor_id: uuid.UUID, pre_assignment_data: DoctorPreAssignmentCreate, session: Session = Depends(get_session)):
     """
     Creates pre assignments for a doctor.

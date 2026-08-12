@@ -5,13 +5,18 @@ Doctor controller functions for handling business logic related to doctor manage
 """
 
 import uuid
+import logging
 from fastapi import HTTPException, status
 from sqlmodel import Session
 from src.doctor import repository as doctor_repository
 from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate
 from src.doctor.models import Doctor as DoctorModel
+from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.department import repository as department_repository
+# from src.shift import repository as shift_repository
 from src.team import repository as team_repository
+
+logger = logging.getLogger(__name__)
 
 
 def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> DoctorModel:
@@ -56,19 +61,21 @@ def get_doctor_controller(session: Session, doctor_id: uuid.UUID) -> DoctorModel
     return doctor
 
 
-def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UUID, pre_assignment_data: DoctorPreAssignmentCreate):
+def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UUID, pre_assignment_data: DoctorPreAssignmentCreate) -> DoctorPreAssignmentModel:
     """Handles logic for creating a pre assignment for a doctor"""
 
-    existing_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_id(
-        session=session, pre_assignment_id=pre_assignment_data.id
-    )
-    if existing_pre_assignment:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Pre assignment already exists"
-        )
+    # todo: test existing pre assignment by doctor id and assignment
+    # existing_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_id(
+    #     session=session, pre_assignment_id=my_id
+    # )
+    # if existing_pre_assignment:
+    #     raise HTTPException(
+    #         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+    #         detail="Pre assignment already exists"
+    #     )
 
     doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
+    # shift = shift_repository.get_shift_by_id
     # todo add shift
     if not doctor:
         raise HTTPException(

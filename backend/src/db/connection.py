@@ -24,10 +24,13 @@ def init_db() -> None:
     """
     Physically creates the tables in the target database if they do not exist.
     """
-    from src.db.schemas import ScheduleConfig, Position, Shift  # pylint: disable=unused-import
+    from src.db.schemas import ScheduleConfig # pylint: disable=unused-import
     from src.department.models import Department  # pylint: disable=unused-import
     from src.team.models import Team  # pylint: disable=unused-import
     from src.doctor.models import Doctor, DoctorPosition, DoctorPreAssignment, DoctorUnavailability  # pylint: disable=unused-import
+    from src.shift.models import Shift, ShiftAssignment
+    from src.position.models import Position
+
 
     SQLModel.metadata.create_all(engine)
     logger.info("Database initialized")

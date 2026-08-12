@@ -10,7 +10,7 @@ fully wired up.
 
 import uuid
 import datetime
-from sqlmodel import Column, SQLModel, Field, JSON
+from sqlmodel import SQLModel, Field 
 
 
 class SyncBase(SQLModel):
@@ -51,25 +51,3 @@ class ScheduleConfig(SyncBase, table=True):
     solver_time_limit: int = 120
     max_duties_per_month: int = 8
     month_blocks: int = 3
-
-
-class Shift(SyncBase, table=True):
-    """Represents a work shift stored in the database."""
-    name: str
-    doctors_per_shift: int = 1
-    grants_day_off: bool = False
-    position_id: uuid.UUID = Field(foreign_key="position.id")
-
-
-class Position(SyncBase, table=True):
-    """Represents a position that needs to be staffed, such as "ER" or "ICU", stored in the database."""
-    name: str
-    department_id: uuid.UUID = Field(foreign_key="department.id")
-    duty_days: list[int] = Field(default_factory=list, sa_column=Column(JSON))
-
-
-class ShiftAssignment(SyncBase, table=True):
-    """Represents the final schedule assignments after the solver runs."""
-    doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
-    shift_id: uuid.UUID = Field(foreign_key="shift.id")
-    date: str  # ISO Format: YYYY-MM-DD

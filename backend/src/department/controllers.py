@@ -2,12 +2,15 @@
 Department controller functions for handling business logic.
 """
 import uuid
+import logging
 from sqlmodel import Session
 from fastapi import HTTPException, status
 
 from src.department.schemas import DepartmentCreate
 from src.department.models import Department as DepartmentModel
 from src.department import repository
+
+logger = logging.getLogger(__name__)
 
 
 def create_department_controller(department_data: DepartmentCreate, session: Session) -> DepartmentModel:

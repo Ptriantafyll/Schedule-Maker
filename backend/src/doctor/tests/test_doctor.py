@@ -16,6 +16,10 @@ from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
 from src.team.schemas import TeamCreate
 from src.team.repository import create_team
+from src.shift import repository as shift_repository
+from src.shift.schemas import ShiftCreate
+from src.position import repository as position_repository
+from src.position.schemas import PositionCreate
 from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate
 from src.doctor import repository as doctor_repository
 from src.doctor import controllers as doctor_controllers
@@ -44,8 +48,6 @@ def create_new_doctor(
 #####################
 # Fixtures
 #####################
-
-
 @pytest.fixture(name="session")
 def session_fixture():
     """Creates a fresh in-memory database session for each test."""
@@ -72,13 +74,32 @@ def team_fixture(session, department):
     team_data = TeamCreate(name="ER Team A", department_id=department.id)
     return create_team(session, team_data)
 
-# todo: add shift as a fixture
+@pytest.fixture(name="position")
+def position_fixture(session, department):
+    """Creates a reusable position for tests"""
+    position_data = PositionCreate(
+        name="ER",
+        department_id=department.id,
+        duty_days=[1,3,5],
+    )
+
+    return position_repository.create_position(session, position_data)
+
+@pytest.fixture(name="shift")
+def shift_fixture(session, position):
+    """Creates a reusable shift for tests"""
+    shift_data = ShiftCreate(
+        name="ER 1",
+        position_id=position.id,
+        grants_day_off=False,
+        doctors_per_shift=2
+    )
+
+    return shift_repository.create_shift(session, shift_data)
 
 #####################
 # Repository tests
 #####################
-
-
 def test_create_doctor(session, department, team):
     """Test creating a doctor and verifying their fields"""
     new_doctor = create_new_doctor(
@@ -360,15 +381,15 @@ def test_create_doctor_pre_assignments_route(client, team, department, shift, se
         f"api/v1/doctors/{new_doctor.id}/pre-assignments",
         json={
             "date": "2026-08-12",
-            "doctor_id": new_doctor.id,
-            "shift_id": shift.id
+            "doctor_id": str(new_doctor.id),
+            "shift_id": str(shift.id)
         }
     )
 
     assert response.status_code == 201
     data = response.json()
     assert data["date"] == "2026-08-12"
-    assert data["doctor_id"] == new_doctor.id
+    assert data["doctor_id"] == str(new_doctor.id)
     assert data["shift_id"] == str(shift.id)
     assert "id" in data
     assert "created_at" in data
@@ -385,7 +406,7 @@ def test_create_doctor_pre_assignments_route_invalid_payload(client, team, depar
         f"api/v1/doctors/{new_doctor.id}/pre-assignments",
         json={
             "date": "2026-08-12",
-            "doctor_id": new_doctor.id,
+            "doctor_id": str(new_doctor.id),
         }
     )
     assert response.status_code == 422
