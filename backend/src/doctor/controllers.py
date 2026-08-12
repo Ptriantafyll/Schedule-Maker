@@ -8,7 +8,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session
 from src.doctor import repository as doctor_repository
-from src.doctor.schemas import DoctorCreate
+from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate
 from src.doctor.models import Doctor as DoctorModel
 from src.department import repository as department_repository
 from src.team import repository as team_repository
@@ -16,7 +16,8 @@ from src.team import repository as team_repository
 
 def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> DoctorModel:
     """Handles the business logic for creating a new doctor"""
-    existing_doctor = doctor_repository.get_doctor_by_email(session, doctor_data.email)
+    existing_doctor = doctor_repository.get_doctor_by_email(
+        session, doctor_data.email)
     if existing_doctor:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -24,7 +25,8 @@ def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> Doc
         )
 
     team = team_repository.get_team_by_id(session, doctor_data.team_id)
-    department = department_repository.get_department_by_id(session, doctor_data.department_id)
+    department = department_repository.get_department_by_id(
+        session, doctor_data.department_id)
 
     if (not team) or (not department):
         raise HTTPException(
@@ -52,3 +54,30 @@ def get_doctor_controller(session: Session, doctor_id: uuid.UUID) -> DoctorModel
         )
 
     return doctor
+
+
+def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UUID, pre_assignment_data: DoctorPreAssignmentCreate):
+    """Handles logic for creating a pre assignment for a doctor"""
+
+    existing_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_id(
+        session=session, pre_assignment_id=pre_assignment_data.id
+    )
+    if existing_pre_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Pre assignment already exists"
+        )
+
+    doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
+    # todo add shift
+    if not doctor:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Doctor does not exist"
+        )
+
+    return doctor_repository.create_doctor_pre_assignment(
+        session=session,
+        doctor_id=doctor_id,
+        pre_assignment_data=pre_assignment_data
+    )
