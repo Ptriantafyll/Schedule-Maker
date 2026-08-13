@@ -84,9 +84,9 @@ def create_doctor_position(doctor_id: uuid.UUID, doctor_position_data: DoctorPos
     return doctor_controllers.create_doctor_position_controller(session, doctor_id, doctor_position_data)
 
 
-# @router.get("/{doctor_id}/position", response_model=list[DoctorPositionRead])
-# def list_doctor_positions(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
-#     """
-#     Lists the positions of a doctor
-#     """
-#     return doctor_controllers.list_doctor_positions_controller(doctor_id, session)
+@router.get("/{doctor_id}/position", response_model=list[DoctorPositionRead])
+def list_doctor_positions(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+    """
+    Lists the positions of a doctor
+    """
+    return doctor_controllers.list_doctor_positions_controller(doctor_id, session)

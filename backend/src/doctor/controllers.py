@@ -160,3 +160,11 @@ def create_doctor_position_controller(session: Session, doctor_id: uuid.UUID, do
         doctor_id=doctor_id,
         doctor_pos_data=doctor_pos_data,
     )
+
+
+def list_doctor_positions_controller(session: Session, doctor_id: uuid.UUID):
+    """Handles the logic for retrieving all positions of a doctor"""
+    return doctor_repository.get_doctor_positions(
+        session=session,
+        doctor_id=doctor_id
+    )

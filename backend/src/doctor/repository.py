@@ -110,6 +110,7 @@ def get_doctor_unavailability_by_date(session: Session, doctor_id: str, target_d
 # def get_doctor_unavailability_by_id(session: Session, doctor_id: str) -> list[DoctorUnavailabilityModel]:
 #     pass
 
+
 def get_doctor_unavailability(session: Session, doctor_id: str) -> list[DoctorUnavailabilityModel]:
     """Retrieves the unavailability dates of a doctor"""
     statement = select(DoctorUnavailabilityModel).where(
@@ -119,7 +120,7 @@ def get_doctor_unavailability(session: Session, doctor_id: str) -> list[DoctorUn
     return session.exec(statement).all()
 
 
-def create_doctor_position(session: Session, doctor_id:str, doctor_pos_data: DoctorPositionCreate) -> DoctorPositionModel:
+def create_doctor_position(session: Session, doctor_id: str, doctor_pos_data: DoctorPositionCreate) -> DoctorPositionModel:
     """Creates a doctor-position entry"""
 
     new_doctor_pos = DoctorPositionModel(
@@ -141,3 +142,12 @@ def get_doctor_position_by_id(session: Session, doctor_id: str, position_id: str
     )
 
     return session.exec(statement).first()
+
+
+def get_doctor_positions(session: Session, doctor_id: str) -> list[DoctorPositionModel]:
+    """Retrieves the positions of a doctor"""
+    statement = select(DoctorPositionModel).where(
+        DoctorPositionModel.doctor_id == doctor_id
+    )
+
+    return session.exec(statement).all()

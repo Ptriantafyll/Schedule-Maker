@@ -2,10 +2,10 @@
 Tests for the doctor module
 """
 
-from fastapi.testclient import TestClient
 import uuid
 import datetime
 import pytest
+from fastapi.testclient import TestClient
 # Session fixture for database tests
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, create_engine, Session
@@ -99,16 +99,19 @@ def shift_fixture(session, position):
 
     return shift_repository.create_shift(session, shift_data)
 
+
+@pytest.fixture(name="new_doctor")
+def doctor_fixture(session, department, team):
+    """Creates a reusable doctor for tests"""
+    return create_new_doctor(session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
+
 #####################
 # Repository tests
 #####################
 
 
-def test_create_doctor(session, department, team):
+def test_create_doctor(department, team, new_doctor):
     """Test creating a doctor and verifying their fields"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
-
     assert isinstance(new_doctor.id, uuid.UUID)
     assert new_doctor.name == "Dr Panos"
     assert new_doctor.email == "drpanos@gmail.com"
@@ -120,11 +123,8 @@ def test_create_doctor(session, department, team):
     assert isinstance(new_doctor.updated_at, datetime.datetime)
 
 
-def test_get_doctor_by_email(session, department, team):
+def test_get_doctor_by_email(session, new_doctor):
     """Test retrieving a doctor by name"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
-
     retrieved_doctor = doctor_repository.get_doctor_by_email(
         session, "drpanos@gmail.com")
 
@@ -132,10 +132,8 @@ def test_get_doctor_by_email(session, department, team):
     assert retrieved_doctor.id == new_doctor.id
 
 
-def test_get_doctor_by_id(session, department, team):
+def test_get_doctor_by_id(session, new_doctor):
     """Test retrieving a doctor by id"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
 
     retrieved_doctor = doctor_repository.get_doctor_by_id(
         session, new_doctor.id)
@@ -144,12 +142,8 @@ def test_get_doctor_by_id(session, department, team):
     assert retrieved_doctor.id == new_doctor.id
 
 
-def test_get_active_doctors(session, team, department):
+def test_get_active_doctors(session, team, department, new_doctor):
     """Test retrieving all active doctors"""
-
-    new_doctor1 = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
-
     new_doctor2 = create_new_doctor(
         session, "Dr Panagiotis", "drpanagiotis@gmail.com", department.id, team.id)
 
@@ -159,15 +153,12 @@ def test_get_active_doctors(session, team, department):
 
     active_doctors = doctor_repository.get_active_doctors(session)
 
-    assert new_doctor1 in active_doctors
+    assert new_doctor in active_doctors
     assert new_doctor2 not in active_doctors
 
 
-def test_create_doctor_pre_assignment(session, team, department, shift):
+def test_create_doctor_pre_assignment(session, shift, new_doctor):
     """Test creating pre assignments for a doctor"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
-
     pre_assignment_data = DoctorPreAssignmentCreate(
         date=datetime.date(2026, 8, 12),
         shift_id=shift.id
@@ -182,11 +173,8 @@ def test_create_doctor_pre_assignment(session, team, department, shift):
     assert new_pre_assignment.doctor_id == new_doctor.id
 
 
-def test_get_doctor_pre_assignment(session, department, team, shift):
+def test_get_doctor_pre_assignment(session, shift, new_doctor):
     """Test retrieving a doctor's pre assignments"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
-
     pre_assignment_data = DoctorPreAssignmentCreate(
         date=datetime.date(2026, 8, 12),
         shift_id=shift.id
@@ -203,11 +191,29 @@ def test_get_doctor_pre_assignment(session, department, team, shift):
     assert new_pre_assignment in pre_assignments
 
 
-def test_create_doctor_unavailability(session, team, department):
-    """Test creating unavailability dates for a doctor"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
+def test_get_doctor_pre_assignment_by_date(session, shift, new_doctor):
+    """Test retrieving a doctor's pre assignment by date"""
+    pre_assignment_data = DoctorPreAssignmentCreate(
+        date=datetime.date(2026, 8, 12),
+        shift_id=shift.id
+    )
 
+    new_pre_assignment = doctor_repository.create_doctor_pre_assignment(
+        session, new_doctor.id, pre_assignment_data
+    )
+
+    pre_assignment = doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12)
+    )
+
+    assert isinstance(pre_assignment.id, uuid.UUID)
+    assert pre_assignment.id == new_pre_assignment.id
+
+
+def test_create_doctor_unavailability(session, new_doctor):
+    """Test creating unavailability dates for a doctor"""
     unavailability_data = DoctorUnavailabilityCreate(
         date=datetime.date(2026, 8, 12)
     )
@@ -222,10 +228,8 @@ def test_create_doctor_unavailability(session, team, department):
     assert new_unavailability.doctor_id == new_doctor.id
 
 
-def test_get_doctor_unavailability(session, team, department):
+def test_get_doctor_unavailability(session, new_doctor):
     """Test retrieving unavailability dates for a doctor"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
     unavailability_data = DoctorUnavailabilityCreate(
         date=datetime.date(2026, 8, 12)
     )
@@ -244,22 +248,31 @@ def test_get_doctor_unavailability(session, team, department):
     assert new_unavailability in doctor_unavailabilities
 
 
-def test_create_doctor_position(session, team, department):
-    """Test creating a position for a doctor"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
-
-    position_data = PositionCreate(
-        duty_days=[1,2,3],
-        department_id=department.id,
-        name="ER"
+def test_get_doctor_unavailability_by_date(session, new_doctor):
+    """Test retrieving 1 doctor unavailability by date"""
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 8, 12)
     )
-    new_position = position_repository.create_position(
+    new_unavailability = doctor_repository.create_doctor_unavailability(
         session=session,
-        position_data=position_data
+        doctor_id=new_doctor.id,
+        doctor_unavailability_data=unavailability_data
     )
 
-    doctor_pos_data= DoctorPositionCreate(
+    unavailability = doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12)
+    )
+
+    assert isinstance(unavailability.id, uuid.UUID)
+    assert unavailability.id == new_unavailability.id
+
+
+def test_create_doctor_position(session, new_doctor, position):
+    """Test creating a position for a doctor"""
+    new_position = position
+    doctor_pos_data = DoctorPositionCreate(
         position_id=new_position.id
     )
     new_doctor_pos = doctor_repository.create_doctor_position(
@@ -271,6 +284,27 @@ def test_create_doctor_position(session, team, department):
     assert isinstance(new_doctor_pos.id, uuid.UUID)
     assert new_doctor_pos.position_id == new_position.id
     assert new_doctor_pos.doctor_id == new_doctor.id
+
+
+def test_get_doctor_positions(session, department, new_doctor, position):
+    """Tests getting all the positions of a doctor"""
+    new_position = position
+    doctor_pos_data = DoctorPositionCreate(
+        position_id=new_position.id
+    )
+    new_doctor_pos = doctor_repository.create_doctor_position(
+        session=session,
+        doctor_id=new_doctor.id,
+        doctor_pos_data=doctor_pos_data
+    )
+
+    doctor_pos = doctor_repository.get_doctor_positions(
+        session=session,
+        doctor_id=new_doctor.id
+    )
+
+    assert isinstance(doctor_pos, list)
+    assert new_doctor_pos in doctor_pos
 
 
 def test_doctor_has_department_foreign_key(session):
@@ -302,17 +336,15 @@ def test_doctor_has_department_foreign_key(session):
 # Controller tests
 #######################
 
-
-def test_create_doctor_controller_duplicate_name(session, department, team):
+def test_create_doctor_controller_duplicate_name(session, department, team, new_doctor):
     """Test that creating a doctor with a duplicate email raises an error."""
-
+    # new_doctor is needed in the input to create the first (duplicate) doctor
     doctor_data = DoctorCreate(
         name="Dr Panos",
         email="drpanos@gmail.com",
         department_id=department.id,
         team_id=team.id
     )
-    new_doctor = doctor_repository.create_doctor(session, doctor_data)
 
     with pytest.raises(Exception) as exc_info:
         doctor_controllers.create_doctor_controller(doctor_data, session)
@@ -395,18 +427,8 @@ def test_create_doctor_route_invalid_payload(client, department, team):
     assert response.status_code == 422
 
 
-def test_get_doctor_by_id_route(client, department, team, session):
+def test_get_doctor_by_id_route(client, department, team, new_doctor):
     """Tests that the GET /doctors/{doctor_id} route returns a doctor"""
-
-    doctor_data = DoctorCreate(
-        name="Dr Panos",
-        email="drpanos@gmail.com",
-        department_id=department.id,
-        team_id=team.id
-    )
-
-    new_doctor = doctor_repository.create_doctor(session, doctor_data)
-
     response = client.get(
         f"/api/v1/doctors/{new_doctor.id}"
     )
@@ -429,32 +451,21 @@ def test_get_doctor_by_id_route(client, department, team, session):
 
 def test_list_doctors_route(client, team, department, session):
     """Tests the GET /doctors/ route"""
-    doctor_data = DoctorCreate(
-        name="Dr Panos",
-        email="drpanos@gmail.com",
-        department_id=department.id,
-        team_id=team.id
-    )
-    doctor_repository.create_doctor(session, doctor_data)
-
-    doctor_data = DoctorCreate(
+    create_new_doctor(
+        session=session,
         name="Dr Panagiotis",
         email="drpanagiotis@gmail.com",
         department_id=department.id,
         team_id=team.id
     )
-    doctor_repository.create_doctor(session, doctor_data)
 
     response = client.get("api/v1/doctors")
 
     assert response.status_code == 200
 
 
-def test_create_doctor_pre_assignments_route(client, team, department, shift, session):
+def test_create_doctor_pre_assignments_route(client, shift, new_doctor):
     """Tests the POST /doctors/{doctor_id}/pre-assignments route"""
-
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
 
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/pre-assignments",
@@ -475,12 +486,8 @@ def test_create_doctor_pre_assignments_route(client, team, department, shift, se
     assert "updated_at" in data
 
 
-def test_create_doctor_pre_assignments_route_invalid_payload(client, team, department, shift, session):
+def test_create_doctor_pre_assignments_route_invalid_payload(client,  new_doctor):
     """Tests the POST /doctors/{doctor_id}/pre-assignments route rejects invalid payload"""
-
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
-
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/pre-assignments",
         json={
@@ -496,11 +503,8 @@ def test_get_doctor_pre_assigments_route():
     # TODO
 
 
-def test_create_doctor_unavailability_route(client, team, department, session):
+def test_create_doctor_unavailability_route(client, new_doctor):
     """Tests the POST /doctors/{doctor_id}/unavailability route"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
-
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/unavailability",
         json={
@@ -517,11 +521,8 @@ def test_create_doctor_unavailability_route(client, team, department, session):
     assert "updated_at" in data
 
 
-def test_create_doctor_unavailability_route_invalid_payload(client, team, department, session):
+def test_create_doctor_unavailability_route_invalid_payload(client, new_doctor):
     """Tests the POST /doctors/{doctor_id}/unavailability route rejects invalid payload"""
-    new_doctor = create_new_doctor(
-        session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
-
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/unavailability",
         json={}
