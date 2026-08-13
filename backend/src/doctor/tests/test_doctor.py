@@ -297,30 +297,12 @@ def test_get_doctor_positions(session, new_doctor, position):
     assert new_doctor_pos in doctor_pos
 
 
-def test_doctor_has_department_foreign_key(session):
+def test_doctor_has_department_foreign_key(session, new_doctor, department, team):
     """Test that doctors can be associated with a department and retrieved correctly."""
-    # """Test that doctors can be associated with a department and retrieved correctly."""
-    # dept = Department(name="Emergency", code="ER")
-    # session.add(dept)
-    # session.commit()
-    # session.refresh(dept)
-
-    # team = Team(name="ER Team A", department_id=dept.id)
-    # session.add(team)
-    # session.commit()
-    # session.refresh(team)
-
-    # doctor = Doctor(name="Dr. Smith", email="smith@test.com",
-    #                 department_id=dept.id, team_id=team.id)
-    # session.add(doctor)
-    # session.commit()
-    # session.refresh(doctor)
-
-    # assert isinstance(doctor.id, uuid.UUID)
-    # assert doctor.department_id == dept.id
-    # assert doctor.name == "Dr. Smith"
-    # assert doctor.team_id == team.id
-    # assert doctor.email == "smith@test.com"
+    
+    assert isinstance(new_doctor.id, uuid.UUID)
+    assert new_doctor.department_id == department.id
+    assert new_doctor.team_id == team.id
 
 #######################
 # Controller tests
@@ -357,10 +339,18 @@ def test_get_doctor_controller_nonexistent(session):
     assert "not found" in exc_info.value.detail
 
 
-def test_get_doctor_controller_deleted(session):
+def test_get_doctor_controller_deleted(session, new_doctor):
     """Test that retrieving a deleted team raises a 404 error"""
-    pass
+    new_doctor.is_deleted = True
+    session.add(new_doctor)
+    session.commit()
 
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.get_doctor_controller(session, new_doctor.id)
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert "not found" in exc_info.value.detail
 
 #######################
 # Route tests
@@ -482,9 +472,20 @@ def test_create_doctor_pre_assignments_route_invalid_payload(client,  new_doctor
     assert response.status_code == 422
 
 
-def test_get_doctor_pre_assigments_route():
+def test_get_doctor_pre_assigments_route(client, new_doctor, pre_assignment):
     """Tests the GET /doctors/{doctor_id}/pre-assignments route"""
-    # TODO
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}/pre-assignments",
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert data[0]["date"] == str(datetime.date(2026, 8, 12))
+    assert data[0]["doctor_id"] == str(new_doctor.id)
+    assert data[0]["id"] == str(pre_assignment.id)
+    assert "created_at" in data[0]
+    assert "updated_at" in data[0]
 
 
 def test_create_doctor_unavailability_route(client, new_doctor):
@@ -514,21 +515,65 @@ def test_create_doctor_unavailability_route_invalid_payload(client, new_doctor):
     assert response.status_code == 422
 
 
-def test_get_doctor_unavailability_route():
+def test_get_doctor_unavailability_route(client, new_doctor, unavailability):
     """Tests the GET /doctors/{doctor_id}/unavailability route"""
-    # TODO
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}/unavailability"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert data[0]["id"] == str(unavailability.id)
+    assert data[0]["date"] == str(datetime.date(2026, 8, 12))
+    assert data[0]["doctor_id"] == str(new_doctor.id)
+    assert "created_at" in data[0]
+    assert "updated_at" in data[0]
 
 
-def test_create_doctor_position_route():
+def test_create_doctor_position_route(client, position, new_doctor):
     """Tests the POST /doctors/{doctor_id}/position route"""
-    # TODO
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/position",
+        json={
+            "position_id": str(position.id)
+        }
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["doctor_id"] == str(new_doctor.id)
+    assert "id" in data
+    assert "created_at" in data
+    assert "updated_at" in data
 
 
-def test_create_doctor_position_route_invalid_payload():
+def test_create_doctor_position_route_invalid_payload(client, new_doctor):
     """Tests the POST /doctors/{doctor_id}/position route rejects invalid payload"""
-    # TODO
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/position",
+        json={}
+    )
+
+    assert response.status_code == 422
 
 
-def test_get_doctor_position_route():
+def test_get_doctor_position_route(client, session, new_doctor, position):
     """Tests the GET /doctors/{doctor_id}/position route"""
-    # TODO
+    new_doctor_pos = create_test_doctor_position(
+        session=session,
+        doctor=new_doctor,
+        position=position
+    )
+
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}/position"
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert data[0]["id"] == str(new_doctor_pos.id)
+    assert data[0]["doctor_id"] == str(new_doctor.id)
+    assert "created_at" in data[0]
+    assert "updated_at" in data[0]
