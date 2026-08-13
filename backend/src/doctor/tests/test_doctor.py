@@ -245,6 +245,17 @@ def test_get_doctor_pre_assignment_by_date(session, new_doctor, pre_assignment):
     assert pre_assignment.id == retrieved_pre_assignment.id
 
 
+def test_get_doctor_pre_assignment_by_id(session, pre_assignment):
+    """Test retrieving a pre assignment by its id"""
+    retrieved_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_id(
+        session=session,
+        pre_assignment_id=pre_assignment.id
+    )
+
+    assert isinstance(retrieved_pre_assignment.id, uuid.UUID)
+    assert pre_assignment.id == retrieved_pre_assignment.id
+
+
 def test_create_doctor_unavailability(session, new_doctor, unavailability):
     """Test creating unavailability dates for a doctor"""
     assert isinstance(unavailability.id, uuid.UUID)
@@ -297,12 +308,29 @@ def test_get_doctor_positions(session, new_doctor, position):
     assert new_doctor_pos in doctor_pos
 
 
+def test_get_doctor_position_by_id(session, new_doctor, position):
+    """Test retrieving a doctor-position by its id"""
+    new_doctor_pos = create_test_doctor_position(
+        session, new_doctor, position
+    )
+
+    retrieved_doctor_pos = doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=new_doctor.id,
+        position_id=position.id
+    )
+
+    assert isinstance(retrieved_doctor_pos.id, uuid.UUID)
+    assert retrieved_doctor_pos.id == new_doctor_pos.id
+
+
 def test_doctor_has_department_foreign_key(session, new_doctor, department, team):
     """Test that doctors can be associated with a department and retrieved correctly."""
-    
+
     assert isinstance(new_doctor.id, uuid.UUID)
     assert new_doctor.department_id == department.id
     assert new_doctor.team_id == team.id
+
 
 #######################
 # Controller tests
@@ -311,10 +339,9 @@ def test_doctor_has_department_foreign_key(session, new_doctor, department, team
 
 def test_create_doctor_controller_duplicate_name(session, department, team, new_doctor):
     """Test that creating a doctor with a duplicate email raises an error."""
-    # new_doctor is needed in the input to create the first (duplicate) doctor
     doctor_data = DoctorCreate(
-        name="Dr Panos",
-        email="drpanos@gmail.com",
+        name=new_doctor.name,
+        email=new_doctor.email,
         department_id=department.id,
         team_id=team.id
     )
@@ -352,9 +379,141 @@ def test_get_doctor_controller_deleted(session, new_doctor):
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
 
+
+def test_create_doctor_controller_invalid_team_or_department(session):
+    """Test that creating a doctor with invalid team or department returns error"""
+    doctor_data = DoctorCreate(
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=uuid.uuid4(),
+        team_id=uuid.uuid4()
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_controller(doctor_data, session)
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 422
+    assert "does not exist" in exc_info.value.detail
+
+
+def test_create_doctor_pre_assignment_controller_duplicate_date(session, new_doctor, pre_assignment):
+    """Tests that creating a duplicate pre assignment returns error"""
+    # pre_assignment is needed to crate the first (duplicate) pre assignment
+    pre_assignment_data = DoctorPreAssignmentCreate(
+        date=pre_assignment.date,
+        shift_id=pre_assignment.shift_id
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_pre_assignment_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            pre_assignment_data=pre_assignment_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 400
+    assert "already exists" in exc_info.value.detail
+
+
+def test_create_doctor_pre_assignment_controller_nonexistent_doctor(session, shift):
+    """Tests that creating a pre assignment with a nonexistent doctor returns error"""
+    pre_assignment_data = DoctorPreAssignmentCreate(
+        date=datetime.date(2026, 8, 12),
+        shift_id=shift.id
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_pre_assignment_controller(
+            session=session,
+            doctor_id=uuid.uuid4(),
+            pre_assignment_data=pre_assignment_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 422
+    assert "Doctor does not exist" in exc_info.value.detail
+
+
+def test_create_doctor_unavailability_controller_duplicate_date(session, new_doctor, unavailability):
+    """Test that creating a duplicate unavailability returns error"""
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=unavailability.date,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_unavailabilty_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            unavailability_data=unavailability_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 400
+    assert "already exists" in exc_info.value.detail
+
+
+def test_create_doctor_unavailability_controller_nonexistent_doctor(session):
+    """Test that creating an unavailability for a non-existent doctor returns error"""
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 8, 12),
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_unavailabilty_controller(
+            session=session,
+            doctor_id=uuid.uuid4(),
+            unavailability_data=unavailability_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 422
+    assert "Doctor does not exist" in exc_info.value.detail
+
+
+def test_create_doctor_position_controller_duplicate_assignment(session, new_doctor, position):
+    """Tests that creating a duplicate doctor-position returns error"""
+    create_test_doctor_position(session, new_doctor, position)
+
+    doctor_position_data = DoctorPositionCreate(
+        position_id=position.id
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_position_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            doctor_pos_data=doctor_position_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 400
+    assert "already assigned" in exc_info.value.detail
+
+
+def test_create_doctor_position_controller_nonexistent_doctor(session, position):
+    """Tests that creating a doctor-position with a nonexistent doctor returns error"""
+    doctor_position_data = DoctorPositionCreate(
+        position_id=position.id
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_position_controller(
+            session=session,
+            doctor_id=uuid.uuid4(),
+            doctor_pos_data=doctor_position_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 422
+    assert "Doctor does not exist" in exc_info.value.detail
+
 #######################
 # Route tests
 #######################
+
+
 @pytest.fixture(name="client")
 def client_fixture(session):
     """Creates a TestClient for the FastAPI app with dependency override."""

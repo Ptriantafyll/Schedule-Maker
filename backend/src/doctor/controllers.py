@@ -71,7 +71,7 @@ def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UU
     )
     if existing_pre_assignment:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Pre assignment already exists"
         )
 
