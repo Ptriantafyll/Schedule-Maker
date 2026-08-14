@@ -66,10 +66,67 @@ class ShiftRead(ShiftBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+#############################################
+# ShiftAssigment
+#############################################
+
+
+class ShiftAssignmentBase(BaseModel):
+    """
+    Shared shift assignment fields used by create/update/read DTOs.
+    """
+
+    doctor_id: uuid.UUID
+    shift_id: uuid.UUID
+    date: datetime.date
+
+
+class ShiftAssignmentCreate(BaseModel):
+    """POST shifts/{id}/assignments
+
+    shift_if comes from the path, not the body.
+    """
+    doctor_id: uuid.UUID
+    date: datetime.date
+
+
+class ShiftAssignmentUpdate(BaseModel):
+    """Schema for partial shift updates.
+
+    All fields are optional so the client can PATCH a subset of attributes.
+    """
+
+    doctor_id: uuid.UUID
+    shift_id: uuid.UUID
+    date: datetime.date
+
+
+class ShiftAssignmentRead(ShiftBase):
+    """Schema returned to clients for shift assignment resources.
+
+    Extends `ShiftAssignmentBase` with read-only metadata populated by the
+    persistence layer (IDs, timestamps, and sync flags).
+    `from_attributes = True` allows creating this model from ORM/SQLModel objects
+    via `model_validate` or by returning ORM instances directly from FastAPI
+    endpoints when `response_model` is set to this class.
+    """
+
+    id: uuid.UUID
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    is_deleted: bool = False
+    sync_status: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 __all__ = [
     "ShiftBase",
     "ShiftCreate",
     "ShiftUpdate",
-    "ShiftRead"
+    "ShiftRead",
+    "ShiftAssignmentBase",
+    "ShiftAssignmentCreate",
+    "ShiftAssignmentUpdate",
+    "ShiftAssignmentRead"
 ]
