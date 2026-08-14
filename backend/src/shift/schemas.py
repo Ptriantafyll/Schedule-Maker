@@ -101,7 +101,7 @@ class ShiftAssignmentUpdate(BaseModel):
     date: datetime.date
 
 
-class ShiftAssignmentRead(ShiftBase):
+class ShiftAssignmentRead(ShiftAssignmentBase):
     """Schema returned to clients for shift assignment resources.
 
     Extends `ShiftAssignmentBase` with read-only metadata populated by the

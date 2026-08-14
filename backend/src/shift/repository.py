@@ -3,11 +3,13 @@ Shift repository functions for handling database operations.
 """
 
 # from typing import Optional
+import datetime
 import uuid
 from sqlmodel import Session, not_, select
 
-from src.shift.schemas import ShiftCreate
+from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate
 from src.shift.models import Shift as ShiftModel
+from src.shift.models import ShiftAssignment as ShiftAssignmentModel
 
 
 def create_shift(session: Session, shift_data=ShiftCreate) -> ShiftModel:
@@ -46,6 +48,48 @@ def get_active_shifts(session: Session) -> list[ShiftModel]:
     """Retrieves all active shifts"""
     statement = select(ShiftModel).where(
         not_(ShiftModel.is_deleted)
+    )
+
+    return list(session.exec(statement).all())
+
+
+def create_shift_assignment(session: Session, shift_id: uuid.UUID, shift_assignment_data: ShiftAssignmentCreate) -> ShiftAssignmentModel:
+    """Creates a shift assignment in the db"""
+    new_shift_assignment = ShiftAssignmentModel(
+        shift_id=shift_id,
+        doctor_id=shift_assignment_data.doctor_id,
+        date=shift_assignment_data.date,
+    )
+
+    session.add(new_shift_assignment)
+    session.commit()
+    session.refresh(new_shift_assignment)
+    return new_shift_assignment
+
+
+def get_shift_assignment_by_id(session: Session, shift_assignment_id: uuid.UUID) -> list[ShiftAssignmentModel]:
+    """Retrieves a shift assignment by its id"""
+    statement = select(ShiftAssignmentModel).where(
+        ShiftAssignmentModel.id == shift_assignment_id
+    )
+
+    return session.exec(statement).first()
+
+
+def get_shift_assignment_by_date(session: Session, shift_id: uuid.UUID, target_date: datetime.date) -> ShiftAssignmentModel:
+    """Retrieves a shift assignment by its date"""
+    statement = select(ShiftAssignmentModel).where(
+        ShiftAssignmentModel.date == target_date,
+        ShiftAssignmentModel.shift_id == shift_id
+    )
+
+    return session.exec(statement).first()
+
+
+def get_active_shift_assignments(session: Session) -> list[ShiftAssignmentModel]:
+    """Retrieves all active shift assignments"""
+    statement = select(ShiftAssignmentModel).where(
+        not_(ShiftAssignmentModel.is_deleted)
     )
 
     return list(session.exec(statement).all())
