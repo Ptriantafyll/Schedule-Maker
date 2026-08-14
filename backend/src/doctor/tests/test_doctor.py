@@ -50,11 +50,12 @@ def create_new_doctor(
 def create_test_pre_assignment(
     session: Session,
     shift_id: str,
-    doctor: DoctorModel
+    doctor: DoctorModel,
+    date: datetime.date
 ):
     """Helper that creates a new doctor pre assignment in the db"""
     pre_assignment_data = DoctorPreAssignmentCreate(
-        date=datetime.date(2026, 8, 12),
+        date=date,
         shift_id=shift_id
     )
 
@@ -65,11 +66,12 @@ def create_test_pre_assignment(
 
 def create_test_unavailability(
     session: Session,
-    doctor: DoctorModel
+    doctor: DoctorModel,
+    date: datetime.date
 ):
     """Helper that creates a new doctor pre assignment in the db"""
     unavailability_data = DoctorUnavailabilityCreate(
-        date=datetime.date(2026, 8, 12)
+        date=date
     )
     return doctor_repository.create_doctor_unavailability(
         session=session,
@@ -156,13 +158,13 @@ def doctor_fixture(session, department, team):
 @pytest.fixture(name="pre_assignment")
 def pre_assignment_fixture(session, new_doctor, shift):
     """Creates a reusable pre-assignment for tests"""
-    return create_test_pre_assignment(session, shift.id, new_doctor)
+    return create_test_pre_assignment(session, shift.id, new_doctor, datetime.date(2026, 8, 12))
 
 
 @pytest.fixture(name="unavailability")
 def unavailability_fixture(session, new_doctor):
     """Creates a reusable pre-assignment for tests"""
-    return create_test_unavailability(session, new_doctor)
+    return create_test_unavailability(session, new_doctor, datetime.date(2026, 8, 12))
 
 #####################
 # Repository tests
@@ -433,7 +435,7 @@ def test_create_doctor_pre_assignment_controller_nonexistent_doctor(session, shi
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 422
-    assert "Doctor does not exist" in exc_info.value.detail
+    assert "Doctor or shift does not exist" in exc_info.value.detail
 
 
 def test_create_doctor_unavailability_controller_duplicate_date(session, new_doctor, unavailability):
@@ -508,6 +510,80 @@ def test_create_doctor_position_controller_nonexistent_doctor(session, position)
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 422
     assert "Doctor does not exist" in exc_info.value.detail
+
+
+def test_create_doctor_mismatched_team_and_department(session, team, department):
+    """Tests that doctor's team belong to their department"""
+    # department input is needed to add the first department
+    department_data = DepartmentCreate(name="dep2", code="T")
+    new_department = department_repository.create_department(
+        session, department_data)
+
+    doctor_data = DoctorCreate(
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=new_department.id,
+        team_id=team.id
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_controller(
+            doctor_data=doctor_data,
+            session=session
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 422
+    assert "needs to match" in exc_info.value.detail
+
+
+def test_create_doctor_position_mismatched_department(session, department, team,  position):
+    """Tests that doctor's position belongs to their department"""
+    department_data = DepartmentCreate(name="dep2", code="T")
+    new_department = department_repository.create_department(
+        session, department_data)
+
+    new_doctor = create_new_doctor(
+        session=session,
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        department_id=new_department.id,
+        team_id=team.id
+    )
+
+    doctor_pos_data = DoctorPositionCreate(
+        position_id=position.id
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_position_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            doctor_pos_data=doctor_pos_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 422
+    assert "needs to match" in exc_info.value.detail
+
+
+def test_create_pre_assignment_unavailability_conflict(session, new_doctor, unavailability, shift):
+    """Tests that a pre assignment cannot be assigned on an unavailable day"""
+    pre_assignment_data = DoctorPreAssignmentCreate(
+        date=unavailability.date,
+        shift_id=shift.id,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_pre_assignment_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            pre_assignment_data=pre_assignment_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 422
+    assert "cannot be assigned to an unavailable day" in exc_info.value.detail
 
 #######################
 # Route tests
@@ -584,9 +660,12 @@ def test_get_doctor_by_id_route(client, department, team, new_doctor):
     assert "updated_at" in data
 
 
-# def test_get_doctor_by_id_route_nonexistent(client, team, department):
-#     """Test the GET /doctors/{doctor_id} route returns error when given a nonexistent id"""
-#     pass
+def test_get_doctor_by_id_route_nonexistent(client):
+    """Test the GET /doctors/{doctor_id} route returns error when given a nonexistent id"""
+    response = client.get(
+        f"/api/v1/doctors/{uuid.uuid4()}"
+    )
+    assert response.status_code == 404
 
 
 # new doctor is needed to add a doctor in the db

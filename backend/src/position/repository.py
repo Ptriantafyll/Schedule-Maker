@@ -3,8 +3,8 @@ Position repository functions for handling database operations.
 """
 
 # from typing import Optional
-# import uuid
-from sqlmodel import Session
+import uuid
+from sqlmodel import Session, not_, select
 
 from src.position.schemas import PositionCreate
 from src.position.models import Position as PositionModel
@@ -22,3 +22,11 @@ def create_position(session: Session, position_data: PositionCreate) -> Position
     session.commit()
     session.refresh(new_position)
     return new_position
+
+
+def get_position_by_id(session: Session, position_id: uuid.UUID) -> PositionModel:
+    """Retrieves a position by its id"""
+    statement = select(PositionModel).where(
+        PositionModel.id == position_id
+    )
+    return session.exec(statement).first()

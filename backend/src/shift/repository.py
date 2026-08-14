@@ -3,8 +3,8 @@ Shift repository functions for handling database operations.
 """
 
 # from typing import Optional
-# import uuid
-from sqlmodel import Session
+import uuid
+from sqlmodel import Session, not_, select
 
 from src.shift.schemas import ShiftCreate
 from src.shift.models import Shift as ShiftModel
@@ -22,3 +22,12 @@ def create_shift(session: Session, shift_data=ShiftCreate) -> ShiftModel:
     session.commit()
     session.refresh(new_shift)
     return new_shift
+
+
+def get_shift_by_id(session: Session, shift_id:uuid.UUID) -> ShiftModel:
+    """Retrieves a shift by its if"""
+    statement = select(ShiftModel).where(
+        ShiftModel.id == shift_id
+    )
+
+    return session.exec(statement).first()

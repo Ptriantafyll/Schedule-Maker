@@ -14,8 +14,9 @@ from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 from src.doctor.models import DoctorPosition as DoctorPositionModel
 from src.department import repository as department_repository
-# from src.shift import repository as shift_repository
+from src.shift import repository as shift_repository
 from src.team import repository as team_repository
+from src.position import repository as position_repository
 
 
 def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> DoctorModel:
@@ -36,6 +37,12 @@ def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> Doc
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="The team or department entered does not exist"
+        )
+
+    if team.department_id != department.id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"The team's department needs to match the doctor's department {team.department_id}, {department.id}"
         )
 
     return doctor_repository.create_doctor(session, doctor_data)
@@ -76,12 +83,24 @@ def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UU
         )
 
     doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
-    # shift = shift_repository.get_shift_by_id
-    # todo add shift
-    if not doctor:
+    shift = shift_repository.get_shift_by_id(
+        session, pre_assignment_data.shift_id)
+    if (not doctor) or (not shift):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Doctor does not exist"
+            detail="Doctor or shift does not exist"
+        )
+
+    unavailability = doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=doctor_id,
+        target_date=pre_assignment_data.date
+    )
+
+    if unavailability:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Doctor cannot be assigned to an unavailable day {pre_assignment_data.date}"
         )
 
     return doctor_repository.create_doctor_pre_assignment(
@@ -153,6 +172,14 @@ def create_doctor_position_controller(session: Session, doctor_id: uuid.UUID, do
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Doctor does not exist"
+        )
+
+    position = position_repository.get_position_by_id(
+        session, doctor_pos_data.position_id)
+    if doctor.department_id != position.department_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Doctor's department needs to match position's department"
         )
 
     return doctor_repository.create_doctor_position(
