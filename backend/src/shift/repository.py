@@ -76,14 +76,14 @@ def get_shift_assignment_by_id(session: Session, shift_assignment_id: uuid.UUID)
     return session.exec(statement).first()
 
 
-def get_shift_assignment_by_date(session: Session, shift_id: uuid.UUID, target_date: datetime.date) -> ShiftAssignmentModel:
+def get_shift_assignments_by_date(session: Session, shift_id: uuid.UUID, target_date: datetime.date) -> list[ShiftAssignmentModel]:
     """Retrieves a shift assignment by its date"""
     statement = select(ShiftAssignmentModel).where(
         ShiftAssignmentModel.date == target_date,
         ShiftAssignmentModel.shift_id == shift_id
     )
 
-    return session.exec(statement).first()
+    return session.exec(statement).all()
 
 
 def get_active_shift_assignments(session: Session) -> list[ShiftAssignmentModel]:

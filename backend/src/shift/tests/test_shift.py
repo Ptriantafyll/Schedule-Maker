@@ -18,7 +18,7 @@ from src.shift import controllers as shift_controllers
 from src.position.schemas import PositionCreate
 from src.position import repository as position_repository
 from src.doctor.models import Doctor as DoctorModel
-from src.doctor.schemas import DoctorCreate
+from src.doctor.schemas import DoctorCreate, DoctorUnavailabilityCreate
 from src.doctor import repository as doctor_repository
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
@@ -85,6 +85,21 @@ def create_new_shift_assignment(
     )
 
 
+def create_test_unavailability(
+    session: Session,
+    doctor: DoctorModel,
+    date: datetime.date
+):
+    """Helper that creates a new doctor pre assignment in the db"""
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=date
+    )
+    return doctor_repository.create_doctor_unavailability(
+        session=session,
+        doctor_id=doctor.id,
+        doctor_unavailability_data=unavailability_data
+    )
+
 #####################
 # Fixtures
 #####################
@@ -145,6 +160,12 @@ def doctor_fixture(session, department, team):
 def shift_assignment_fixture(session, new_doctor, shift):
     """Creates a reusable shift assignment for tests"""
     return create_new_shift_assignment(session, new_doctor.id, shift.id, datetime.date(2026, 8, 12))
+
+
+@pytest.fixture(name="unavailability")
+def unavailability_fixture(session, new_doctor):
+    """Creates a reusable pre-assignment for tests"""
+    return create_test_unavailability(session, new_doctor, datetime.date(2026, 8, 13))
 
 #####################
 # Repository Tests
@@ -211,16 +232,16 @@ def test_create_shift_assignment(session, new_doctor, shift):
     assert isinstance(new_shift_assignment.updated_at, datetime.datetime)
 
 
-def test_get_shift_assignment_by_date(session, shift_assignment):
+def test_get_shift_assignments_by_date(session, shift_assignment):
     """Tests retrieving a shift assignemtnt by its date"""
-    retrieved_shift_assignment = shift_repository.get_shift_assignment_by_date(
+    retrieved_shift_assignments = shift_repository.get_shift_assignments_by_date(
         session=session,
         shift_id=shift_assignment.shift_id,
         target_date=datetime.date(2026, 8, 12)
     )
 
-    assert isinstance(retrieved_shift_assignment.id, uuid.UUID)
-    assert shift_assignment.id == retrieved_shift_assignment.id
+    assert isinstance(retrieved_shift_assignments, list)
+    assert shift_assignment.id == retrieved_shift_assignments[0].id
 
 
 def test_get_shift_assignment_by_id(session, shift_assignment):
@@ -263,6 +284,167 @@ def test_get_active_shift_assignments(session, new_doctor, shift):
 #####################
 # Controller Tests
 #####################
+
+
+def test_create_shift_controller_duplicate_name(session, shift):
+    """Tests that creating a shift with a duplicate name returns error"""
+    shift2_data = ShiftCreate(
+        name=shift.name,
+        position_id=shift.position_id,
+        grants_day_off=False,
+        doctor_per_shift=1
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_controller(shift2_data, session)
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 400
+    assert "already exists" in exc_info.value.detail
+
+
+def test_create_shift_controller_nonexistent_position(session):
+    """Tests that creating a shift with a non existent position id returns error"""
+    shift_data = ShiftCreate(
+        name="ER 1",
+        position_id=uuid.uuid4(),
+        grants_day_off=False,
+        doctors_per_shift=1
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_controller(shift_data, session)
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 422
+    assert "does not exist" in exc_info.value.detail
+
+
+def test_get_shift_controller_nonexistent(session):
+    """Tests that trying to retrieve a non existent shift returns error"""
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.get_shift_controller(uuid.uuid4(), session)
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert "not found" in exc_info.value.detail
+
+
+def test_get_shift_controller_deleted(session, shift):
+    """Tests that trying to retrieve a deleted shift returns error"""
+    shift.is_deleted = True
+    session.add(shift)
+    session.commit()
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.get_shift_controller(shift.id, session)
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert "not found" in exc_info.value.detail
+
+
+def test_create_shift_assignment_controller_same_doctor_duplicate(session, shift_assignment):
+    """Tests that creating a new shift assignment with the same doctor returns error"""
+    new_shift_assignment_data = ShiftAssignmentCreate(
+        doctor_id=shift_assignment.doctor_id,
+        date=shift_assignment.date
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            shift_id=shift_assignment.shift_id,
+            session=session,
+            shift_assignment_data=new_shift_assignment_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 400
+    assert "Doctor is already assigned on this dat" in exc_info.value.detail
+
+
+# def test_create_shift_assignment_controller_different_doctor_conflict(session, department, team, new_doctor, shift):
+#     """Tests that creating a new shift assignment where another doctor is assigned returns error"""
+
+#     new_doctor2 = create_new_doctor(
+#         session=session,
+#         name="Dr panostest",
+#         email="drpanostest@gmail.com",
+#         department_id=department.id,
+#         team_id=team.id
+#     )
+
+#     create_new_shift_assignment(
+#         session=session,
+#         doctor_id=new_doctor.id,
+#         date=datetime.date(2026, 8, 12),
+#         shift_id=shift.id,
+#     )
+
+#     new_shift_assignment_data = ShiftAssignmentCreate(
+#         date=datetime.date(2026, 8, 12),
+#         doctor_id=new_doctor2.id
+#     )
+
+#     with pytest.raises(Exception) as exc_info:
+#         shift_controllers.create_shift_assignment_controller(
+#             shift_id=shift.id,
+#             session=session,
+#             shift_assignment_data=new_shift_assignment_data
+#         )
+
+#     assert exc_info.type.__name__ == "HTTPException"
+#     assert exc_info.value.status_code == 422
+#     assert "Another doctor is assigned on this shift" in exc_info.value.detail
+
+
+def test_create_shift_assignment_unavailability_conflict(session, unavailability, shift):
+    """Tests that creating a shift assignment when a doctor is unavailable returns error"""
+
+    shift_assignment_data = ShiftAssignmentCreate(
+        doctor_id=unavailability.doctor_id,
+        date=unavailability.date
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            session=session,
+            shift_id=shift.id,
+            shift_assignment_data=shift_assignment_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 400
+    assert "Doctor is unavailable" in exc_info.value.detail
+
+
+def test_create_shift_assignment_capacity_limit(session, shift, new_doctor, department, team):
+    """Tests that a shift assignment cannot be created when a shift already has reached the assignment capacity"""
+    new_doctor2 = create_new_doctor(
+        session, "2nd doc", "2nddoc@gmail.com", department.id, team.id)
+    new_doctor3 = create_new_doctor(
+        session, "3rd doc", "3rddoc@gmail.com", department.id, team.id)
+
+    target_date = datetime.date(2026, 8, 12)
+
+    create_new_shift_assignment(session, new_doctor.id, shift.id, target_date)
+    create_new_shift_assignment(session, new_doctor2.id, shift.id, target_date)
+
+    shift_assignment_data = ShiftAssignmentCreate(
+        doctor_id=new_doctor3.id,
+        date=target_date
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            session=session,
+            shift_id=shift.id,
+            shift_assignment_data=shift_assignment_data
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 400
+    assert "Shift already has max assignments" in exc_info.value.detail
 
 
 #####################
@@ -376,7 +558,7 @@ def test_create_shift_assignment_route_invalid_payload(client, shift, new_doctor
     assert response.status_code == 422
 
 
-def test_create_shift_assignment_route_duplicate(client,shift, new_doctor):
+def test_create_shift_assignment_route_duplicate(client, shift, new_doctor):
     """Tests post /api/v1/shifts/{shift_id}/assignments with invalid payload"""
     client.post(
         f"/api/v1/shifts/{shift.id}/assignments",
