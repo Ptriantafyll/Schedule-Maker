@@ -323,7 +323,7 @@ def test_create_shift_controller_nonexistent_position(session):
 def test_get_shift_controller_nonexistent(session):
     """Tests that trying to retrieve a non existent shift returns error"""
     with pytest.raises(Exception) as exc_info:
-        shift_controllers.get_shift_controller(uuid.uuid4(), session)
+        shift_controllers.get_shift_controller("test", session)
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
@@ -337,7 +337,7 @@ def test_get_shift_controller_deleted(session, shift):
     session.commit()
 
     with pytest.raises(Exception) as exc_info:
-        shift_controllers.get_shift_controller(shift.id, session)
+        shift_controllers.get_shift_controller(shift.name, session)
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
@@ -513,8 +513,8 @@ def test_list_shifts_route(client, shift):
 
 
 def test_get_shift_route(client, shift):
-    """Tests get /api/v1/shifts/{shift_id} route"""
-    response = client.get(f"/api/v1/shifts/{shift.id}")
+    """Tests get /api/v1/shifts/{shift_name} route"""
+    response = client.get(f"/api/v1/shifts/{shift.name}")
 
     assert response.status_code == 200
     data = response.json()

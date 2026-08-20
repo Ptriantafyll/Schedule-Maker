@@ -20,6 +20,7 @@ from src.department import routes as department_routes
 from src.team import routes as team_routes
 from src.doctor import routes as doctor_routes
 from src.shift import routes as shift_routes
+from src.position import routes as position_routes
 from src.db.connection import init_db
 from src.utils.logger import configure_logging, request_fields, request_id_var
 from src.utils.misc import elapsed_ms
@@ -57,6 +58,7 @@ app.include_router(department_routes.router, prefix="/api/v1")
 app.include_router(team_routes.router, prefix="/api/v1")
 app.include_router(doctor_routes.router, prefix="/api/v1")
 app.include_router(shift_routes.router, prefix="/api/v1" )
+app.include_router(position_routes.router, prefix="/api/v1" )
 
 CallNext = Callable[[Request], Awaitable[Response]]
 

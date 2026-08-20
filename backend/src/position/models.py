@@ -15,6 +15,6 @@ from src.db.schemas import SyncBase
 
 class Position(SyncBase, table=True):
     """Represents a position that needs to be staffed, such as "ER" or "ICU", stored in the database."""
-    name: str
+    name: str = Field(index=True, unique=True)
     department_id: uuid.UUID = Field(foreign_key="department.id")
     duty_days: list[int] = Field(default_factory=list, sa_column=Column(JSON))

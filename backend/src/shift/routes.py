@@ -34,10 +34,10 @@ def list_shift_assignments(session: Session = Depends(get_session)):
     return shift_controllers.list_shift_assignments_controller(session)
 
 
-@router.get("/{shift_id}", response_model=ShiftRead)
-def get_shift(shift_id: uuid.UUID, session: Session = Depends(get_session)):
-    """Fetches a specific shift by its UUID."""
-    return shift_controllers.get_shift_controller(shift_id, session)
+@router.get("/{shift_name}", response_model=ShiftRead)
+def get_shift(shift_name: str, session: Session = Depends(get_session)):
+    """Fetches a specific shift by its name."""
+    return shift_controllers.get_shift_controller(shift_name, session)
 
 
 @router.post("/{shift_id}/assignments", response_model=ShiftAssignmentRead, status_code=status.HTTP_201_CREATED)

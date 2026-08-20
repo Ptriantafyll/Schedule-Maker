@@ -38,9 +38,9 @@ def list_shifts_controller(session: Session) -> list[ShiftModel]:
     return repository.get_active_shifts(session)
 
 
-def get_shift_controller(shift_id: uuid.UUID, session: Session) -> ShiftModel:
+def get_shift_controller(shift_name: str, session: Session) -> ShiftModel:
     """Handles logic for retrieving a shift"""
-    shift = repository.get_shift_by_id(session, shift_id)
+    shift = repository.get_shift_by_name(session, shift_name)
 
     if not shift or shift.is_deleted:
         raise HTTPException(
