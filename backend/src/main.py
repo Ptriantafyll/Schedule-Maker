@@ -21,9 +21,11 @@ from src.team import routes as team_routes
 from src.doctor import routes as doctor_routes
 from src.shift import routes as shift_routes
 from src.position import routes as position_routes
+from src.user import routes as user_routes
 from src.db.connection import init_db
 from src.utils.logger import configure_logging, request_fields, request_id_var
 from src.utils.misc import elapsed_ms
+from src.auth.middleware import AuthContextMiddleware
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -53,12 +55,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(AuthContextMiddleware)
 
 app.include_router(department_routes.router, prefix="/api/v1")
 app.include_router(team_routes.router, prefix="/api/v1")
 app.include_router(doctor_routes.router, prefix="/api/v1")
 app.include_router(shift_routes.router, prefix="/api/v1" )
 app.include_router(position_routes.router, prefix="/api/v1" )
+app.include_router(user_routes.router, prefix="/api/v1" )
 
 CallNext = Callable[[Request], Awaitable[Response]]
 

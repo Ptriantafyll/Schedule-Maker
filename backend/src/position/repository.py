@@ -41,7 +41,7 @@ def get_position_by_name(session: Session, position_name: str) -> PositionModel:
     return session.exec(statement).first()
 
 
-def get_active_positions(session: Session)-> list[PositionModel]:
+def get_active_positions(session: Session) -> list[PositionModel]:
     """Retrieves all active (non deleted) positions"""
     statement = select(PositionModel).where(
         not_(PositionModel.is_deleted)

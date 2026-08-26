@@ -30,7 +30,7 @@ def init_db() -> None:
     from src.doctor.models import Doctor, DoctorPosition, DoctorPreAssignment, DoctorUnavailability  # pylint: disable=unused-import
     from src.shift.models import Shift, ShiftAssignment
     from src.position.models import Position
-
+    from src.user.models import User  # pylint: disable=unused-import
 
     SQLModel.metadata.create_all(engine)
     logger.info("Database initialized")

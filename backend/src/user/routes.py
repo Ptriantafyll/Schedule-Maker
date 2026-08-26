@@ -1,0 +1,42 @@
+"""
+User routes for handling API requests related to user management.
+"""
+
+import uuid
+from fastapi import APIRouter, Depends, status
+from sqlmodel import Session
+
+from src.db.connection import get_session
+
+from src.user.schemas import UserCreate, UserRead, UserLogin
+from src.user import controllers as user_controllers
+from src.auth.schemas import Token
+
+router = APIRouter(
+    prefix="/users",
+    tags=["Users"]
+)
+
+
+@router.get("/", response_model=list[UserRead])
+def list_users(session: Session = Depends(get_session)):
+    """Endpoint to lsit all active users"""
+    return user_controllers.list_users_controller(session)
+
+
+@router.post("/signup", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+def create_user(user_data: UserCreate, session: Session = Depends(get_session)):
+    """Endpoint to create a new user"""
+    return user_controllers.create_user_controller(user_data, session)
+
+
+@router.post("/login", response_model=Token)
+def login(login_data: UserLogin, session: Session = Depends(get_session)):
+    """Exchanges email and password for a signed JWT access token."""
+    return user_controllers.login_controller(login_data, session)
+
+
+@router.get("/{user_email}", response_model=UserRead)
+def get_user(user_email: str, session: Session = Depends(get_session)):
+    """Fetches a specific user by their email"""
+    return user_controllers.get_user_controller(user_email, session)

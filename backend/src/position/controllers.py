@@ -1,5 +1,5 @@
 """
-Position controller functions for handling business logic related to team management.
+Position controller functions for handling business logic related to position management.
 """
 
 import uuid
