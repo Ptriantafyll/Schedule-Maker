@@ -221,6 +221,16 @@ def test_list_users_requires_authentication(client):
     assert response.headers.get("WWW-Authenticate") == "Bearer"
 
 
+def test_list_users_rejects_invalid_token(client):
+    """Tests that an authenticated route rejects an invalid token"""
+    response = client.get("/api/v1/users")
+
+    assert response.status_code == 401
+    data = response.json()
+    assert data == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
 def test_get_user_route_nonexistent_email(client):
     """Tests GET /api/v1/users/{user_email} with invalid payload"""
     response = client.get("/api/v1/users/123")
