@@ -21,3 +21,19 @@ def test_access_token_contains_required_claims():
     assert isinstance(jti, str)
     assert str(uuid.UUID(jti)) == jti
     assert decoded_token["exp"] > decoded_token["iat"]
+
+
+def test_access_token_security_claims_cannot_be_overridden():
+    """Tests that security claims of a token cannot be overridden"""
+    access_token = security.create_access_token({
+        "token_type": "refresh",
+        "iss": "untrusted-issuer",
+        "aud": "untrusted-audience",
+        "jti": "attacker-controlled"
+    })
+    decoded_token = security.decode_access_token(access_token)
+
+    assert decoded_token["token_type"] == "access"
+    jti = decoded_token["jti"]
+    assert isinstance(jti, str)
+    assert jti != "attacker-controlled"
