@@ -243,22 +243,22 @@ def test_user_controller_nonexistent(session, user):
     assert "not found" in exc_info.value.detail
 
 
-def test_password_hashing(session):
+def test_create_user_controller_hashes_password(session, department):
     """Tests that a password gets hashed"""
+    plain_password = "test123"
     new_user_data = UserCreate(
         full_name="Test2 Testakis",
-        role=UserRole.DOCTOR,
+        role=UserRole.VIEWER,
         email="test@test.com",
-        password="test123",
-        doctor_id=None,
-        department_id=None
+        password=plain_password,
+        department_id=department.i
     )
 
     new_user = user_controllers.create_user_controller(new_user_data, session)
 
     assert new_user is not None
-    assert new_user.hashed_password != "test123"
-    assert verify_password("test123", new_user.hashed_password)
+    assert new_user.hashed_password != plain_password
+    assert verify_password(plain_password, new_user.hashed_password)
     assert not verify_password("wrong_password", new_user.hashed_password)
 
 
