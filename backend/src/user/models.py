@@ -11,7 +11,8 @@ from src.db.schemas import SyncBase
 
 class UserRole(str, enum.Enum):
     """Role class for the users"""
-    ADMIN = "admin"
+    SUPER_ADMIN = "super_admin"
+    DEPARTMENT_ADMIN = "department_admin"
     DOCTOR = "doctor"
     VIEWER = "viewer"
 

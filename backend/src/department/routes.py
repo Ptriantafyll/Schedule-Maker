@@ -15,7 +15,7 @@ from src.department.controllers import (
 )
 
 from src.user.models import User as UserModel
-from src.auth.dependencies import require_admin, require_doctor_or_admin
+from src.auth.dependencies import require_super_admin, require_doctor_or_admin, require_department_admin
 
 router = APIRouter(
     prefix="/departments",
@@ -33,7 +33,7 @@ def create_department(department_data: DepartmentCreate, session: Session = Depe
 
 
 @router.get("/", response_model=list[DepartmentRead])
-def list_departments(session: Session = Depends(get_session), current_user: UserModel = Depends(require_admin)):
+def list_departments(session: Session = Depends(get_session), current_user: UserModel = Depends(require_department_admin)):
     """Retrieves all active, non-deleted hospital departments."""
     return list_departments_controller(session)
 

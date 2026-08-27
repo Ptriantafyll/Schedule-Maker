@@ -39,7 +39,7 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
     if not user or user.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account no longer active",
+            detail="User account no longer act ive",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
@@ -59,5 +59,7 @@ def require_role(*allowed_roles: UserRole):
     return role_guard
 
 
-require_admin = require_role(UserRole.ADMIN)
-require_doctor_or_admin = require_role(UserRole.ADMIN, UserRole.DOCTOR)
+require_super_admin = require_role(UserRole.SUPER_ADMIN)
+require_department_admin = require_role(UserRole.DEPARTMENT_ADMIN)
+require_doctor_or_admin = require_role(
+    UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN, UserRole.DOCTOR)

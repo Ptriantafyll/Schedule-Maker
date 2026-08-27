@@ -63,23 +63,44 @@ def department_fixture(session):
     return department_repository.create_department(session, dept_data)
 
 
-@pytest.fixture(name="admin_user")
-def admin_user_fixture(session):
+@pytest.fixture(name="departmentB")
+def departmentB_fixture(session):
+    """Creates a reusable department for tests"""
+    dept_data = DepartmentCreate(name="Radiology", code="RAD")
+    return department_repository.create_department(session, dept_data)
+
+
+@pytest.fixture(name="department_admin_user")
+def admin_user_fixture(session, department):
     """Creates a reusable admin user for tests"""
     admin_user_data = UserCreate(
         email="admin@gmail.com",
         full_name="admin admin",
         password="password123",
-        role=UserRole.ADMIN
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department.id
     )
 
     return user_controllers.create_user_controller(admin_user_data, session)
 
 
-@pytest.fixture(name="admin_headers")
-def admin_headers_fixture(admin_user):
+@pytest.fixture(name="department_b_user")
+def department_b_user(session, departmentB):
+    """Creates a user for the department B"""
+    user_data = UserCreate(
+        email="user@gmail.com",
+        full_name="test test",
+        password="password123",
+        role=UserRole.DOCTOR,
+        department_id=departmentB.id
+    )
+    return user_controllers.create_user_controller(user_data, session)
+
+
+@pytest.fixture(name="department_admin_headers")
+def admin_headers_fixture(department_admin_user):
     """Creates reusable admin headers"""
-    access_token = create_access_token({"sub": str(admin_user.id)})
+    access_token = create_access_token({"sub": str(department_admin_user.id)})
 
     return {"Authorization": f"Bearer {access_token}"}
 
@@ -235,7 +256,7 @@ def test_create_user_route_invalid_payload(client):
     assert response.status_code == 422
 
 
-def test_admin_can_list_users(client, admin_user, admin_headers):
+def test_department_admin_can_list_users(client, department_admin_user, admin_headers, department_b_user, department):
     """Tests GET /api/v1/users route with sufficient permissions"""
     response = client.get(
         "/api/v1/users",
@@ -247,14 +268,23 @@ def test_admin_can_list_users(client, admin_user, admin_headers):
     assert isinstance(data, list)
 
     returned_admin = next(
-        (item for item in data if item["id"] == str(admin_user.id)),
+        (item for item in data if item["id"] == str(department_admin_user.id)),
         None
     )
 
     assert returned_admin is not None
-    assert returned_admin["email"] == admin_user.email
+    assert returned_admin["email"] == department_admin_user.email
     assert returned_admin["role"] == "admin"
     assert "hashed_password" not in returned_admin
+
+    returned_ids = {item["id"] for item in data}
+
+    assert str(department_admin_user.id) in returned_ids
+    assert str(department_b_user.id) not in returned_ids
+    assert all(
+        item["department_id"] == str(department.id)
+        for item in data
+    )
 
 
 def test_list_users_requires_authentication(client):
