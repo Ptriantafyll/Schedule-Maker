@@ -17,6 +17,15 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
 ISSUER = "schedule-maker-api"
 AUDIENCE = "schedule-maker-clients"
 TOKEN_TYPE = "access"
+REQUIRED_ACCESS_TOKEN_CLAIMS = [
+    "sub",
+    "exp",
+    "iat",
+    "jti",
+    "iss",
+    "aud",
+    "token_type"
+]
 
 
 def hash_password(plain_password: str) -> str:
@@ -53,10 +62,16 @@ def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] 
 
 def decode_access_token(token: str) -> dict:
     """Decode and validate a JWT access token."""
-    return jwt.decode(
+    payload = jwt.decode(
         token,
         SECRET_KEY,
         algorithms=[ALGORITHM],
         issuer=ISSUER,
-        audience=AUDIENCE
+        audience=AUDIENCE,
+        options={"require": REQUIRED_ACCESS_TOKEN_CLAIMS}
     )
+
+    if payload["token_type"] != TOKEN_TYPE:
+        raise (jwt.InvalidTokenError("Invalid token type"))
+
+    return payload

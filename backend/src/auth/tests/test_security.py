@@ -116,7 +116,7 @@ def test_decode_access_token_rejects_invalid_claim_value(claim, invalid_value, e
         security.decode_access_token(token_invalid_claim)
 
 
-def test_decode_access_token_invalid_secret():
+def test_decode_access_token_rejects_invalid_signature():
     """Tests different signing secret"""
     access_token = security.create_access_token(
         {"sub": str(uuid.uuid4())}
@@ -125,7 +125,7 @@ def test_decode_access_token_invalid_secret():
 
     token_invalid_secret = jwt.encode(
         payload,
-        "different-secret",
+        "different-secret-123456789123456789123456789",
         algorithm=security.ALGORITHM
     )
 
