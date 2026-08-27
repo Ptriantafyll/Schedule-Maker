@@ -419,7 +419,7 @@ def test_department_admin_can_create_team(client, department_admin_headers, depa
         headers=department_admin_headers
     )
 
-    assert response.status == 201 
+    assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Rad Team E"
     assert data["department_id"] == str(department.id)
