@@ -223,7 +223,10 @@ def test_list_users_requires_authentication(client):
 
 def test_list_users_rejects_invalid_token(client):
     """Tests that an authenticated route rejects an invalid token"""
-    response = client.get("/api/v1/users")
+    response = client.get(
+        "/api/v1/users",
+        headers={"Authorization": "Bearer invalid token"}
+    )
 
     assert response.status_code == 401
     data = response.json()
