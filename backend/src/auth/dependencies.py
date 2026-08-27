@@ -62,4 +62,4 @@ def require_role(*allowed_roles: UserRole):
 require_super_admin = require_role(UserRole.SUPER_ADMIN)
 require_department_admin = require_role(UserRole.DEPARTMENT_ADMIN)
 require_doctor_or_admin = require_role(
-    UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN, UserRole.DOCTOR)
+    UserRole.DEPARTMENT_ADMIN, UserRole.DOCTOR)

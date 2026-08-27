@@ -11,8 +11,8 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, create_engine, Session
 
 from src.main import app
-from src.user.schemas import UserCreate, UserRole
-from src.user.models import User as UserModel
+from src.user.schemas import UserCreate
+from src.user.models import UserRole
 from src.user import repository as user_repository
 from src.user import controllers as user_controllers
 from src.department.schemas import DepartmentCreate
@@ -256,11 +256,11 @@ def test_create_user_route_invalid_payload(client):
     assert response.status_code == 422
 
 
-def test_department_admin_can_list_users(client, department_admin_user, admin_headers, department_b_user, department):
+def test_department_admin_can_list_users(client, department_admin_user, department_admin_headers, department_b_user, department):
     """Tests GET /api/v1/users route with sufficient permissions"""
     response = client.get(
         "/api/v1/users",
-        headers=admin_headers
+        headers=department_admin_headers
     )
 
     assert response.status_code == 200
@@ -274,7 +274,7 @@ def test_department_admin_can_list_users(client, department_admin_user, admin_he
 
     assert returned_admin is not None
     assert returned_admin["email"] == department_admin_user.email
-    assert returned_admin["role"] == "admin"
+    assert returned_admin["role"] == "department_admin"
     assert "hashed_password" not in returned_admin
 
     returned_ids = {item["id"] for item in data}
