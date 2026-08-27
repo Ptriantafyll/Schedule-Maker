@@ -397,10 +397,10 @@ def test_deleted_user_token_is_rejected(session, client, department_admin_user, 
     assert response.headers.get("WWW-Authenticate") == "Bearer"
 
 
-def test_doctor_cannot_perform_admin_write(client, doctor_headers, department):
+def test_doctor_cannot_create_team(client, doctor_headers, department, session):
     """Tests that a doctor cannot perform an admin action"""
     response = client.post(
-        "api/v1/teams",
+        "/api/v1/teams",
         json={"name": "Rad Team E", "department_id": str(department.id)},
         headers=doctor_headers
     )
@@ -408,4 +408,4 @@ def test_doctor_cannot_perform_admin_write(client, doctor_headers, department):
     assert response.status_code == 403
     data = response.json()
     assert data == {"detail": "Insufficient permissions for this operation"}
-    assert response.headers.get("WWW-Authenticate") == "Bearer"
+    assert team_repository.get_team_by_name(session, "Rad Team E") is None
