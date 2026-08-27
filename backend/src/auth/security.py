@@ -7,12 +7,16 @@ import datetime
 from typing import Optional
 import jwt
 import bcrypt
+import uuid
 
 SECRET_KEY = os.getenv(
     "SECRET_KEY", "dev-secret-key-change-in-production-123456")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(
     os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+ISSUER = "schedule-maker-api"
+AUDIENCE = "schedule-maker-clients"
+TOKEN_TYPE = "access"
 
 
 def hash_password(plain_password: str) -> str:
@@ -29,14 +33,19 @@ def verify_password(plain_password: str, hashed_password) -> str:
 def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] = None) -> str:
     """Creates a signed JWT access token."""
     to_encode = data.copy()
-    expire = datetime.datetime.now(datetime.timezone.utc) + (
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expire = now + (
         expires_delta or datetime.timedelta(
             minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
 
     to_encode.update({
         "exp": expire,
-        "iat": datetime.datetime.now(datetime.timezone.utc)
+        "iat": now,
+        "jti": str(uuid.UUID),
+        "iss": ISSUER,
+        "aud": AUDIENCE,
+        "token_type": TOKEN_TYPE
     })
 
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
@@ -44,4 +53,10 @@ def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] 
 
 def decode_access_token(token: str) -> dict:
     """Decode and validate a JWT access token."""
-    return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    return jwt.decode(
+        token,
+        SECRET_KEY,
+        algorithms=[ALGORITHM],
+        issuer=ISSUER,
+        audience=AUDIENCE
+    )
