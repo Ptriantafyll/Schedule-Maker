@@ -71,7 +71,7 @@ def test_decode_access_token_rejects_expired_token():
     ]
 )
 def test_decode_access_token_rejects_missing_required_claim(missing_claim):
-    """Tests missing sub"""
+    """Tests missing required claim"""
     access_token = security.create_access_token(
         {"sub": str(uuid.uuid4())}
     )
@@ -114,3 +114,20 @@ def test_decode_access_token_rejects_invalid_claim_value(claim, invalid_value, e
 
     with pytest.raises(expected_exception, match=error_match):
         security.decode_access_token(token_invalid_claim)
+
+
+def test_decode_access_token_invalid_secret():
+    """Tests different signing secret"""
+    access_token = security.create_access_token(
+        {"sub": str(uuid.uuid4())}
+    )
+    payload = security.decode_access_token(access_token)
+
+    token_invalid_secret = jwt.encode(
+        payload,
+        "different-secret",
+        algorithm=security.ALGORITHM
+    )
+
+    with pytest.raises(jwt.InvalidSignatureError):
+        security.decode_access_token(token_invalid_secret)
