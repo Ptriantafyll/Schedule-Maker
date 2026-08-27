@@ -17,5 +17,7 @@ def test_access_token_contains_required_claims():
     assert decoded_token["token_type"] == "access"
     assert decoded_token["iss"] == "schedule-maker-api"
     assert decoded_token["aud"] == "schedule-maker-clients"
-    assert isinstance(decoded_token["jti"], uuid.UUID)
+    jti = decoded_token["jti"]
+    assert isinstance(jti, str)
+    assert str(uuid.UUID(jti)) == jti
     assert decoded_token["exp"] > decoded_token["iat"]
