@@ -42,7 +42,7 @@ def create_access_token(data: dict, expires_delta: Optional[datetime.timedelta] 
     to_encode.update({
         "exp": expire,
         "iat": now,
-        "jti": str(uuid.UUID),
+        "jti": str(uuid.uuid4()),
         "iss": ISSUER,
         "aud": AUDIENCE,
         "token_type": TOKEN_TYPE
