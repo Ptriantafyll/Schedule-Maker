@@ -337,3 +337,21 @@ def test_public_signup_rejects_privileged_roles(client, session, role):
 
     assert response.status_code == 422
     assert user_repository.get_user_by_email(session, email) is None
+
+
+def test_deleted_user_token_is_rejected(session, client, department_admin_user, department_admin_headers):
+    """Test that a deleted user's token is rejected"""
+    department_admin_user.is_deleted = True
+    session.add(department_admin_user)
+    session.commit()
+
+    response = client.get(
+        "/api/v1/departments",
+        headers=department_admin_headers
+    )
+
+    assert response.status_code == 401
+    data = response.json()
+
+    assert data == {"detail": "User account no longer active"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
