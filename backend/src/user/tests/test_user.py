@@ -11,10 +11,13 @@ from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel, create_engine, Session
 
 from src.main import app
-from src.user.schemas import UserCreate
+from src.user.schemas import UserCreate, UserRole
 from src.user.models import User as UserModel
 from src.user import repository as user_repository
 from src.user import controllers as user_controllers
+from src.department.schemas import DepartmentCreate
+from src.department import repository as department_repository
+from src.auth.security import create_access_token
 
 
 #####################
@@ -24,6 +27,8 @@ from src.user import controllers as user_controllers
 #####################
 # Fixtures
 #####################
+
+
 @pytest.fixture(name="session")
 def session_fixture():
     """Creates a fresh in-memory database session for each test."""
@@ -51,9 +56,38 @@ def user_fixture(session):
     return user_repository.create_user(session, user_data)
 
 
+@pytest.fixture(name="department")
+def department_fixture(session):
+    """Creates a reusable department for tests"""
+    dept_data = DepartmentCreate(name="Cardiology", code="CARD")
+    return department_repository.create_department(session, dept_data)
+
+
+@pytest.fixture(name="admin_user")
+def admin_user_fixture(session):
+    """Creates a reusable admin user for tests"""
+    admin_user_data = UserCreate(
+        email="admin@gmail.com",
+        full_name="admin admin",
+        password="password123",
+        role=UserRole.ADMIN
+    )
+
+    return user_controllers.create_user_controller(admin_user_data, session)
+
+
+@pytest.fixture(name="admin_headers")
+def admin_headers_fixture(admin_user):
+    """Creates reusable admin headers"""
+    access_token = create_access_token({"sub": str(admin_user.id)})
+
+    return {"Authorization": f"Bearer {access_token}"}
+
+
 #####################
 # Repository tests
 #####################
+
 
 def test_create_user(user):
     """Test creating a user and verifying their fields"""
@@ -201,14 +235,26 @@ def test_create_user_route_invalid_payload(client):
     assert response.status_code == 422
 
 
-def test_list_users_route(client, user):
-    """Tests GET /api/v1/users route"""
-    response = client.get("/api/v1/users")
+def test_admin_can_list_users(client, admin_user, admin_headers):
+    """Tests GET /api/v1/users route with sufficient permissions"""
+    response = client.get(
+        "/api/v1/users",
+        headers=admin_headers
+    )
 
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert data[0]["id"] == str(user.id)
+
+    returned_admin = next(
+        (item for item in data if item["id"] == str(admin_user.id)),
+        None
+    )
+
+    assert returned_admin is not None
+    assert returned_admin["email"] == admin_user.email
+    assert returned_admin["role"] == "admin"
+    assert "hashed_password" not in returned_admin
 
 
 def test_list_users_requires_authentication(client):
