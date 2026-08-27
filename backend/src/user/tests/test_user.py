@@ -23,6 +23,7 @@ from src.doctor.schemas import DoctorCreate
 from src.doctor.models import Doctor as DoctorModel
 from src.team import repository as team_repository
 from src.team.schemas import TeamCreate
+from src.auth.security import verify_password
 
 #####################
 # Helpers
@@ -242,6 +243,25 @@ def test_user_controller_nonexistent(session, user):
     assert "not found" in exc_info.value.detail
 
 
+def test_password_hashing(session):
+    """Tests that a password gets hashed"""
+    new_user_data = UserCreate(
+        full_name="Test2 Testakis",
+        role=UserRole.DOCTOR,
+        email="test@test.com",
+        password="test123",
+        doctor_id=None,
+        department_id=None
+    )
+
+    new_user = user_controllers.create_user_controller(new_user_data, session)
+
+    assert new_user is not None
+    assert new_user.hashed_password != "test123"
+    assert verify_password("test123", new_user.hashed_password)
+    assert not verify_password("wrong_password", new_user.hashed_password)
+
+
 #####################
 # Route tests
 #####################
@@ -424,4 +444,5 @@ def test_department_admin_can_create_team(client, department_admin_headers, depa
     assert data["name"] == "Rad Team E"
     assert data["department_id"] == str(department.id)
     new_team = team_repository.get_team_by_name(session, "Rad Team E")
+    assert new_team is not None
     assert str(new_team.id) == data["id"]
