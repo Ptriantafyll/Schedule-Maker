@@ -131,3 +131,15 @@ def test_decode_access_token_rejects_invalid_signature():
 
     with pytest.raises(jwt.InvalidSignatureError):
         security.decode_access_token(token_invalid_secret)
+
+
+def test_create_access_token_honors_zero_expiry():
+    """Tests expire delta = 0"""
+    delta = datetime.timedelta(seconds=0)
+    access_token = security.create_access_token(
+        {"sub": str(uuid.uuid4())},
+        expires_delta=delta
+    )
+
+    with pytest.raises(jwt.ExpiredSignatureError):
+        security.decode_access_token(access_token)

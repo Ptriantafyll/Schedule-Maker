@@ -17,7 +17,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(
 ISSUER = "schedule-maker-api"
 AUDIENCE = "schedule-maker-clients"
 TOKEN_TYPE = "access"
-REQUIRED_ACCESS_TOKEN_CLAIMS = [
+REQUIRED_ACCESS_TOKEN_CLAIMS = (
     "sub",
     "exp",
     "iat",
@@ -25,7 +25,7 @@ REQUIRED_ACCESS_TOKEN_CLAIMS = [
     "iss",
     "aud",
     "token_type"
-]
+)
 
 
 def hash_password(plain_password: str) -> str:
@@ -34,7 +34,7 @@ def hash_password(plain_password: str) -> str:
     return bcrypt.hashpw(plain_password.encode("utf-8"), salt).decode("utf-8")
 
 
-def verify_password(plain_password: str, hashed_password) -> str:
+def verify_password(plain_password: str, hashed_password) -> bool:
     """Verify a plaintext password against a stored bcrypt hash."""
     return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
@@ -72,6 +72,6 @@ def decode_access_token(token: str) -> dict:
     )
 
     if payload["token_type"] != TOKEN_TYPE:
-        raise (jwt.InvalidTokenError("Invalid token type"))
+        raise jwt.InvalidTokenError("Invalid token type")
 
     return payload
