@@ -85,6 +85,6 @@ def test_decode_access_token_rejects_missing_sub(missing_claim):
     )
 
     with pytest.raises(jwt.MissingRequiredClaimError) as exc_info:
-        security.decode_access_token(access_token)
+        security.decode_access_token(token_missing_claim)
 
     assert exc_info.value.claim == missing_claim
