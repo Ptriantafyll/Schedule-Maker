@@ -3,6 +3,9 @@ Tests for the authentication security
 """
 
 import uuid
+import datetime
+import jwt
+import pytest
 
 from src.auth import security
 
@@ -41,3 +44,15 @@ def test_access_token_security_claims_cannot_be_overridden():
     assert isinstance(jti, str)
     assert jti != "attacker-controlled"
     assert str(uuid.UUID(jti)) == jti
+
+
+def test_decode_access_token_rejects_expired_token():
+    """Tests that an expired token is rejected"""
+    sub = str(uuid.uuid4())
+    access_token = security.create_access_token({
+        "sub": sub},
+        expires_delta=datetime.timedelta(seconds=-1)
+    )
+
+    with pytest.raises(jwt.ExpiredSignatureError):
+        security.decode_access_token(access_token)
