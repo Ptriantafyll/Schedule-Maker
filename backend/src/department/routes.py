@@ -15,7 +15,7 @@ from src.department.controllers import (
 )
 
 from src.user.models import User as UserModel
-from src.auth.dependencies import require_super_admin, require_doctor_or_admin, require_department_admin
+from src.auth.dependencies import require_department_admin
 
 router = APIRouter(
     prefix="/departments",

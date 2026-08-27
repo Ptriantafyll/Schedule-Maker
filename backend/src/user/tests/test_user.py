@@ -146,7 +146,7 @@ def test_get_active_users(session, user):
     """Test listing all active users"""
     new_user_data = UserCreate(
         full_name="Test2 Testakis",
-        role="super_admin",
+        role=UserRole.VIEWER,
         email="test2@gmail.com",
         password="test123",
         doctor_id=None,
@@ -173,7 +173,7 @@ def test_create_user_controller_duplicate_email(session, user):
     """Tests that creating a user with a duplicate email returns error"""
     new_user_data = UserCreate(
         full_name="Test2 Testakis",
-        role="super_admin",
+        role=UserRole.DOCTOR,
         email=user.email,
         password="test123",
         doctor_id=None,
@@ -227,7 +227,6 @@ def test_create_user_route(client):
         "api/v1/users/signup",
         json={
             "full_name": "Test2 Testakis",
-            "role": "super_admin",
             "email": "test@gmail.com",
             "password": "test123",
         }
@@ -236,7 +235,7 @@ def test_create_user_route(client):
     assert response.status_code == 201
     data = response.json()
     assert data["full_name"] == "Test2 Testakis"
-    assert data["role"] == "super_admin"
+    assert data["role"] == "doctor"
     assert data["email"] == "test@gmail.com"
     assert "id" in data
     assert "created_at" in data
@@ -248,7 +247,6 @@ def test_create_user_route_invalid_payload(client):
     response = client.post(
         "api/v1/users/signup",
         json={
-            "role": "super_admin",
             "password": "test123",
         }
     )
