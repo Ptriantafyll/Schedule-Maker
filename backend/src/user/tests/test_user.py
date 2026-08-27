@@ -140,7 +140,7 @@ def user_fixture(session, doctor, department):
 
 @pytest.fixture(name="doctor_headers")
 def doctor_headers_fixture(user):
-    """Creates reusable admin headers"""
+    """Creates reusable doctor headers"""
     access_token = create_access_token({"sub": str(user.id)})
 
     return {"Authorization": f"Bearer {access_token}"}
@@ -409,3 +409,17 @@ def test_doctor_cannot_create_team(client, doctor_headers, department, session):
     data = response.json()
     assert data == {"detail": "Insufficient permissions for this operation"}
     assert team_repository.get_team_by_name(session, "Rad Team E") is None
+
+
+def test_department_admin_can_create_team(client, department_admin_headers, department):
+    """Tests that a department admin can create a team"""
+    response = client.post(
+        "/api/v1/teams",
+        json={"name": "Rad Team E", "department_id": str(department.id)},
+        headers=department_admin_headers
+    )
+
+    assert response.status == 201 
+    data = response.json()
+    assert data["name"] == "Rad Team E"
+    assert data["department_id"] == str(department.id)
