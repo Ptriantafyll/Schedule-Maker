@@ -201,7 +201,7 @@ def test_create_user_route_invalid_payload(client):
     assert response.status_code == 422
 
 
-def test_listt_users_route(client, user):
+def test_list_users_route(client, user):
     """Tests GET /api/v1/users route"""
     response = client.get("/api/v1/users")
 
@@ -209,6 +209,16 @@ def test_listt_users_route(client, user):
     data = response.json()
     assert isinstance(data, list)
     assert data[0]["id"] == str(user.id)
+
+
+def test_list_users_route(client):
+    """Tests that an authenticated route returns error on unauthenticated request"""
+    response = client.get("/api/v1/users")
+
+    assert response.status_code == 401
+    data = response.json()
+    assert data == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
 
 
 def test_get_user_route_nonexistent_email(client):
