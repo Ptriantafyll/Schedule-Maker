@@ -314,30 +314,25 @@ def test_get_user_route_nonexistent_email(client):
 
     assert response.status_code == 404
 
-def test_public_signup_rejects_privileged_roles(client, session):
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DEPARTMENT_ADMIN,
+        UserRole.SUPER_ADMIN,
+    ],
+)
+def test_public_signup_rejects_privileged_roles(client, session, role):
     """Test POST /api/v1/users/signup should reject privileged roles"""
+    email = f"{role.value}@test.com"
     response = client.post(
         "api/v1/users/signup",
         json={
             "full_name": "Test2 Testakis",
-            "email": "test@gmail.com",
+            "email": email,
             "password": "test123",
-            "role": UserRole.DEPARTMENT_ADMIN
-          }
-    )
-
-    assert response.status_code == 422
-    assert user_repository.get_user_by_email(session, "test@gmail.com") is None
-
-
-    response = client.post(
-        "api/v1/users/signup",
-        json={
-            "full_name": "Test3 Testakis",
-            "email": "test@gmail.com",
-            "password": "test123",
-            "role": UserRole.SUPER_ADMIN
-          }
+            "role": role.value,
+        }
     )
 
     assert response.status_code == 422
