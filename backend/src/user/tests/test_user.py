@@ -63,8 +63,8 @@ def department_fixture(session):
     return department_repository.create_department(session, dept_data)
 
 
-@pytest.fixture(name="departmentB")
-def departmentB_fixture(session):
+@pytest.fixture(name="department_b")
+def department_b_fixture(session):
     """Creates a reusable department for tests"""
     dept_data = DepartmentCreate(name="Radiology", code="RAD")
     return department_repository.create_department(session, dept_data)
@@ -85,14 +85,14 @@ def admin_user_fixture(session, department):
 
 
 @pytest.fixture(name="department_b_user")
-def department_b_user(session, departmentB):
+def department_b_user(session, department_b):
     """Creates a user for the department B"""
     user_data = UserCreate(
         email="user@gmail.com",
         full_name="test test",
         password="password123",
-        role=UserRole.DOCTOR,
-        department_id=departmentB.id
+        role=UserRole.VIEWER,
+        department_id=department_b.id
     )
     return user_controllers.create_user_controller(user_data, session)
 
@@ -146,7 +146,7 @@ def test_get_active_users(session, user):
     """Test listing all active users"""
     new_user_data = UserCreate(
         full_name="Test2 Testakis",
-        role="admin",
+        role="super_admin",
         email="test2@gmail.com",
         password="test123",
         doctor_id=None,
@@ -173,7 +173,7 @@ def test_create_user_controller_duplicate_email(session, user):
     """Tests that creating a user with a duplicate email returns error"""
     new_user_data = UserCreate(
         full_name="Test2 Testakis",
-        role="admin",
+        role="super_admin",
         email=user.email,
         password="test123",
         doctor_id=None,
@@ -227,7 +227,7 @@ def test_create_user_route(client):
         "api/v1/users/signup",
         json={
             "full_name": "Test2 Testakis",
-            "role": "admin",
+            "role": "super_admin",
             "email": "test@gmail.com",
             "password": "test123",
         }
@@ -236,7 +236,7 @@ def test_create_user_route(client):
     assert response.status_code == 201
     data = response.json()
     assert data["full_name"] == "Test2 Testakis"
-    assert data["role"] == "admin"
+    assert data["role"] == "super_admin"
     assert data["email"] == "test@gmail.com"
     assert "id" in data
     assert "created_at" in data
@@ -248,7 +248,7 @@ def test_create_user_route_invalid_payload(client):
     response = client.post(
         "api/v1/users/signup",
         json={
-            "role": "admin",
+            "role": "super_admin",
             "password": "test123",
         }
     )
@@ -256,7 +256,7 @@ def test_create_user_route_invalid_payload(client):
     assert response.status_code == 422
 
 
-def test_department_admin_can_list_users(client, department_admin_user, department_admin_headers, department_b_user, department):
+def test_department_admin_lists_users_only_in_own_department(client, department_admin_user, department_admin_headers, department_b_user, department):
     """Tests GET /api/v1/users route with sufficient permissions"""
     response = client.get(
         "/api/v1/users",
