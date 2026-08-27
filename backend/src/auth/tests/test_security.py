@@ -88,3 +88,21 @@ def test_decode_access_token_rejects_missing_sub(missing_claim):
         security.decode_access_token(token_missing_claim)
 
     assert exc_info.value.claim == missing_claim
+
+
+def test_decode_access_token_rejects_wrong_token_type():
+    """Tests wrong token type"""
+    access_token = security.create_access_token(
+        {"sub": str(uuid.uuid4())}
+    )
+    payload = security.decode_access_token(access_token)
+    payload["token_type"] = "wrong_type"
+
+    token_wrong_type = jwt.encode(
+        payload,
+        security.SECRET_KEY,
+        algorithm=security.ALGORITHM
+    )
+
+    with pytest.raises(jwt.InvalidTokenError, match="Invalid token type"):
+        security.decode_access_token(token_wrong_type)
