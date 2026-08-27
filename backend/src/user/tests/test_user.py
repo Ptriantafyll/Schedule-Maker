@@ -251,7 +251,7 @@ def test_create_user_controller_hashes_password(session, department):
         role=UserRole.VIEWER,
         email="test@test.com",
         password=plain_password,
-        department_id=department.i
+        department_id=department.id
     )
 
     new_user = user_controllers.create_user_controller(new_user_data, session)
