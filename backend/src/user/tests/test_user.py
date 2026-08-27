@@ -211,7 +211,7 @@ def test_list_users_route(client, user):
     assert data[0]["id"] == str(user.id)
 
 
-def test_list_users_route(client):
+def test_list_users_requires_authentication(client):
     """Tests that an authenticated route returns error on unauthenticated request"""
     response = client.get("/api/v1/users")
 
