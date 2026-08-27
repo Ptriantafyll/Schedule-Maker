@@ -336,4 +336,4 @@ def test_public_signup_rejects_privileged_roles(client, session, role):
     )
 
     assert response.status_code == 422
-    assert user_repository.get_user_by_email(session, "test@gmail.com") is None
+    assert user_repository.get_user_by_email(session, email) is None
