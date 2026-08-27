@@ -169,7 +169,7 @@ def client_fixture(session):
 def test_create_user_route(client):
     """Tests POST /api/v1/users route"""
     response = client.post(
-        "api/v1/users",
+        "api/v1/users/signup",
         json={
             "full_name": "Test2 Testakis",
             "role": "admin",
@@ -191,7 +191,7 @@ def test_create_user_route(client):
 def test_create_user_route_invalid_payload(client):
     """Tests POST /api/v1/users route with invalid payload returns error"""
     response = client.post(
-        "api/v1/users",
+        "api/v1/users/signup",
         json={
             "role": "admin",
             "password": "test123",
