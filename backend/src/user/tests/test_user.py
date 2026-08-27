@@ -18,12 +18,32 @@ from src.user import controllers as user_controllers
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
 from src.auth.security import create_access_token
-
+from src.doctor import repository as doctor_repository
+from src.doctor.schemas import DoctorCreate
+from src.doctor.models import Doctor as DoctorModel
+from src.team import repository as team_repository
+from src.team.schemas import TeamCreate
 
 #####################
 # Helpers
 #####################
 
+
+def create_new_doctor(
+    session: Session,
+    name: str,
+    email: str,
+    department_id: uuid.UUID,
+    team_id: uuid.UUID
+) -> DoctorModel:
+    """Helper that creates a new doctor in the db"""
+    doctor_data = DoctorCreate(
+        name=name,
+        email=email,
+        department_id=department_id,
+        team_id=team_id
+    )
+    return doctor_repository.create_doctor(session, doctor_data)
 #####################
 # Fixtures
 #####################
@@ -40,20 +60,6 @@ def session_fixture():
     SQLModel.metadata.create_all(engine)
     with Session(engine) as session:
         yield session
-
-
-@pytest.fixture(name="user")
-def user_fixture(session):
-    """Creates a reusable user for tests"""
-    user_data = UserCreate(
-        email="test@gmail.com",
-        password="test123",
-        role="doctor",
-        full_name="Test testakis",
-        doctor_id=None,
-        department_id=None
-    )
-    return user_repository.create_user(session, user_data)
 
 
 @pytest.fixture(name="department")
@@ -104,6 +110,40 @@ def admin_headers_fixture(department_admin_user):
 
     return {"Authorization": f"Bearer {access_token}"}
 
+
+@pytest.fixture(name="team")
+def team_fixture(session, department):
+    """Creates a reusable team for tests"""
+    team_data = TeamCreate(name="ER Team A", department_id=department.id)
+    return team_repository.create_team(session, team_data)
+
+
+@pytest.fixture(name="doctor")
+def doctor_fixture(session, department, team):
+    """Creates a reusable doctor for tests"""
+    return create_new_doctor(session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
+
+
+@pytest.fixture(name="user")
+def user_fixture(session, doctor, department):
+    """Creates a reusable user for tests"""
+    user_data = UserCreate(
+        email="test@gmail.com",
+        password="test123",
+        role=UserRole.DOCTOR,
+        full_name="Test testakis",
+        doctor_id=doctor.id,
+        department_id=department.id
+    )
+    return user_repository.create_user(session, user_data)
+
+
+@pytest.fixture(name="doctor_headers")
+def doctor_headers_fixture(user):
+    """Creates reusable admin headers"""
+    access_token = create_access_token({"sub": str(user.id)})
+
+    return {"Authorization": f"Bearer {access_token}"}
 
 #####################
 # Repository tests
@@ -354,4 +394,18 @@ def test_deleted_user_token_is_rejected(session, client, department_admin_user, 
     data = response.json()
 
     assert data == {"detail": "User account no longer active"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_doctor_cannot_perform_admin_write(client, doctor_headers, department):
+    """Tests that a doctor cannot perform an admin action"""
+    response = client.post(
+        "api/v1/teams",
+        json={"name": "Rad Team E", "department_id": str(department.id)},
+        headers=doctor_headers
+    )
+
+    assert response.status_code == 403
+    data = response.json()
+    assert data == {"detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
