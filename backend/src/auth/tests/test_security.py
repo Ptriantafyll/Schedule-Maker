@@ -98,19 +98,19 @@ def test_decode_access_token_rejects_missing_required_claim(missing_claim):
         ("token_type", "refresh", jwt.InvalidTokenError, "Invalid token type")
     ]
 )
-def test_decode_access_token_rejects_wrong_token_type(claim, invalid_value, expected_exception, error_match):
-    """Tests wrong token type"""
+def test_decode_access_token_rejects_invalid_claim_value(claim, invalid_value, expected_exception, error_match):
+    """Rejects required claims containing invalid values"""
     access_token = security.create_access_token(
         {"sub": str(uuid.uuid4())}
     )
     payload = security.decode_access_token(access_token)
     payload[claim] = invalid_value
 
-    token_wrong_type = jwt.encode(
+    token_invalid_claim = jwt.encode(
         payload,
         security.SECRET_KEY,
         algorithm=security.ALGORITHM
     )
 
     with pytest.raises(expected_exception, match=error_match):
-        security.decode_access_token(token_wrong_type)
+        security.decode_access_token(token_invalid_claim)
