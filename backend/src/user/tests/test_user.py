@@ -411,7 +411,7 @@ def test_doctor_cannot_create_team(client, doctor_headers, department, session):
     assert team_repository.get_team_by_name(session, "Rad Team E") is None
 
 
-def test_department_admin_can_create_team(client, department_admin_headers, department):
+def test_department_admin_can_create_team(client, department_admin_headers, department, session):
     """Tests that a department admin can create a team"""
     response = client.post(
         "/api/v1/teams",
@@ -423,3 +423,5 @@ def test_department_admin_can_create_team(client, department_admin_headers, depa
     data = response.json()
     assert data["name"] == "Rad Team E"
     assert data["department_id"] == str(department.id)
+    new_team = team_repository.get_team_by_name(session, "Rad Team E")
+    assert str(new_team.id) == data["id"]
