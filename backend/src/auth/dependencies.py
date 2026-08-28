@@ -12,7 +12,8 @@ from src.user.models import UserRole
 from src.user import repository as user_repository
 
 oauth2_scheme = OAuth2PasswordBearer(
-    tokenUrl="/api/v1/users/login", auto_error=False)
+    tokenUrl="/api/v1/auth/login", auto_error=False
+)
 
 
 def get_current_user(request: Request, session: Session = Depends(get_session)) -> UserModel:
