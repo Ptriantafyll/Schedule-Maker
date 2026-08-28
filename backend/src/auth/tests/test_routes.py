@@ -81,6 +81,25 @@ def test_login_rejects_invalid_credentials(client, login_user, email, password):
         }
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Username or password is incorrect"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_login_rejects_deleted_user(session, client, login_user):
+    """Tests logging in with credentials of a deleted user"""
+    login_user.is_deleted = True
+    session.add(login_user)
+    session.commit()
+
+    response = client.post(
+        "/api/v1/auth/login",
+        data={
+            "username": login_user.email,
+            "password": LOGIN_PASSWORD
+        }
+    )
+
+    assert response.status_code == 401
     assert response.json() == {"detail": "Username or password is incorrect"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
