@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     """Run the super-admin bootstrap command"""
     parser = build_parser()
-    parser.parse_args(argv)
+    args = parser.parse_args(argv)
 
     password = getpass.getpass("Password: ")
     password_confirmation = getpass.getpass("Confirm password: ")
@@ -41,8 +41,6 @@ def main(argv: list[str] | None = None) -> int:
     if password != password_confirmation:
         print("Passwords do not match", file=sys.stderr)
         return 1
-
-    args = parser.parse_args(argv)
 
     init_db()
     with Session(engine) as session:
