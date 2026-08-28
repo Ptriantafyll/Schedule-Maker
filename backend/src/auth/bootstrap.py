@@ -11,6 +11,10 @@ from src.user import repository as user_repository
 from src.auth.security import hash_password
 
 
+class SuperAdminAlreadyExistsError(Exception):
+    """Raised when a super-admin email already exists"""
+
+
 def create_super_admin(
     session: Session,
     *,
@@ -25,7 +29,7 @@ def create_super_admin(
         email=email,
         full_name=full_name,
         password=hashed_password,
-        role=UserRole.SUPER_ADMIN.value,
+        role=UserRole.SUPER_ADMIN,
         department_id=None,
         doctor_id=None,
     )
