@@ -8,7 +8,7 @@ import sys
 
 from sqlmodel import Session
 
-from src.db.connection import engine, get_session
+from src.db.connection import engine, init_db
 from src.auth import bootstrap
 
 
