@@ -131,7 +131,7 @@ def test_get_current_user_profile_returns_safe_user(client, login_user, login_us
     assert data["id"] == str(login_user.id)
     assert data["email"] == login_user.email
     assert data["full_name"] == login_user.full_name
-    assert data["role"] == UserRole.SUPER_ADMIN
+    assert data["role"] == UserRole.SUPER_ADMIN.value
     assert "hashed_password" not in data
 
 
@@ -139,6 +139,20 @@ def test_get_current_user_profile_requires_authentication(client):
     """Tests /api/v1/auth/me without auth"""
     response = client.get(
         "/api/v1/auth/me",
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_current_user_profile_rejects_invalid_subject(client):
+    """Tests get /api/v1/auth/me with invalid subject"""
+    access_token = security.create_access_token({"sub": "not-a-uuid"})
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"}
     )
 
     assert response.status_code == 401
