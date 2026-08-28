@@ -135,7 +135,7 @@ def test_get_current_user_profile_returns_safe_user(client, login_user, login_us
     assert "hashed_password" not in data
 
 
-def test_get_current_user_profile_requires_authentication(client, login_user):
+def test_get_current_user_profile_requires_authentication(client):
     """Tests /api/v1/auth/me without auth"""
     response = client.get(
         "/api/v1/auth/me",
