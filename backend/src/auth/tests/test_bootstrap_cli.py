@@ -80,7 +80,7 @@ def test_bootstrap_cli_rejects_mismatched_passwords(
         "first-password",
         "second-password",
     )
-    _, session_factory_mock, _ = cli_database_mocks()
+    init_db_mock, session_factory_mock, _ = cli_database_mocks
 
     exit_code = bootstrap_super_admin.main(CLI_ARGS)
 
@@ -92,9 +92,9 @@ def test_bootstrap_cli_rejects_mismatched_passwords(
     assert "passwords do not match" in captured.err.lower()
     assert "first-password" not in combined_output
     assert "second-password" not in combined_output
-    session_factory_mock.assert_called_once_with(
-        bootstrap_super_admin.engine
-    )
+
+    init_db_mock.assert_not_called()
+    session_factory_mock.assert_not_called()
 
 
 def test_bootstrap_cli_creates_super_admin(
@@ -110,7 +110,7 @@ def test_bootstrap_cli_creates_super_admin(
         MATCHING_PASSWORD,
     )
 
-    init_db_mock, _, fake_session = (
+    init_db_mock, session_factory_mock, fake_session = (
         cli_database_mocks
     )
 
@@ -130,6 +130,10 @@ def test_bootstrap_cli_creates_super_admin(
     assert "created successfully" in captured.out.lower()
     assert captured.err == ""
     assert MATCHING_PASSWORD not in combined_output
+
+    session_factory_mock.assert_called_once_with(
+        bootstrap_super_admin.engine
+    )
 
 
 def test_bootstrap_cli_existing_super_admin(
@@ -163,8 +167,8 @@ def test_bootstrap_cli_existing_super_admin(
     init_db_mock.assert_called_once_with()
     create_super_admin_mock.assert_called_once_with(
         session=fake_session,
-        email="CLI_EMAIL",
-        full_name="CLI_FULL_NAME",
+        email=CLI_EMAIL,
+        full_name=CLI_FULL_NAME,
         password=MATCHING_PASSWORD
     )
     assert "already exists" in captured.err.lower()
