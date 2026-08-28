@@ -177,3 +177,22 @@ def test_bootstrap_cli_existing_super_admin(
     session_factory_mock.assert_called_once_with(
         bootstrap_super_admin.engine
     )
+
+
+def test_bootstrap_cli_rejects_empty_password(
+    monkeypatch,
+    capsys,
+    cli_database_mocks,
+    create_super_admin_mock
+):
+    """Tests that empty password is rejected by create_super_admin"""
+    _mock_password_prompts(monkeypatch, "", "")
+    init_db_mock, session_factory_mock, _ = cli_database_mocks
+
+    exit_code = bootstrap_super_admin.main(CLI_ARGS)
+    captured = capsys.readouterr
+
+    assert exit_code == 1
+    assert "password cannot be empty" in captured.err.lower()
+    init_db_mock.assert_not_called()
+    session_factory_mock.assert_not_called()
