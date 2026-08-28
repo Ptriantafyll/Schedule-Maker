@@ -7,6 +7,7 @@ from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
+from src.db.connection import get_session
 from src.main import app
 
 
@@ -26,13 +27,12 @@ def session_fixture():
 @pytest.fixture(name="client")
 def client_fixture(session):
     """Creates a TestClient for the FastAPI app with dependency override."""
-    from src.db.connection import get_session
+    try:
+        def override_get_session():
+            yield session
+        app.dependency_overrides[get_session] = override_get_session
 
-    def override_get_session():
-        yield session
-    app.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(app) as test_client:
-        yield test_client
-
-    app.dependency_overrides.clear()
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
