@@ -68,7 +68,7 @@ def test_login_returns_access_token(client, login_user):
     ],
     ids=[
         "wrong-password",
-        "wrong-user"
+        "unknown-user"
     ],
 )
 def test_login_rejects_invalid_credentials(client, login_user, email, password):
