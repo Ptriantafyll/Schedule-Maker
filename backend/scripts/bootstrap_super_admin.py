@@ -42,11 +42,19 @@ def main(argv: list[str] | None = None) -> int:
         print("Passwords do not match", file=sys.stderr)
         return 1
 
-    print(
-        "Super admin creation is not implemented yet",
-        file=sys.stderr
-    )
-    return 1
+    args = parser.parse_args(argv)
+
+    init_db()
+    with Session(engine) as session:
+        bootstrap.create_super_admin(
+            session=session,
+            email=args.email,
+            full_name=args.full_name,
+            password=password,
+        )
+
+    print("Super admin created successfully")
+    return 0
 
 
 if __name__ == "__main__":
