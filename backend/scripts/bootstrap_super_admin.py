@@ -11,7 +11,6 @@ from sqlmodel import Session
 from src.db.connection import engine, init_db
 from src.auth import bootstrap
 
-
 def build_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
     parser = argparse.ArgumentParser(
