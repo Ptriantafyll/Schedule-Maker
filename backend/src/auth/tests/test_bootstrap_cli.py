@@ -149,7 +149,7 @@ def test_bootstrap_cli_existing_super_admin(
         MATCHING_PASSWORD,
     )
 
-    init_db_mock, _, fake_session = (
+    init_db_mock, session_factory_mock, fake_session = (
         cli_database_mocks
     )
 
@@ -174,3 +174,6 @@ def test_bootstrap_cli_existing_super_admin(
     assert "already exists" in captured.err.lower()
     assert "created successfully" not in captured.out
     assert MATCHING_PASSWORD not in combined_output
+    session_factory_mock.assert_called_once_with(
+        bootstrap_super_admin.engine
+    )
