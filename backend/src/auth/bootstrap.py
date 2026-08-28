@@ -3,6 +3,7 @@ Bootstrap to create privileged users
 """
 
 from sqlmodel import Session
+from sqlalchemy.exc import IntegrityError
 
 from src.user.schemas import UserCreate
 from src.user.models import UserRole
@@ -41,9 +42,13 @@ def create_super_admin(
         doctor_id=None,
     )
 
-    super_admin_user = user_repository.create_user(
-        session=session,
-        user_data=super_admin_data
-    )
-
-    return super_admin_user
+    try:
+        return user_repository.create_user(
+            session=session,
+            user_data=super_admin_data
+        )
+    except IntegrityError as exc:
+        session.rollback()
+        raise SuperAdminAlreadyExistsError(
+            "A user with this email already exists"
+        ) from exc

@@ -87,4 +87,4 @@ def test_create_super_admin_rolls_back_database_duplicate(session, existing_supe
     retrieved_user = session.get(UserModel, existing_super_admin.id)
 
     assert retrieved_user is not None
-    assert retrieved_user.id == existing_super_admin.id 
+    assert retrieved_user.id == existing_super_admin.id
