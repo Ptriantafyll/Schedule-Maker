@@ -96,7 +96,7 @@ def test_bootstrap_cli_creates_super_admin(monkeypatch, capsys):
     combined_output = captured.out + captured.err
 
     assert exit_code == 0
-    init_db_mock.assert_called_once
+    init_db_mock.assert_called_once_with()
     create_super_admin_mock.assert_called_once_with(
         session=fake_session,
         email="superadmin@test.com",

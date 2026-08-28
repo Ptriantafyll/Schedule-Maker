@@ -6,6 +6,9 @@ import argparse
 import getpass
 import sys
 
+from sqlmodel import Session
+
+from src.db.connection import engine, get_session
 from src.auth import bootstrap
 
 
@@ -47,4 +50,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemError(main())
+    raise SystemExit(main())
