@@ -190,9 +190,10 @@ def test_bootstrap_cli_rejects_empty_password(
     init_db_mock, session_factory_mock, _ = cli_database_mocks
 
     exit_code = bootstrap_super_admin.main(CLI_ARGS)
-    captured = capsys.readouterr
+    captured = capsys.readouterr()
 
     assert exit_code == 1
     assert "password cannot be empty" in captured.err.lower()
     init_db_mock.assert_not_called()
     session_factory_mock.assert_not_called()
+    create_super_admin_mock.assert_not_called()

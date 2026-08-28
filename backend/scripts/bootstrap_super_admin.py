@@ -11,6 +11,7 @@ from sqlmodel import Session
 from src.db.connection import engine, init_db
 from src.auth import bootstrap
 
+
 def build_parser() -> argparse.ArgumentParser:
     """Create the command-line argument parser."""
     parser = argparse.ArgumentParser(
@@ -36,6 +37,10 @@ def main(argv: list[str] | None = None) -> int:
 
     password = getpass.getpass("Password: ")
     password_confirmation = getpass.getpass("Confirm password: ")
+
+    if not password:
+        print("Password cannot be empty", file=sys.stderr)
+        return 1
 
     if password != password_confirmation:
         print("Passwords do not match", file=sys.stderr)
