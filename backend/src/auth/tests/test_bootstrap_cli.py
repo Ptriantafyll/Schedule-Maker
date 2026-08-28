@@ -61,7 +61,7 @@ def cli_database_mocks_fixture(monkeypatch):
 
 @pytest.fixture(name="cli_in_memory_database")
 def cli_in_memory_database_fixture(monkeypatch, session):
-    """Creates an in memoryh cli database for tests"""
+    """Creates an in memory cli database for tests"""
     init_db_mock = Mock()
     session_factory_mock = Mock(
         return_value=nullcontext(session)
@@ -243,11 +243,6 @@ def test_bootstrap_cli_rejects_forbidden_options(
     forbidden_option
 ):
     """Tests that forbidden options are rejected"""
-    _mock_password_prompts(
-        monkeypatch,
-        MATCHING_PASSWORD,
-        MATCHING_PASSWORD
-    )
     init_db_mock, session_factory_mock, _ = cli_database_mocks
     getpass_mock = Mock()
 
@@ -269,7 +264,12 @@ def test_bootstrap_cli_rejects_forbidden_options(
     getpass_mock.assert_not_called()
 
 
-def test_bootstrap_cli_persists_super_admin(session, monkeypatch, capsys, cli_in_memory_database):
+def test_bootstrap_cli_persists_super_admin(
+    session,
+    monkeypatch,
+    capsys,
+    cli_in_memory_database
+):
     """Tests that bootstrap cli creates a super admin in the db"""
     _mock_password_prompts(
         monkeypatch,
@@ -287,10 +287,11 @@ def test_bootstrap_cli_persists_super_admin(session, monkeypatch, capsys, cli_in
     retrieved_user = user_repository.get_user_by_email(session, CLI_EMAIL)
 
     assert retrieved_user is not None
-    assert retrieved_user.role == UserRole.SUPER_ADMIN.value
+    assert retrieved_user.role == UserRole.SUPER_ADMIN
     assert retrieved_user.department_id is None
     assert retrieved_user.doctor_id is None
     assert verify_password(MATCHING_PASSWORD, retrieved_user.hashed_password)
+    assert retrieved_user.hashed_password != MATCHING_PASSWORD
     assert MATCHING_PASSWORD not in combined_output
     init_db_mock.assert_called_once_with()
     session_factory_mock.assert_called_once_with(
