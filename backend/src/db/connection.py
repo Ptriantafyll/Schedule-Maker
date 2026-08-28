@@ -17,14 +17,18 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///hospital_schedule.db")
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith(
     "sqlite") else {}
 
-engine = create_engine(DATABASE_URL, echo=True, connect_args=connect_args)
+engine = create_engine(
+    DATABASE_URL,
+    echo=False,
+    connect_args=connect_args,
+)
 
 
 def init_db() -> None:
     """
     Physically creates the tables in the target database if they do not exist.
     """
-    from src.db.schemas import ScheduleConfig # pylint: disable=unused-import
+    from src.db.schemas import ScheduleConfig  # pylint: disable=unused-import
     from src.department.models import Department  # pylint: disable=unused-import
     from src.team.models import Team  # pylint: disable=unused-import
     from src.doctor.models import Doctor, DoctorPosition, DoctorPreAssignment, DoctorUnavailability  # pylint: disable=unused-import
