@@ -3,7 +3,7 @@ Security utils for authentication
 """
 import uuid
 import jwt
-from fastapi import Depends, HTTPException, status, Request
+from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
 
@@ -19,10 +19,10 @@ oauth2_scheme = OAuth2PasswordBearer(
 
 
 def get_current_user(
-        token: str | None = Depends(oauth2_scheme),
-        session: Session = Depends(get_session),
+    token: str | None = Depends(oauth2_scheme),
+    session: Session = Depends(get_session),
 ) -> UserModel:
-    """Extract authenticated user from request state or raise 401"""
+    """Returns current user or error if there is an issue with the token"""
     if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
