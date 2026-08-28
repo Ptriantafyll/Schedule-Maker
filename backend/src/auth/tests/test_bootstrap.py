@@ -8,7 +8,7 @@ from src.user import repository as user_repository
 from src.user.models import UserRole
 
 
-def test_create_super_admin_creates_valid_addoint(session):
+def test_create_super_admin_creates_valid_account(session):
     """Tests creating a super admin correctly """
     plain_password = "secure-test-password"
 
@@ -28,7 +28,8 @@ def test_create_super_admin_creates_valid_addoint(session):
         created_user.hashed_password,
     )
 
-    persisted_user = user_repository.get_user_by_email(session, "superadmin@test.com")
+    persisted_user = user_repository.get_user_by_email(
+        session, "superadmin@test.com")
 
     assert persisted_user is not None
     assert persisted_user.id == created_user.id
