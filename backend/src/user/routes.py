@@ -2,15 +2,12 @@
 User routes for handling API requests related to user management.
 """
 
-import uuid
 from fastapi import APIRouter, Depends, status
 from sqlmodel import Session
 
 from src.db.connection import get_session
-
-from src.user.schemas import UserCreate, UserRead, UserLogin
+from src.user.schemas import UserCreate, UserRead
 from src.user import controllers as user_controllers
-from src.auth.schemas import Token
 
 router = APIRouter(
     prefix="/users",
@@ -28,12 +25,6 @@ def list_users(session: Session = Depends(get_session)):
 def create_user(user_data: UserCreate, session: Session = Depends(get_session)):
     """Endpoint to create a new user"""
     return user_controllers.create_user_controller(user_data, session)
-
-
-@router.post("/login", response_model=Token)
-def login(login_data: UserLogin, session: Session = Depends(get_session)):
-    """Exchanges email and password for a signed JWT access token."""
-    return user_controllers.login_controller(login_data, session)
 
 
 @router.get("/{user_email}", response_model=UserRead)

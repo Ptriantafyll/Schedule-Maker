@@ -6,11 +6,9 @@ from fastapi import HTTPException, status
 from sqlmodel import Session
 
 from src.user import repository
-from src.user.schemas import UserCreate, UserLogin
+from src.user.schemas import UserCreate
 from src.user.models import User as UserModel
 from src.auth.security import hash_password
-from src.auth.schemas import Token
-from src.auth.security import verify_password, create_access_token
 
 
 def create_user_controller(user_data: UserCreate, session: Session) -> UserModel:
@@ -47,26 +45,3 @@ def get_user_controller(user_email: str, session: Session) -> UserModel:
         )
 
     return user
-
-
-def login_controller(login_data: UserLogin, session: Session) -> Token:
-    """Verifies credentials and issues a JWT access token."""
-    user = repository.get_user_by_email(session, login_data.email)
-
-    if not user or user.is_deleted or not verify_password(login_data.password, user.hashed_password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Username or password is incorrect",
-            headers={"WWW-Authenticate": "Bearer"}
-        )
-
-    payload = {
-        "sub": str(user.id),
-        "email": user.email,
-        "role": user.role.value if hasattr(user.role, "value") else user.role,
-        "department_id": str(user.department_id) if user.department_id else None,
-        "doctor__id": str(user.doctor_id) if user.doctor_id else None
-    }
-
-    access_token = create_access_token(data=payload)
-    return Token(access_token=access_token, token_type="bearer")
