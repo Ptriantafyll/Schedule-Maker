@@ -122,7 +122,7 @@ def test_legacy_login_route_is_not_exposed():
 def test_get_current_user_profile_returns_safe_user(client, login_user, login_user_headers):
     """Tests /api/v1/auth/me"""
     response = client.get(
-        "/api/v1/me",
+        "/api/v1/auth/me",
         headers=login_user_headers,
     )
 
@@ -138,7 +138,7 @@ def test_get_current_user_profile_returns_safe_user(client, login_user, login_us
 def test_get_current_user_profile_requires_authentication(client, login_user):
     """Tests /api/v1/auth/me without auth"""
     response = client.get(
-        "/api/v1/me",
+        "/api/v1/auth/me",
     )
 
     assert response.status_code == 401
