@@ -19,7 +19,7 @@ router = APIRouter(
 )
 
 
-@router.post("/me", response_model=UserRead)
+@router.get("/me", response_model=UserRead)
 def get_current_user_profile(current_user: UserModel = Depends(get_current_user)):
     """Returns the profile of the currently authenticated user."""
     return current_user
