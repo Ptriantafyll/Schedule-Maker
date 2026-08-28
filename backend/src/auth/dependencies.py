@@ -2,10 +2,12 @@
 Security utils for authentication
 """
 import uuid
+import jwt
 from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
 
+from src.auth.security import decode_access_token
 from src.db.connection import get_session
 from src.user.models import User as UserModel
 from src.user.models import UserRole
@@ -16,11 +18,12 @@ oauth2_scheme = OAuth2PasswordBearer(
 )
 
 
-def get_current_user(request: Request, session: Session = Depends(get_session)) -> UserModel:
+def get_current_user(
+        token: str | None = Depends(oauth2_scheme),
+        session: Session = Depends(get_session),
+) -> UserModel:
     """Extract authenticated user from request state or raise 401"""
-    user_payload = getattr(request.state, "user", None)
-
-    if not user_payload or "sub" not in user_payload:
+    if token is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unauthorized",
@@ -28,11 +31,12 @@ def get_current_user(request: Request, session: Session = Depends(get_session)) 
         )
 
     try:
-        user_id = uuid.UUID(user_payload["sub"])
-    except (ValueError, TypeError) as exc:
+        payload = decode_access_token(token)
+        user_id = uuid.UUID(payload["sub"])
+    except (ValueError, TypeError, jwt.InvalidTokenError) as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token",
+            detail="Unauthorized",
             headers={"WWW-Authenticate": "Bearer"}
         ) from exc
 

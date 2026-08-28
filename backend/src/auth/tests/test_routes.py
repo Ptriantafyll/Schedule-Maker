@@ -173,7 +173,7 @@ def test_current_user_profile_rejects_malformed_token(client):
 
 
 def test_current_user_profile_rejects_expired_token(client, login_user):
-    """Tests get /api/v1/auth/me with malformed token"""
+    """Tests get /api/v1/auth/me with expired token"""
     access_token = security.create_access_token(
         {"sub": str(login_user.id)},
         expires_delta=datetime.timedelta(seconds=-1),
@@ -181,7 +181,7 @@ def test_current_user_profile_rejects_expired_token(client, login_user):
 
     response = client.get(
         "/api/v1/auth/me",
-        headers={"Authorization": "Bearer invalid-token"}
+        headers={"Authorization": f"Bearer {access_token}"}
     )
 
     assert response.status_code == 401
