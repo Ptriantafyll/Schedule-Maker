@@ -43,13 +43,17 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     init_db()
-    with Session(engine) as session:
-        bootstrap.create_super_admin(
-            session=session,
-            email=args.email,
-            full_name=args.full_name,
-            password=password,
-        )
+    try:
+        with Session(engine) as session:
+            bootstrap.create_super_admin(
+                session=session,
+                email=args.email,
+                full_name=args.full_name,
+                password=password,
+            )
+    except bootstrap.SuperAdminAlreadyExistsError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
 
     print("Super admin created successfully")
     return 0
