@@ -2,22 +2,22 @@
 Bootstrap to create privileged users
 """
 
-from fastapi import Depends
 from sqlmodel import Session
 
-from src.db.connection import get_session
 from src.user.schemas import UserCreate
 from src.user.models import UserRole
+from src.user.models import User as UserModel
 from src.user import repository as user_repository
 from src.auth.security import hash_password
 
 
 def create_super_admin(
+    session: Session,
+    *,
     email: str,
     full_name: str,
     password: str,
-    session: Session = Depends(get_session),
-):
+) -> UserModel:
     """Creates super admin user"""
     hashed_password = hash_password(password)
 
