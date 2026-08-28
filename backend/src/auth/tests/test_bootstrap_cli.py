@@ -221,6 +221,13 @@ def test_bootstrap_cli_rejects_forbidden_options(
         MATCHING_PASSWORD
     )
     init_db_mock, session_factory_mock, _ = cli_database_mocks
+    getpass_mock = Mock()
+
+    monkeypatch.setattr(
+        getpass,
+        "getpass",
+        getpass_mock
+    )
 
     with pytest.raises(SystemExit) as exc_info:
         bootstrap_super_admin.main(
@@ -231,3 +238,4 @@ def test_bootstrap_cli_rejects_forbidden_options(
     init_db_mock.assert_not_called()
     session_factory_mock.assert_not_called()
     create_super_admin_mock.assert_not_called()
+    getpass_mock.assert_not_called()
