@@ -9,6 +9,7 @@ from src.auth import security
 from src.user.schemas import UserCreate
 from src.user.models import UserRole
 from src.user import controllers as user_controllers
+from src.main import app
 
 LOGIN_EMAIL = "test@test.com"
 LOGIN_PASSWORD = "password123"
@@ -103,3 +104,9 @@ def test_login_rejects_deleted_user(session, client, login_user):
     assert response.status_code == 401
     assert response.json() == {"detail": "Username or password is incorrect"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_legacy_login_route_is_not_exposed():
+    """Tests that the old /api/v1/users/login route no longer exists"""
+
+    assert "/api/v1/users/login" not in app.openapi()["paths"]

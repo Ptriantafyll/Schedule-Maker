@@ -25,9 +25,13 @@ def get_current_user_profile(current_user: UserModel = Depends(get_current_user)
 
 
 @router.post("/login", response_model=Token)
-def user_login(
+def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_session)
 ):
     """Returns the token for the user that logs in"""
-    return auth_controllers.login_controller(form_data.username, form_data.password, session)
+    return auth_controllers.login_controller(
+        email=form_data.username,
+        password=form_data.password,
+        session=session,
+    )

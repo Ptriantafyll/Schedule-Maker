@@ -4,8 +4,8 @@ Tests for the user module
 
 
 import uuid
-import pytest
 import datetime
+import pytest
 from sqlmodel import Session
 
 from src.user.schemas import UserCreate
