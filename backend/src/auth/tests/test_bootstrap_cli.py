@@ -8,6 +8,11 @@ import pytest
 
 from scripts import bootstrap_super_admin
 from src.auth import bootstrap
+from src.auth.security import verify_password
+
+from src.user import repository as user_repository
+from src.user.models import UserRole
+
 
 CLI_EMAIL = "superadmin@test.com"
 CLI_FULL_NAME = "Test Super Admin"
@@ -52,6 +57,29 @@ def cli_database_mocks_fixture(monkeypatch):
     )
 
     return init_db_mock, session_factory_mock, fake_session
+
+
+@pytest.fixture(name="cli_in_memory_database")
+def cli_in_memory_database_fixture(monkeypatch, session):
+    """Creates an in memoryh cli database for tests"""
+    init_db_mock = Mock()
+    session_factory_mock = Mock(
+        return_value=nullcontext(session)
+    )
+
+    monkeypatch.setattr(
+        bootstrap_super_admin,
+        "init_db",
+        init_db_mock
+    )
+
+    monkeypatch.setattr(
+        bootstrap_super_admin,
+        "Session",
+        session_factory_mock
+    )
+
+    return init_db_mock, session_factory_mock
 
 
 @pytest.fixture(name="create_super_admin_mock")
@@ -239,3 +267,32 @@ def test_bootstrap_cli_rejects_forbidden_options(
     session_factory_mock.assert_not_called()
     create_super_admin_mock.assert_not_called()
     getpass_mock.assert_not_called()
+
+
+def test_bootstrap_cli_persists_super_admin(session, monkeypatch, capsys, cli_in_memory_database):
+    """Tests that bootstrap cli creates a super admin in the db"""
+    _mock_password_prompts(
+        monkeypatch,
+        MATCHING_PASSWORD,
+        MATCHING_PASSWORD,
+    )
+
+    init_db_mock, session_factory_mock = cli_in_memory_database
+
+    exit_code = bootstrap_super_admin.main(CLI_ARGS)
+    captured = capsys.readouterr()
+    combined_output = captured.out + captured.err
+
+    assert exit_code == 0
+    retrieved_user = user_repository.get_user_by_email(session, CLI_EMAIL)
+
+    assert retrieved_user is not None
+    assert retrieved_user.role == UserRole.SUPER_ADMIN.value
+    assert retrieved_user.department_id is None
+    assert retrieved_user.doctor_id is None
+    assert verify_password(MATCHING_PASSWORD, retrieved_user.hashed_password)
+    assert MATCHING_PASSWORD not in combined_output
+    init_db_mock.assert_called_once_with()
+    session_factory_mock.assert_called_once_with(
+        bootstrap_super_admin.engine
+    )
