@@ -3,9 +3,9 @@ Route tests for auth
 """
 
 import pytest
+import datetime
 
 from src.auth import security
-
 from src.user.schemas import UserCreate
 from src.user.models import UserRole
 from src.user import controllers as user_controllers
@@ -162,6 +162,22 @@ def test_current_user_profile_rejects_invalid_subject(client):
 
 def test_current_user_profile_rejects_malformed_token(client):
     """Tests get /api/v1/auth/me with malformed token"""
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": "Bearer invalid-token"}
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_current_user_profile_rejects_expired_token(client, login_user):
+    """Tests get /api/v1/auth/me with malformed token"""
+    access_token = security.create_access_token(
+        {"sub": str(login_user.id)},
+        expires_delta=datetime.timedelta(seconds=-1),
+    )
 
     response = client.get(
         "/api/v1/auth/me",
