@@ -35,7 +35,7 @@ def test_bootstrap_cli_rejects_mismatched_passwords(monkeypatch, capsys):
         [
             "--email",
             "superadmin@test.com",
-            "--ful-name",
+            "--full-name",
             "Test Super Admin"
         ]
     )
