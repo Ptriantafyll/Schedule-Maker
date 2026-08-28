@@ -197,3 +197,37 @@ def test_bootstrap_cli_rejects_empty_password(
     init_db_mock.assert_not_called()
     session_factory_mock.assert_not_called()
     create_super_admin_mock.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "forbidden_option",
+    [
+        "--password",
+        "--role",
+        "--department-id",
+        "--doctor-id"
+    ]
+)
+def test_bootstrap_cli_rejects_forbidden_options(
+    monkeypatch,
+    create_super_admin_mock,
+    cli_database_mocks,
+    forbidden_option
+):
+    """Tests that forbidden options are rejected"""
+    _mock_password_prompts(
+        monkeypatch,
+        MATCHING_PASSWORD,
+        MATCHING_PASSWORD
+    )
+    init_db_mock, session_factory_mock, _ = cli_database_mocks
+
+    with pytest.raises(SystemExit) as exc_info:
+        bootstrap_super_admin.main(
+            [*CLI_ARGS, forbidden_option, "value"]
+        )
+
+    assert exc_info.value.code == 2
+    init_db_mock.assert_not_called()
+    session_factory_mock.assert_not_called()
+    create_super_admin_mock.assert_not_called()
