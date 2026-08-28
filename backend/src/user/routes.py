@@ -19,7 +19,10 @@ router = APIRouter(
 
 
 @router.get("/", response_model=list[UserRead])
-def list_users(session: Session = Depends(get_session), current_user: UserModel = Depends(require_department_admin)):
+def list_users(
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin),
+):
     """Endpoint to lsit all active users"""
     return user_controllers.list_users_controller(session)
 
