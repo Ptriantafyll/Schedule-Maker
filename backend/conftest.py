@@ -25,12 +25,14 @@ def session_fixture():
 
 
 @pytest.fixture(name="client")
-def client_fixture(session):
+def client_fixture(session, monkeypatch):
     """Creates a TestClient for the FastAPI app with dependency override."""
     try:
         def override_get_session():
             yield session
+
         app.dependency_overrides[get_session] = override_get_session
+        monkeypatch.setattr("src.main.init_db", lambda: None)
 
         with TestClient(app) as test_client:
             yield test_client
