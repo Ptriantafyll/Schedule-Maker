@@ -158,3 +158,16 @@ def test_current_user_profile_rejects_invalid_subject(client):
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_current_user_profile_rejects_malformed_token(client):
+    """Tests get /api/v1/auth/me with malformed token"""
+
+    response = client.get(
+        "/api/v1/auth/me",
+        headers={"Authorization": "Bearer invalid-token"}
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
