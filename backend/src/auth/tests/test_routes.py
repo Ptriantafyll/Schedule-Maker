@@ -34,6 +34,13 @@ def login_user_fixture(session):
     return user_controllers.create_user_controller(user_data, session)
 
 
+@pytest.fixture(name="login_user_headers")
+def login_user_headers_fixture(login_user):
+    """Creates reusable login user headers for tests"""
+    access_token = security.create_access_token({"sub": str(login_user.id)})
+
+    return {"Authorization": f"Bearer {access_token}"}
+
 #####################
 # Tests
 #####################
@@ -110,3 +117,30 @@ def test_legacy_login_route_is_not_exposed():
     """Tests that the old /api/v1/users/login route no longer exists"""
 
     assert "/api/v1/users/login" not in app.openapi()["paths"]
+
+
+def test_get_current_user_profile_returns_safe_user(client, login_user, login_user_headers):
+    """Tests /api/v1/auth/me"""
+    response = client.get(
+        "/api/v1/me",
+        headers=login_user_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == str(login_user.id)
+    assert data["email"] == login_user.email
+    assert data["full_name"] == login_user.full_name
+    assert data["role"] == UserRole.SUPER_ADMIN
+    assert "hashed_password" not in data
+
+
+def test_get_current_user_profile_requires_authentication(client, login_user):
+    """Tests /api/v1/auth/me without auth"""
+    response = client.get(
+        "/api/v1/me",
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
