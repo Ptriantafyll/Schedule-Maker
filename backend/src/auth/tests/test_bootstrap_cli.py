@@ -48,7 +48,7 @@ def cli_database_mocks_fixture(monkeypatch):
     monkeypatch.setattr(
         bootstrap_super_admin,
         "Session",
-        lambda _engine: nullcontext(fake_session)
+        session_factory_mock
     )
 
     return init_db_mock, session_factory_mock, fake_session
@@ -68,20 +68,19 @@ def create_super_admin_mock_fixture(monkeypatch):
     return service_mock
 
 
-def test_bootstrap_cli_rejects_mismatched_passwords(monkeypatch, capsys, create_super_admin_mock):
+def test_bootstrap_cli_rejects_mismatched_passwords(
+    monkeypatch,
+    capsys,
+    create_super_admin_mock,
+    cli_database_mocks,
+):
     """Tests the bootstrap cli with mismatched passwords"""
-    password_reader = iter(
-        [
-            "first-password",
-            "second-password",
-        ]
+    _mock_password_prompts(
+        monkeypatch,
+        "first-password",
+        "second-password",
     )
-
-    monkeypatch.setattr(
-        getpass,
-        "getpass",
-        lambda _prompt: next(password_reader)
-    )
+    _, session_factory_mock, _ = cli_database_mocks()
 
     exit_code = bootstrap_super_admin.main(CLI_ARGS)
 
@@ -93,13 +92,16 @@ def test_bootstrap_cli_rejects_mismatched_passwords(monkeypatch, capsys, create_
     assert "passwords do not match" in captured.err.lower()
     assert "first-password" not in combined_output
     assert "second-password" not in combined_output
+    session_factory_mock.assert_called_once_with(
+        bootstrap_super_admin.engine
+    )
 
 
 def test_bootstrap_cli_creates_super_admin(
-        monkeypatch,
-        capsys,
-        create_super_admin_mock,
-        cli_database_mocks,
+    monkeypatch,
+    capsys,
+    create_super_admin_mock,
+    cli_database_mocks,
 ):
     """Tests happy path for creating a super admin with bootstrap"""
     _mock_password_prompts(
@@ -121,8 +123,8 @@ def test_bootstrap_cli_creates_super_admin(
     init_db_mock.assert_called_once_with()
     create_super_admin_mock.assert_called_once_with(
         session=fake_session,
-        email="CLI_EMAIL",
-        full_name="CLI_FULL_NAME",
+        email=CLI_EMAIL,
+        full_name=CLI_FULL_NAME,
         password="matching-password"
     )
     assert "created successfully" in captured.out.lower()
@@ -147,8 +149,8 @@ def test_bootstrap_cli_existing_super_admin(
         cli_database_mocks
     )
 
-    create_super_admin_mock = Mock(
-        side_effect=bootstrap.SuperAdminAlreadyExistsError(
+    create_super_admin_mock.side_effect = (
+        bootstrap.SuperAdminAlreadyExistsError(
             "A user with this email already exists"
         )
     )
