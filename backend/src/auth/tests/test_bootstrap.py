@@ -59,4 +59,6 @@ def test_create_super_admin_rejects_duplicate_email(session):
         session,
         SUPER_ADMIN_EMAIL,
     )
+
+    assert retrieved_user is not None
     assert str(retrieved_user.id) == str(created_user.id)

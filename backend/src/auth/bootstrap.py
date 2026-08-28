@@ -23,6 +23,13 @@ def create_super_admin(
     password: str,
 ) -> UserModel:
     """Creates super admin user"""
+    existing_user = user_repository.get_user_by_email(session, email)
+
+    if existing_user:
+        raise SuperAdminAlreadyExistsError(
+            "A user with this email already exists"
+        )
+
     hashed_password = hash_password(password)
 
     super_admin_data = UserCreate(
