@@ -6,11 +6,8 @@ Tests for the user module
 import uuid
 import pytest
 import datetime
-from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import Session
 
-from src.main import app
 from src.user.schemas import UserCreate
 from src.user.models import UserRole
 from src.user import repository as user_repository
@@ -48,19 +45,6 @@ def create_new_doctor(
 #####################
 # Fixtures
 #####################
-
-
-@pytest.fixture(name="session")
-def session_fixture():
-    """Creates a fresh in-memory database session for each test."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
 
 
 @pytest.fixture(name="department")
@@ -265,21 +249,6 @@ def test_create_user_controller_hashes_password(session, department):
 #####################
 # Route tests
 #####################
-
-@pytest.fixture(name="client")
-def client_fixture(session):
-    """Creates a TestClient for the FastAPI app with dependency override."""
-    from src.db.connection import get_session
-
-    def override_get_session():
-        yield session
-    app.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(app) as test_client:
-        yield test_client
-
-    app.dependency_overrides.clear()
-
 
 def test_create_user_route(client):
     """Tests POST /api/v1/users route"""
