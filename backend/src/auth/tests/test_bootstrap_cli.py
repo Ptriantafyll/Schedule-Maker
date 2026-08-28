@@ -47,3 +47,4 @@ def test_bootstrap_cli_rejects_mismatched_passwords(monkeypatch, capsys):
     create_super_admin_mock.assert_not_called()
     assert "passwords do not match" in captured.err.lower()
     assert "first-password" not in combined_output
+    assert "second-password" not in combined_output
