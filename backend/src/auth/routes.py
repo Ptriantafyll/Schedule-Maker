@@ -10,6 +10,7 @@ from src.auth import controllers as auth_controllers
 from src.auth.schemas import Token
 from src.auth.dependencies import get_current_user
 from src.user.models import User as UserModel
+from src.user.schemas import UserRead
 from src.db.connection import get_session
 
 router = APIRouter(
@@ -18,7 +19,7 @@ router = APIRouter(
 )
 
 
-@router.post("/me", response_model=Token)
+@router.post("/me", response_model=UserRead)
 def get_current_user_profile(current_user: UserModel = Depends(get_current_user)):
     """Returns the profile of the currently authenticated user."""
     return current_user
