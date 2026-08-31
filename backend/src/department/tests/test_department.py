@@ -237,3 +237,12 @@ def test_non_super_admin_cannot_list_departments(
         "detail": "Insufficient permissions for this operation"
     }
     assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_department_list_requires_authentication(client):
+    """Tests that GET /api/v1/departments/ route requires auth"""
+    response = client.get("/api/v1/departments")
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticat") == "Bearer"
