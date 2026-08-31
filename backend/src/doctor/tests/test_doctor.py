@@ -987,6 +987,11 @@ def test_non_department_admin_cannot_create_pre_assignment(
             if role == UserRole.SUPER_ADMIN
             else department.id
         ),
+        doctor_id=(
+            new_doctor.id
+            if role == UserRole.DOCTOR
+            else None
+        ),
     )
     headers = auth_headers_factory(user)
 
@@ -1040,3 +1045,65 @@ def test_create_pre_assignment_requires_authentication(
     )
 
     assert retrieved_pre_assignment is None
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_non_department_admin_cannot_list_pre_assignments(
+    client,
+    new_doctor,
+    user_factory,
+    auth_headers_factory,
+    role,
+    department,
+    session,
+):
+    """Tests that the list pre assignemnts route does not work with non dept admin headers"""
+    user = user_factory(
+        role=role,
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else department.id
+        ),
+        doctor_id=(
+            new_doctor.id
+            if role == UserRole.DOCTOR
+            else None
+        ),
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}/pre-assignments",
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"}
+    assert response.headers.get("WWW-Authenticate") is None
+    retrieved_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12),
+    )
+
+    assert retrieved_pre_assignment is None
+
+
+def test_list_pre_assignments_requires_authenticateion(client, new_doctor):
+    """Tests the get /api/v1/doctors/{doctor_id}/pre-assignmets route with no headers"""
+    response = client.get(
+        f"/api/v1/doctors/{new_doctor.id}/pre-assignments"
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
