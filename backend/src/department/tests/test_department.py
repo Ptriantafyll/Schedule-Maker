@@ -132,11 +132,12 @@ def test_get_department_controller_deleted(session, department):
 # Route tests
 ###############################
 
-def test_get_department_by_id_route(client, department):
+def test_get_department_by_id_route(client, department, department_admin_headers):
     """Tests that the GET /departments/{department_id} route returns a department"""
 
     response = client.get(
-        f"/api/v1/departments/{department.id}"
+        f"/api/v1/departments/{department.id}",
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 200
@@ -146,10 +147,11 @@ def test_get_department_by_id_route(client, department):
     assert "created_at" in data
     assert "updated_at" in data
 
+
 def test_get_department_by_id_route_requires_authentication(client, department):
     """Tests that the GET /departments/{department_id} requires authentication"""
     response = client.get(
-        f"/api/v1/departments/{department.id}"
+        f"/api/v1/departments/{department.id}",
     )
 
     assert response.status_code == 401
@@ -164,7 +166,7 @@ def test_list_departments_route(client, department_admin_headers, department):
 
     response = client.get(
         "/api/v1/departments/",
-        headers=department_admin_headers
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 200

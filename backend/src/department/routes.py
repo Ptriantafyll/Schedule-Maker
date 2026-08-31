@@ -23,12 +23,19 @@ router = APIRouter(
 
 
 @router.get("/", response_model=list[DepartmentRead])
-def list_departments(session: Session = Depends(get_session), current_user: UserModel = Depends(require_department_admin)):
+def list_departments(
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin),
+):
     """Retrieves all active, non-deleted hospital departments."""
     return list_departments_controller(session)
 
 
 @router.get("/{department_id}", response_model=DepartmentRead)
-def get_department(department_id: uuid.UUID, session: Session = Depends(get_session)):
+def get_department(
+    department_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin),
+):
     """Fetches a specific department by its UUID."""
     return get_department_controller(department_id, session)
