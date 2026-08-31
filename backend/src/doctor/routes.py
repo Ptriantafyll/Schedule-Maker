@@ -79,7 +79,11 @@ def create_doctor_pre_assignments(
 
 
 @router.get("/{doctor_id}/pre-assignments", response_model=list[DoctorPreAssignmentRead])
-def list_doctor_pre_assignments(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+def list_doctor_pre_assignments(
+    doctor_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin),
+):
     """
     Lists the pre assignment dates of a doctor
     """
