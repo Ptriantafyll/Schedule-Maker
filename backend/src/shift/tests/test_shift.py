@@ -752,6 +752,6 @@ def test_create_shift_assignment_requires_authentication(client, shift, new_doct
     retrieved_shift_assignments = shift_repository.get_shift_assignments_by_date(
         session=session,
         shift_id=shift.id,
-        target_dat=datetime.date(2026, 8, 12)
+        target_date=datetime.date(2026, 8, 12)
     )
     assert retrieved_shift_assignments is None
