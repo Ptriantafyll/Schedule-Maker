@@ -8,7 +8,7 @@ from sqlmodel import Session
 from src.db.connection import get_session
 
 from src.team.schemas import TeamCreate, TeamRead
-from src.team.controllers import create_team_controller, list_teams_controller, get_team_controller
+from src.team import controllers as team_controllers
 from src.user.models import User as UserModel
 from src.auth.dependencies import require_department_admin, require_department_member
 
@@ -25,7 +25,7 @@ def create_team(
     current_user: UserModel = Depends(require_department_admin),
 ):
     """Endpoint to create a new team. Placeholder implementation."""
-    return create_team_controller(team_data, session)
+    return team_controllers.create_team_controller(team_data, session)
 
 
 @router.get("/", response_model=list[TeamRead])
@@ -34,7 +34,7 @@ def list_teams(
     current_user: UserModel = Depends(require_department_member),
 ):
     """Endpoint to list all teams"""
-    return list_teams_controller(session)
+    return team_controllers.list_teams_controller(session)
 
 
 @router.get("/{team_id}", response_model=TeamRead)
@@ -44,4 +44,4 @@ def get_team(
     current_user: UserModel = Depends(require_department_member),
 ):
     """Fetches a specific team by its UUID."""
-    return get_team_controller(team_id, session)
+    return team_controllers.get_team_controller(team_id, session)
