@@ -376,11 +376,12 @@ def test_user_list_rejects_non_department_admin_roles(client, user_factory, auth
     headers = auth_headers_factory(test_user)
 
     response = client.get(
-        "/api/v1/users"
+        "/api/v1/users",
+        headers=headers
     )
 
     assert response.status_code == 403
     assert response.json() == {
         "detail": "Insufficient permissions for this operation"
     }
-    assert response.headers.get("WWW-Authenticate") == "Bearer"
+    assert response.headers.get("WWW-Authenticate") is None
