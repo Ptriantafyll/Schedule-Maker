@@ -691,3 +691,61 @@ def test_create_shift_requires_authentication(client, session, position):
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert shift_repository.get_shift_by_name(session, "ER 1") is None
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_non_department_admin_cannot_create_shift_assignment(
+    client,
+    role,
+    user_factory,
+    auth_headers_factory,
+    department,
+    new_doctor,
+    shift
+):
+    """tests post /api/v1/shifts/{shift_id}/assignments with non department admin headers"""
+    user = user_factory(
+        role=role,
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else department.id
+        ),
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.post(
+        f"/api/v1/shifts/{shift.id}/assignments",
+        json={
+            "doctor_id": str(new_doctor.id),
+            "date": str(datetime.date(2026, 8, 12))
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_create_shift_assignment_requires_authentication(client, shift, new_doctor, session):
+    """Tests post /api/v1/shifts/{shift_id}/assignments without auth"""
+
+    response = client.post(
+        f"/api/v1/shifts/{shift.id}/assignments",
+        json={
+            "doctor_id": str(new_doctor.id),
+            "date": str(datetime.date(2026, 8, 12))
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
