@@ -239,7 +239,17 @@ def test_list_positions_route(client, position, viewer_headers):
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert data[0]["id"] == str(position.id)
+
+    returned_position = next(
+        (
+            item
+            for item in data
+            if item["id"] == str(position.id)
+        ),
+        None
+    )
+    assert returned_position is not None
+    assert returned_position.name == position.name
 
 
 def test_get_position_route(client, position, viewer_headers):
@@ -262,3 +272,43 @@ def test_get_position_route_nonexistent_name(client, viewer_headers):
     )
 
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_non_allowed_roles_cannot_create_position(
+    client,
+    user_factory,
+    auth_headers_factory,
+    department,
+    session,
+    role,
+):
+    """Test that role except department_admin cannot create a position"""
+    user = user_factory(
+        role=role,
+        department_id=department.id
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.post(
+        "/api/v1/positions",
+        json={
+            "name": "ICU",
+            "department_id": str(department.id),
+            "duty_dats": [1, 2],
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert position_repository.get_position_by_name(session, "ICU") is None
