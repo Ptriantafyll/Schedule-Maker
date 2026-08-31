@@ -220,7 +220,7 @@ def test_non_super_admin_cannot_list_departments(
     auth_headers_factory,
     role,
 ):
-    """Tests that POST /api/v1/departments/ route rejects other roles except SUPER_ADMIN"""
+    """Tests that GET /api/v1/departments/ route rejects other roles except SUPER_ADMIN"""
     user = user_factory(
         role=role,
         department_id=department.id
@@ -232,7 +232,7 @@ def test_non_super_admin_cannot_list_departments(
         headers=headers,
     )
 
-    assert response.status_code == 402
+    assert response.status_code == 403
     assert response.json() == {
         "detail": "Unauthorized"
     }
