@@ -70,7 +70,7 @@ def test_department_member_guard_rejects_super_admin():
 
 
 def test_department_admin_guard_allows_department_admin():
-    """Tests that the admin guard allows department admin"""
+    """Tests that the department admin guard allows department admin"""
     user = _make_user(UserRole.DEPARTMENT_ADMIN)
 
     returned_user = dependencies.require_department_admin(
@@ -89,11 +89,50 @@ def test_department_admin_guard_allows_department_admin():
     ]
 )
 def test_department_admin_guard_rejects_other_roles(role):
-    """Tests that the admin guard allows department admin"""
+    """Tests that the department admin guard rejects other roles"""
     user = _make_user(role)
 
     with pytest.raises(HTTPException) as exc_info:
         dependencies.require_department_admin(
+            current_user=user
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Insufficient permissions for this operation"
+    assert exc_info.value.headers is None
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DEPARTMENT_ADMIN,
+        UserRole.DOCTOR,
+    ]
+)
+def test_doctor_or_department_guard_allows_department_admin(role):
+    """Tests that the doctor or department admin guard allows department admin and doctor roles"""
+    user = _make_user(role)
+
+    returned_user = dependencies.require_doctor_or_department_admin(
+        current_user=user
+    )
+
+    assert returned_user is user
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.SUPER_ADMIN,
+        UserRole.VIEWER,
+    ]
+)
+def test_doctor_or_department_admin_guard_rejects_other_roles(role):
+    """Tests that the doctor or department admin guard rejects other roles"""
+    user = _make_user(role)
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependencies.require_doctor_or_department_admin(
             current_user=user
         )
 
