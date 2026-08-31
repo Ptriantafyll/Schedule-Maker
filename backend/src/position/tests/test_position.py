@@ -282,7 +282,7 @@ def test_get_position_route_nonexistent_name(client, viewer_headers):
         UserRole.SUPER_ADMIN,
     ]
 )
-def test_non_allowed_roles_cannot_create_position(
+def test_non_department_admin_cannot_create_position(
     client,
     user_factory,
     auth_headers_factory,
@@ -293,7 +293,11 @@ def test_non_allowed_roles_cannot_create_position(
     """Test that role except department_admin cannot create a position"""
     user = user_factory(
         role=role,
-        department_id=department.id
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else department.id
+        )
     )
     headers = auth_headers_factory(user)
 
@@ -312,3 +316,20 @@ def test_non_allowed_roles_cannot_create_position(
         "detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") is None
     assert position_repository.get_position_by_name(session, "ICU") is None
+
+
+def test_create_position_requires_authentication(client, department):
+    """Tests post /api/v1/positions route requires auth"""
+
+    response = client.post(
+        "/api/v1/positions",
+        json={
+            "name": "ICU",
+            "department_id": str(department.id),
+            "duty_days": [1, 2],
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
