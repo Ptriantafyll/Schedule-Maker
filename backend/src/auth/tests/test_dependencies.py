@@ -1,0 +1,53 @@
+"""
+Tests for the auth dependencies
+"""
+
+import uuid
+import pytest
+
+from src.auth import dependencies
+from src.user.models import UserRole
+from src.user.models import User as UserModel
+
+############################
+# Helpers
+############################
+
+
+def _make_user(role: UserRole) -> UserModel:
+    """Create an unpersisted user for role-guard tests"""
+    return UserModel(
+        email=f"{role.value}@test.com",
+        full_name="Test User",
+        hashed_password="not-used-by-role-guard-tests",
+        role=role,
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else uuid.uuid4()
+        ),
+        doctor_id=(
+            uuid.uuid4()
+            if role == UserRole.DOCTOR
+            else None
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DEPARTMENT_ADMIN,
+        UserRole.DOCTOR,
+        UserRole.VIEWER
+    ]
+)
+def test_require_department_member(role):
+    """Tests requiring department member for an operation"""
+    user = _make_user(role)
+
+    returned_user = dependencies.require_department_member(
+        current_user=user
+    )
+
+    assert returned_user is user
