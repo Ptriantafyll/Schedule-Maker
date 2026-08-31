@@ -273,7 +273,7 @@ def test_non_department_admin_cannot_create_team(
         ),
         pytest.param(
             "/api/v1/teams/{team_id}",
-            id="get-team"
+            id="get-team",
         ),
     ],
 )

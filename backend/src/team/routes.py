@@ -10,7 +10,7 @@ from src.db.connection import get_session
 from src.team.schemas import TeamCreate, TeamRead
 from src.team.controllers import create_team_controller, list_teams_controller, get_team_controller
 from src.user.models import User as UserModel
-from src.auth.dependencies import require_department_admin
+from src.auth.dependencies import require_department_admin, require_department_member
 
 router = APIRouter(
     prefix="/teams",
@@ -29,12 +29,19 @@ def create_team(
 
 
 @router.get("/", response_model=list[TeamRead])
-def list_teams(session: Session = Depends(get_session)):
+def list_teams(
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
     """Endpoint to list all teams"""
     return list_teams_controller(session)
 
 
 @router.get("/{team_id}", response_model=TeamRead)
-def get_team(team_id: uuid.UUID, session: Session = Depends(get_session)):
+def get_team(
+    team_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
     """Fetches a specific team by its UUID."""
     return get_team_controller(team_id, session)
