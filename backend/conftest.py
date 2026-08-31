@@ -55,8 +55,8 @@ def user_factory_fixture(session):
         department_id: uuid.UUID | None = None,
         doctor_id: uuid.UUID | None = None,
         email: str | None = None,
-        full_name: str = "test User",
-        password: str = "test-password"
+        full_name: str = "Test User",
+        password: str = "test-password",
     ) -> UserModel:
         user_email = email or f"user-{uuid.uuid4().hex}@test.com"
 
@@ -69,6 +69,9 @@ def user_factory_fixture(session):
             doctor_id=doctor_id,
         )
 
-        return user_controllers.create_user_controller(user_data, session)
+        return user_controllers.create_user_controller(
+            user_data=user_data,
+            session=session,
+        )
 
     return create_user

@@ -62,7 +62,7 @@ def department_b_fixture(session):
 
 
 @pytest.fixture(name="department_admin_user")
-def admin_user_fixture(user_factory, department):
+def department_admin_user_fixture(user_factory, department):
     """Creates a reusable admin user for tests"""
     return user_factory(
         role=UserRole.DEPARTMENT_ADMIN,
