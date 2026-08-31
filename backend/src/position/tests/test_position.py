@@ -318,7 +318,7 @@ def test_non_department_admin_cannot_create_position(
     assert position_repository.get_position_by_name(session, "ICU") is None
 
 
-def test_create_position_requires_authentication(client, department):
+def test_create_position_requires_authentication(client, department, session):
     """Tests post /api/v1/positions route requires auth"""
 
     response = client.post(
@@ -333,3 +333,4 @@ def test_create_position_requires_authentication(client, department):
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+    assert position_repository.get_position_by_name(session, "ICU") is None
