@@ -191,11 +191,22 @@ def test_list_teams_route():
         UserRole.SUPER_ADMIN,
     ]
 )
-def test_non_department_admin_cannot_create_team(client, department, session, user_factory, auth_headers_factory, role):
+def test_non_department_admin_cannot_create_team(
+    client,
+    department,
+    session,
+    user_factory,
+    auth_headers_factory,
+    role
+):
     """Tests that a doctor cannot perform an admin action"""
     user = user_factory(
         role=role,
-        department_id=department.id,
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else department.id
+        )
     )
 
     headers = auth_headers_factory(user)
@@ -209,4 +220,5 @@ def test_non_department_admin_cannot_create_team(client, department, session, us
     assert response.status_code == 403
     data = response.json()
     assert data == {"detail": "Insufficient permissions for this operation"}
+    assert response.headers.get("WWW-Authenticat") is None
     assert team_repository.get_team_by_name(session, "Rad Team E") is None
