@@ -347,3 +347,40 @@ def test_department_admin_can_create_team(client, department_admin_headers, depa
     new_team = team_repository.get_team_by_name(session, "Rad Team E")
     assert new_team is not None
     assert str(new_team.id) == data["id"]
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_user_list_rejects_non_department_admin_roles(client, user_factory, auth_headers_factory, role, department, doctor):
+    """GET /api/v1/users rejects non department_admin_roles"""
+    test_user = user_factory(
+        role=role,
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else department.id
+        ),
+        doctor_id=(
+            doctor.id
+            if role == UserRole.DOCTOR
+            else None
+        )
+    )
+
+    headers = auth_headers_factory(test_user)
+
+    response = client.get(
+        "/api/v1/users"
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"
+    }
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
