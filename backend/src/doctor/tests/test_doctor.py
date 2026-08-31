@@ -5,13 +5,9 @@ Tests for the doctor module
 import uuid
 import datetime
 import pytest
-from fastapi.testclient import TestClient
-# Session fixture for database tests
-from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import Session
 
 
-from src.main import app
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
 from src.team.schemas import TeamCreate
@@ -22,7 +18,12 @@ from src.position import repository as position_repository
 from src.position.schemas import PositionCreate
 from src.position.models import Position as PositionModel
 from src.doctor.models import Doctor as DoctorModel
-from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate, DoctorPositionCreate
+from src.doctor.schemas import (
+    DoctorCreate,
+    DoctorPreAssignmentCreate,
+    DoctorUnavailabilityCreate,
+    DoctorPositionCreate,
+)
 from src.doctor import repository as doctor_repository
 from src.doctor import controllers as doctor_controllers
 
@@ -95,19 +96,6 @@ def create_test_doctor_position(session: Session, doctor: DoctorModel, position:
 #####################
 # Fixtures
 #####################
-
-
-@pytest.fixture(name="session")
-def session_fixture():
-    """Creates a fresh in-memory database session for each test."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
 
 
 @pytest.fixture(name="department")
@@ -185,7 +173,7 @@ def test_create_doctor(department, team, new_doctor):
 
 
 def test_get_doctor_by_email(session, new_doctor):
-    """Test retrieving a doctor by name"""
+    """Test retrieving a doctor by email"""
     retrieved_doctor = doctor_repository.get_doctor_by_email(
         session, "drpanos@gmail.com")
 
@@ -588,21 +576,6 @@ def test_create_pre_assignment_unavailability_conflict(session, new_doctor, unav
 #######################
 # Route tests
 #######################
-
-
-@pytest.fixture(name="client")
-def client_fixture(session):
-    """Creates a TestClient for the FastAPI app with dependency override."""
-    from src.db.connection import get_session
-
-    def override_get_session():
-        yield session
-    app.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(app) as test_client:
-        yield test_client
-
-    app.dependency_overrides.clear()
 
 
 def test_create_doctor_route(client, department, team):
