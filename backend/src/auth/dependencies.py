@@ -52,7 +52,7 @@ def get_current_user(
 
 
 def require_role(*allowed_roles: UserRole):
-    """Factory dependenct for role enforcement"""
+    """Factory dependent for role enforcement"""
     def role_guard(current_user: UserModel = Depends(get_current_user)) -> UserModel:
         if current_user.role not in allowed_roles:
             raise HTTPException(
