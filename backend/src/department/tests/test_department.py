@@ -146,6 +146,18 @@ def test_get_department_by_id_route(client, department):
     assert "created_at" in data
     assert "updated_at" in data
 
+def test_get_department_by_id_route_requires_authentication(client, department):
+    """Tests that the GET /departments/{department_id} requires authentication"""
+    response = client.get(
+        f"/api/v1/departments/{department.id}"
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {
+        "detail": "Unauthorized"
+    }
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
 
 def test_list_departments_route(client, department_admin_headers, department):
     """Tests the GET /departments/ route"""
