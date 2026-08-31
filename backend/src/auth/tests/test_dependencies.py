@@ -4,6 +4,7 @@ Tests for the auth dependencies
 
 import uuid
 import pytest
+import fastapi
 
 from src.auth import dependencies
 from src.user.models import UserRole
@@ -30,7 +31,7 @@ def _make_user(role: UserRole) -> UserModel:
             uuid.uuid4()
             if role == UserRole.DOCTOR
             else None
-        )
+        ),
     )
 
 
@@ -39,10 +40,10 @@ def _make_user(role: UserRole) -> UserModel:
     [
         UserRole.DEPARTMENT_ADMIN,
         UserRole.DOCTOR,
-        UserRole.VIEWER
+        UserRole.VIEWER,
     ]
 )
-def test_require_department_member(role):
+def test_department_member_guard_allows_department_roles(role):
     """Tests requiring department member for an operation"""
     user = _make_user(role)
 
@@ -51,3 +52,17 @@ def test_require_department_member(role):
     )
 
     assert returned_user is user
+
+
+def test_department_member_guard_rejects_super_admin():
+    """Tests that the department member guard rejects super admin"""
+    user = _make_user(UserRole.SUPER_ADMIN)
+
+    with pytest.raises(fastapi.HTTPException) as exc_info:
+        dependencies.require_department_member(
+            current_user=user
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Insufficient permissions for this operation"
+    assert exc_info.value.headers is None
