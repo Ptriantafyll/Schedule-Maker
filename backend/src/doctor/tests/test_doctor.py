@@ -190,6 +190,22 @@ def viewer_headers_fixture(viewer_user, auth_headers_factory):
     return auth_headers_factory(viewer_user)
 
 
+@pytest.fixture(name="doctor_user")
+def doctor_user_fixture(user_factory, department):
+    """Creates a reusable doctor user for tests"""
+    return user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="doctor_headers")
+def doctor_headers_fixture(doctor_user, auth_headers_factory):
+    """Creates reusable doctor auth headers for tests"""
+
+    return auth_headers_factory(doctor_user)
+
 #####################
 # Repository tests
 #####################
@@ -772,13 +788,14 @@ def test_get_doctor_pre_assignments_route(
     assert "updated_at" in returned_pre_assignment
 
 
-def test_create_doctor_unavailability_route(client, new_doctor):
+def test_create_doctor_unavailability_route(client, new_doctor, doctor_headers):
     """Tests the POST /doctors/{doctor_id}/unavailability route"""
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/unavailability",
         json={
             "date": str(datetime.date(2026, 8, 12)),
-        }
+        },
+        headers=doctor_headers,
     )
 
     assert response.status_code == 201
@@ -790,29 +807,40 @@ def test_create_doctor_unavailability_route(client, new_doctor):
     assert "updated_at" in data
 
 
-def test_create_doctor_unavailability_route_invalid_payload(client, new_doctor):
+def test_create_doctor_unavailability_route_invalid_payload(client, new_doctor, doctor_headers):
     """Tests the POST /doctors/{doctor_id}/unavailability route rejects invalid payload"""
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/unavailability",
-        json={}
+        json={},
+        headers=doctor_headers
     )
     assert response.status_code == 422
 
 
-def test_get_doctor_unavailability_route(client, new_doctor, unavailability):
+def test_get_doctor_unavailability_route(client, new_doctor, unavailability, doctor_headers):
     """Tests the GET /doctors/{doctor_id}/unavailability route"""
     response = client.get(
-        f"api/v1/doctors/{new_doctor.id}/unavailability"
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        headers=doctor_headers
     )
 
     assert response.status_code == 200
     data = response.json()
+
+    returned_unavailability = next(
+        (
+            item
+            for item in data
+            if item["id"] == str(unavailability.id)
+        )
+    )
+
     assert isinstance(data, list)
-    assert data[0]["id"] == str(unavailability.id)
-    assert data[0]["date"] == str(datetime.date(2026, 8, 12))
-    assert data[0]["doctor_id"] == str(new_doctor.id)
-    assert "created_at" in data[0]
-    assert "updated_at" in data[0]
+    assert returned_unavailability["id"] == str(unavailability.id)
+    assert returned_unavailability["date"] == str(datetime.date(2026, 8, 12))
+    assert returned_unavailability["doctor_id"] == str(new_doctor.id)
+    assert "created_at" in returned_unavailability
+    assert "updated_at" in returned_unavailability
 
 
 def test_create_doctor_position_route(client, position, new_doctor):
@@ -1063,7 +1091,7 @@ def test_non_department_admin_cannot_list_pre_assignments(
     role,
     department,
 ):
-    """Tests that the list pre assignemnts route does not work with non dept admin headers"""
+    """Tests that the list pre assignments route does not work with non dept admin headers"""
     user = user_factory(
         role=role,
         department_id=(
@@ -1091,7 +1119,7 @@ def test_non_department_admin_cannot_list_pre_assignments(
 
 
 def test_list_pre_assignments_requires_authentication(client, new_doctor):
-    """Tests the get /api/v1/doctors/{doctor_id}/pre-assignmets route with no headers"""
+    """Tests the get /api/v1/doctors/{doctor_id}/pre-assignments route with no headers"""
     response = client.get(
         f"/api/v1/doctors/{new_doctor.id}/pre-assignments"
     )
@@ -1099,3 +1127,60 @@ def test_list_pre_assignments_requires_authentication(client, new_doctor):
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_non_department_admin_cannot_create_pre_assignment(
+    client,
+    role,
+    user_factory,
+    auth_headers_factory,
+    department,
+    new_doctor,
+    shift,
+    session,
+):
+    """Tests post /api/v1/doctors/{doctor_id}/pre-assignments route with non department admin headers"""
+    user = user_factory(
+        role=role,
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else department.id
+        ),
+        doctor_id=(
+            new_doctor.id
+            if role == UserRole.DOCTOR
+            else None
+        ),
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/pre-assignments",
+        json={
+            "date": str(datetime.date(2026, 8, 12)),
+            "doctor_id": str(new_doctor.id),
+            "shift_id": str(shift.id)
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"}
+    assert response.headers.get("WWW-Authenticate") is None
+    retrieved_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12),
+    )
+
+    assert retrieved_pre_assignment is None
