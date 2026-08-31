@@ -5,11 +5,8 @@ Tests for the shift module
 import uuid
 import datetime
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel, create_engine, Session
+from sqlmodel import Session
 
-from src.main import app
 from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate
 from src.shift.models import Shift as ShiftModel
 from src.shift.models import ShiftAssignment as ShiftAssignmentModel
@@ -103,19 +100,6 @@ def create_test_unavailability(
 #####################
 # Fixtures
 #####################
-
-
-@pytest.fixture(name="session")
-def session_fixture():
-    """Creates a fresh in-memory database session for each test."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
 
 
 @pytest.fixture(name="shift")
@@ -450,21 +434,6 @@ def test_create_shift_assignment_capacity_limit(session, shift, new_doctor, depa
 #####################
 # Route Tests
 #####################
-
-
-@pytest.fixture(name="client")
-def client_fixture(session):
-    """Creates a TestClient for the FastAPI app with dependency override."""
-    from src.db.connection import get_session
-
-    def override_get_session():
-        yield session
-    app.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(app) as test_client:
-        yield test_client
-
-    app.dependency_overrides.clear()
 
 
 def test_create_shift_route(client, position):
