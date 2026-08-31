@@ -45,6 +45,23 @@ def department_admin_headers_fixture(department_admin_user, auth_headers_factory
     """Creates reusable department admin auth headers for tests"""
 
     return auth_headers_factory(department_admin_user)
+
+
+@pytest.fixture(name="viewer_user")
+def viewer_user_fixture(user_factory, department):
+    """Creates a reusable viewer user for tests"""
+    return user_factory(
+        role=UserRole.VIEWER,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="viewer_headers")
+def viewer_headers_fixture(viewer_user, auth_headers_factory):
+    """Creates reusable viewer auth headers for tests"""
+
+    return auth_headers_factory(viewer_user)
 ################################
 # Repository tests
 ################################
@@ -163,10 +180,11 @@ def test_create_team_route_invalid_payload(client, department_admin_headers):
     assert response.status_code == 422
 
 
-def test_get_team_by_id_route(client, department, team):
+def test_get_team_by_id_route(client, department, team, viewer_headers):
     """Tests that the GET /teams/{team_id} route returns a team"""
     response = client.get(
-        f"/api/v1/teams/{team.id}"
+        f"/api/v1/teams/{team.id}",
+        headers=viewer_headers,
     )
 
     assert response.status_code == 200
@@ -178,9 +196,29 @@ def test_get_team_by_id_route(client, department, team):
     assert "updated_at" in data
 
 
-def test_list_teams_route():
+def test_list_teams_route(client, team, viewer_headers):
     """Tests the GET /teams/ route"""
-    # TODO
+    response = client.get(
+        "/api/v1/teams",
+        headers=viewer_headers,
+    )
+
+    assert response.status_code == 200
+
+    data = response.json()
+    assert isinstance(data, list)
+
+    returned_team = next(
+        (
+            item
+            for item in data
+            if item["id"] == str(team.id)
+        ),
+        None
+    )
+
+    assert returned_team is not None
+    assert returned_team["name"] == team.name
 
 
 @pytest.mark.parametrize(
@@ -220,5 +258,5 @@ def test_non_department_admin_cannot_create_team(
     assert response.status_code == 403
     data = response.json()
     assert data == {"detail": "Insufficient permissions for this operation"}
-    assert response.headers.get("WWW-Authenticat") is None
+    assert response.headers.get("WWW-Authenticate") is None
     assert team_repository.get_team_by_name(session, "Rad Team E") is None
