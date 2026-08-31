@@ -38,12 +38,12 @@ def test_only_expected_api_operations_are_public():
 
 def test_public_signup_route_is_not_exposed():
     """Tests legacy signup route is not exposed"""
-    assert "/api/v1/users/signup" not in app.openapi()["pahts"]
+    assert "/api/v1/users/signup" not in app.openapi()["paths"]
 
 
 def test_user_email_lookup_route_is_not_exposed():
     """Tests legacy user email lookup route is not exposed"""
-    assert "/api/v1/users/{user_email}" not in app.openapi()["pahts"]
+    assert "/api/v1/users/{user_email}" not in app.openapi()["paths"]
 
 
 def test_department_creation_method_is_not_exposed():
