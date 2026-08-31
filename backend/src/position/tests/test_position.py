@@ -5,13 +5,8 @@ Tests for the position module
 import uuid
 import datetime
 import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel, create_engine, Session
 
-from src.main import app
 from src.position.schemas import PositionCreate
-from src.position.models import Position as PositionModel
 from src.position import repository as position_repository
 from src.position import controllers as position_controllers
 from src.department.schemas import DepartmentCreate
@@ -24,19 +19,6 @@ from src.department import repository as department_repository
 #####################
 # Fixtures
 #####################
-
-
-@pytest.fixture(name="session")
-def session_fixture():
-    """Creates a fresh in-memory database session for each test."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
 
 
 @pytest.fixture(name="department")
@@ -174,21 +156,6 @@ def test_get_position_controller_deleted(session, position):
 #####################
 # Route tests
 #####################
-
-
-@pytest.fixture(name="client")
-def client_fixture(session):
-    """Creates a TestClient for the FastAPI app with dependency override."""
-    from src.db.connection import get_session
-
-    def override_get_session():
-        yield session
-    app.dependency_overrides[get_session] = override_get_session
-
-    with TestClient(app) as test_client:
-        yield test_client
-
-    app.dependency_overrides.clear()
 
 
 def test_create_position_route(client, department):
