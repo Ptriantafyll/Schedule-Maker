@@ -708,7 +708,8 @@ def test_non_department_admin_cannot_create_shift_assignment(
     auth_headers_factory,
     department,
     new_doctor,
-    shift
+    shift,
+    session,
 ):
     """tests post /api/v1/shifts/{shift_id}/assignments with non department admin headers"""
     user = user_factory(
@@ -734,6 +735,12 @@ def test_non_department_admin_cannot_create_shift_assignment(
     assert response.json() == {
         "detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") is None
+    retrieved_shift_assignments = shift_repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=shift.id,
+        target_date=datetime.date(2026, 8, 12)
+    )
+    assert retrieved_shift_assignments == []
 
 
 def test_create_shift_assignment_requires_authentication(client, shift, new_doctor, session):
@@ -754,4 +761,4 @@ def test_create_shift_assignment_requires_authentication(client, shift, new_doct
         shift_id=shift.id,
         target_date=datetime.date(2026, 8, 12)
     )
-    assert retrieved_shift_assignments is None
+    assert retrieved_shift_assignments == []
