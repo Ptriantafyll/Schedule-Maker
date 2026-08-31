@@ -79,9 +79,12 @@ def user_factory_fixture(session):
 
 
 @pytest.fixture(name="auth_headers_factory")
-def auth_headers_factory_fixture(user: UserModel):
+def auth_headers_factory_fixture():
     """Create auth headers factory fixture"""
 
-    access_token = create_access_token({"sub": str(user.id)})
+    def create_auth_headers(user: UserModel) -> dict[str, str]:
+        access_token = create_access_token({"sub": str(user.id)})
 
-    return {"Authorization": f"Bearer {access_token}"}
+        return {"Authorization": f"Bearer {access_token}"}
+
+    return create_auth_headers
