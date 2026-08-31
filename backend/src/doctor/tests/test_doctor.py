@@ -26,6 +26,7 @@ from src.doctor.schemas import (
 )
 from src.doctor import repository as doctor_repository
 from src.doctor import controllers as doctor_controllers
+from src.user.models import UserRole
 
 
 #####################
@@ -153,6 +154,40 @@ def pre_assignment_fixture(session, new_doctor, shift):
 def unavailability_fixture(session, new_doctor):
     """Creates a reusable pre-assignment for tests"""
     return create_test_unavailability(session, new_doctor, datetime.date(2026, 8, 12))
+
+
+@pytest.fixture(name="department_admin_user")
+def department_admin_user_fixture(user_factory, department):
+    """Creates a reusable department admin user for tests"""
+    return user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="department_admin_headers")
+def department_admin_headers_fixture(department_admin_user, auth_headers_factory):
+    """Creates reusable department admin auth headers for tests"""
+
+    return auth_headers_factory(department_admin_user)
+
+
+@pytest.fixture(name="viewer_user")
+def viewer_user_fixture(user_factory, department):
+    """Creates a reusable viewer user for tests"""
+    return user_factory(
+        role=UserRole.VIEWER,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="viewer_headers")
+def viewer_headers_fixture(viewer_user, auth_headers_factory):
+    """Creates reusable viewer auth headers for tests"""
+
+    return auth_headers_factory(viewer_user)
 
 #####################
 # Repository tests
@@ -578,7 +613,7 @@ def test_create_pre_assignment_unavailability_conflict(session, new_doctor, unav
 #######################
 
 
-def test_create_doctor_route(client, department, team):
+def test_create_doctor_route(client, department, team, department_admin_headers):
     """Test the POST /doctors/ route for creating a doctor"""
 
     response = client.post(
@@ -588,7 +623,8 @@ def test_create_doctor_route(client, department, team):
             "email": "drpanos@gmail.com",
             "department_id": str(department.id),
             "team_id": str(team.id)
-        }
+        },
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 201
@@ -602,7 +638,7 @@ def test_create_doctor_route(client, department, team):
     assert "updated_at" in data
 
 
-def test_create_doctor_route_invalid_payload(client, department, team):
+def test_create_doctor_route_invalid_payload(client, department, team, department_admin_headers):
     """Test the POST /doctors/ route rejects invalid payload"""
 
     response = client.post(
@@ -611,15 +647,17 @@ def test_create_doctor_route_invalid_payload(client, department, team):
             "name": "Dr Panos",
             "department_id": str(department.id),
             "team_id": str(team.id),
-        }
+        },
+        headers=department_admin_headers,
     )
     assert response.status_code == 422
 
 
-def test_get_doctor_by_id_route(client, department, team, new_doctor):
+def test_get_doctor_by_id_route(client, department, team, new_doctor, viewer_headers):
     """Tests that the GET /doctors/{doctor_id} route returns a doctor"""
     response = client.get(
-        f"/api/v1/doctors/{new_doctor.id}"
+        f"/api/v1/doctors/{new_doctor.id}",
+        headers=viewer_headers,
     )
 
     assert response.status_code == 200
@@ -633,20 +671,36 @@ def test_get_doctor_by_id_route(client, department, team, new_doctor):
     assert "updated_at" in data
 
 
-def test_get_doctor_by_id_route_nonexistent(client):
+def test_get_doctor_by_id_route_nonexistent(client, viewer_headers):
     """Test the GET /doctors/{doctor_id} route returns error when given a nonexistent id"""
     response = client.get(
-        f"/api/v1/doctors/{uuid.uuid4()}"
+        f"/api/v1/doctors/{uuid.uuid4()}",
+        headers=viewer_headers,
     )
     assert response.status_code == 404
 
 
 # new doctor is needed to add a doctor in the db
-def test_list_doctors_route(client, new_doctor):
+def test_list_doctors_route(client, new_doctor, viewer_headers):
     """Tests the GET /doctors/ route"""
-    response = client.get("api/v1/doctors")
+    response = client.get(
+        "api/v1/doctors",
+        headers=viewer_headers,
+    )
 
     assert response.status_code == 200
+
+    returned_doctor = next(
+        (
+            item
+            for item in response.json()
+            if item["id"] == str(new_doctor.id)
+        ),
+        None
+    )
+
+    assert returned_doctor is not None
+    assert returned_doctor["id"] == str(new_doctor.id)
 
 
 def test_create_doctor_pre_assignments_route(client, shift, new_doctor):
