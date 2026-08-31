@@ -181,3 +181,32 @@ def test_get_team_by_id_route(client, department, team):
 def test_list_teams_route():
     """Tests the GET /teams/ route"""
     # TODO
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_non_department_admin_cannot_create_team(client, department, session, user_factory, auth_headers_factory, role):
+    """Tests that a doctor cannot perform an admin action"""
+    user = user_factory(
+        role=role,
+        department_id=department.id,
+    )
+
+    headers = auth_headers_factory(user)
+
+    response = client.post(
+        "/api/v1/teams",
+        json={"name": "Rad Team E", "department_id": str(department.id)},
+        headers=headers
+    )
+
+    assert response.status_code == 403
+    data = response.json()
+    assert data == {"detail": "Insufficient permissions for this operation"}
+    assert team_repository.get_team_by_name(session, "Rad Team E") is None
