@@ -39,6 +39,24 @@ def department_admin_headers_fixture(department_admin_user, auth_headers_factory
 
     return auth_headers_factory(department_admin_user)
 
+
+@pytest.fixture(name="super_admin_user")
+def super_admin_user_fixture(user_factory):
+    """Creates a reusable super admin user for tests"""
+    return user_factory(
+        role=UserRole.SUPER_ADMIN,
+        department_id=None,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="super_admin_headers")
+def super_admin_headers_fixture(super_admin_user, auth_headers_factory):
+    """Creates reusable super admin auth headers for tests"""
+
+    return auth_headers_factory(super_admin_user)
+
+
 #####################
 # Repository tests
 #####################
@@ -161,12 +179,12 @@ def test_get_department_by_id_route_requires_authentication(client, department):
     assert response.headers.get("WWW-Authenticate") == "Bearer"
 
 
-def test_list_departments_route(client, department_admin_headers, department):
+def test_super_admin_can_list_departments(client, super_admin_headers, department):
     """Tests the GET /departments/ route"""
 
     response = client.get(
         "/api/v1/departments/",
-        headers=department_admin_headers,
+        headers=super_admin_headers,
     )
 
     assert response.status_code == 200
@@ -185,3 +203,37 @@ def test_list_departments_route(client, department_admin_headers, department):
     assert returned_department is not None
     assert returned_department["code"] == department.code
     assert returned_department["name"] == department.name
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DEPARTMENT_ADMIN,
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+    ]
+)
+def test_non_super_admin_cannot_list_departments(
+    client,
+    department,
+    user_factory,
+    auth_headers_factory,
+    role,
+):
+    """Tests that POST /api/v1/departments/ route rejects other roles except SUPER_ADMIN"""
+    user = user_factory(
+        role=role,
+        department_id=department.id
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.get(
+        "/api/v1/departments",
+        headers=headers,
+    )
+
+    assert response.status_code == 402
+    assert response.json() == {
+        "detail": "Unauthorized"
+    }
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
