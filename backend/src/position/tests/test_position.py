@@ -229,11 +229,11 @@ def test_create_position_route_invalid_payload(client, department_admin_headers)
     assert response.status_code == 422
 
 
-def test_list_positions_route(client, position, department_admin_headers):
+def test_list_positions_route(client, position, viewer_headers):
     """Tests get /api/v1/positionsroute"""
     response = client.get(
         "/api/v1/positions",
-        headers=department_admin_headers,
+        headers=viewer_headers,
     )
 
     assert response.status_code == 200
@@ -242,11 +242,11 @@ def test_list_positions_route(client, position, department_admin_headers):
     assert data[0]["id"] == str(position.id)
 
 
-def test_get_position_route(client, position, department_admin_headers):
+def test_get_position_route(client, position, viewer_headers):
     """Tests get /api/v1/positions/{position_name} route"""
     response = client.get(
         f"/api/v1/positions/{position.name}",
-        headers=department_admin_headers,
+        headers=viewer_headers,
     )
 
     assert response.status_code == 200
@@ -254,11 +254,11 @@ def test_get_position_route(client, position, department_admin_headers):
     assert data["id"] == str(position.id)
 
 
-def test_get_position_route_nonexistent_name(client, department_admin_headers):
+def test_get_position_route_nonexistent_name(client, viewer_headers):
     """Tests get /api/v1/positions/{position_name} route with invalid payload"""
     response = client.get(
         "/api/v1/positions/test",
-        headers=department_admin_headers,
+        headers=viewer_headers,
     )
 
     assert response.status_code == 404
