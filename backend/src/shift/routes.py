@@ -9,6 +9,8 @@ from src.db.connection import get_session
 
 from src.shift.schemas import ShiftCreate, ShiftRead, ShiftAssignmentCreate, ShiftAssignmentRead
 from src.shift import controllers as shift_controllers
+from src.auth.dependencies import require_department_member, require_department_admin
+from src.user.models import User as UserModel
 
 router = APIRouter(
     prefix="/shifts",
@@ -17,7 +19,11 @@ router = APIRouter(
 
 
 @router.post("/", response_model=ShiftRead, status_code=status.HTTP_201_CREATED)
-def create_shift(shift_data: ShiftCreate, session: Session = Depends(get_session)):
+def create_shift(
+    shift_data: ShiftCreate,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin)
+):
     """Endpoint to create a new shift"""
     return shift_controllers.create_shift_controller(shift_data, session)
 
@@ -41,7 +47,12 @@ def get_shift(shift_name: str, session: Session = Depends(get_session)):
 
 
 @router.post("/{shift_id}/assignments", response_model=ShiftAssignmentRead, status_code=status.HTTP_201_CREATED)
-def create_shift_assignment(shift_id: uuid.UUID, shift_assignment_data: ShiftAssignmentCreate, session: Session = Depends(get_session)):
+def create_shift_assignment(
+    shift_id: uuid.UUID,
+    shift_assignment_data: ShiftAssignmentCreate,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin)
+):
     """Endpoint to create a new shift"""
     return shift_controllers.create_shift_assignment_controller(
         session=session,

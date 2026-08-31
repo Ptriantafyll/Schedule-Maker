@@ -527,6 +527,7 @@ def test_list_shifts_route(client, shift, viewer_headers):
         None
     )
 
+    assert returned_shift is not None
     assert returned_shift["id"] == str(shift.id)
 
 
@@ -600,7 +601,8 @@ def test_create_shift_assignment_route_duplicate(client, shift, new_doctor, depa
         json={
             "doctor_id": str(new_doctor.id),
             "date": str(datetime.date(2026, 8, 12))
-        }
+        },
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 400
@@ -626,4 +628,66 @@ def test_list_shift_assignments_route(client, shift_assignment, viewer_headers):
         None
     )
 
+    assert returned_shift_assignment is not None
     assert returned_shift_assignment["id"] == str(shift_assignment.id)
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_non_department_admin_cannot_create_shift(
+    client,
+    role,
+    position,
+    user_factory,
+    auth_headers_factory,
+    department,
+):
+    """Tests post /api/v1/shifts route with non department admin headers"""
+    user = user_factory(
+        role=role,
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else department.id
+        ),
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.post(
+        "/api/v1/shifts",
+        json={
+            "name": "ER 1",
+            "doctors_per_shift": 1,
+            "grants_day_off": False,
+            "position_id": str(position.id)
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_create_shift_requires_authentication(client, session, position):
+    """Tests post /api/v1/shifts route without auth"""
+    response = client.post(
+        "/api/v1/shifts",
+        json={
+            "name": "ER 1",
+            "doctors_per_shift": 1,
+            "grants_day_off": False,
+            "position_id": str(position.id)
+        }
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert shift_repository.get_shift_by_name(session, "ER 1") is None
