@@ -370,14 +370,14 @@ def test_user_list_rejects_non_department_admin_roles(client, user_factory, auth
             doctor.id
             if role == UserRole.DOCTOR
             else None
-        )
+        ),
     )
 
     headers = auth_headers_factory(test_user)
 
     response = client.get(
         "/api/v1/users",
-        headers=headers
+        headers=headers,
     )
 
     assert response.status_code == 403

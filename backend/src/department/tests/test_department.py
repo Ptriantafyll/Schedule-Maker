@@ -4,33 +4,17 @@ Tests for the department module
 
 import datetime
 import uuid
-from fastapi.testclient import TestClient
-from src.main import app
 from src.department.repository import create_department, get_active_departments, get_department_by_name
 from src.department.schemas import DepartmentCreate
 
 # Session fixture for database tests
 import pytest
-from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel, create_engine, Session
-
-
-@pytest.fixture(name="session")
-def session_fixture():
-    """Creates a fresh in-memory database session for each test."""
-    engine = create_engine(
-        "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as session:
-        yield session
-
 
 #####################
 # Repository tests
 #####################
+
+
 def test_create_department(session):
     """Test creating a department and verifying its fields."""
 
@@ -129,19 +113,6 @@ def test_get_department_controller_deleted(session):
 ###############################
 # Route tests
 ###############################
-@pytest.fixture(name="client")
-def client_fixture(session):
-    """Creates a TestClient for the FastAPI app with dependency override."""
-    from src.db.connection import get_session
-
-    def override_get_session():
-        yield session
-    app.dependency_overrides[get_session] = override_get_session
-    with TestClient(app) as test_client:
-        yield test_client
-    # 5. Clean up the overrides after the test finishes
-    app.dependency_overrides.clear()
-
 
 def test_get_department_by_id_route(session, client):
     """Tests that the GET /departments/{department_id} route returns a department"""
@@ -163,4 +134,3 @@ def test_get_department_by_id_route(session, client):
 
 def test_list_departments_route():
     """Tests the GET /departments/ route"""
-    # TODO
