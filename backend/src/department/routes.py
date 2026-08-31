@@ -14,7 +14,7 @@ from src.department.controllers import (
 )
 
 from src.user.models import User as UserModel
-from src.auth.dependencies import require_department_admin
+from src.auth.dependencies import require_department_admin, require_department_member
 
 router = APIRouter(
     prefix="/departments",
@@ -35,7 +35,7 @@ def list_departments(
 def get_department(
     department_id: uuid.UUID,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_admin),
+    current_user: UserModel = Depends(require_department_member),
 ):
     """Fetches a specific department by its UUID."""
     return get_department_controller(department_id, session)
