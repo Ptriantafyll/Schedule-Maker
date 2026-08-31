@@ -104,7 +104,7 @@ def _make_user(role: UserRole) -> UserModel:
 
 
 def test_user_role_changes_require_authorization_review():
-    """Tests that checks if the roles have been changed (added/removed/modified)"""
+    """Tests that checks if the roles have been changed"""
     assert set(UserRole) == EXPECTED_USER_ROLES
 
 
@@ -116,7 +116,7 @@ def test_role_guard_allows_expected_roles(guard, role):
     """Tests that a role guard allows the expected roles"""
     user = _make_user(role)
 
-    assert guard(current_user=user) is user
+    assert guard(current_user=user,) is user
 
 
 @pytest.mark.parametrize(
@@ -128,7 +128,7 @@ def test_role_guard_rejects_disallowed_roles(guard, role):
     user = _make_user(role)
 
     with pytest.raises(HTTPException) as exc_info:
-        guard(current_user=user)
+        guard(current_user=user,)
 
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Insufficient permissions for this operation"
