@@ -108,7 +108,11 @@ def create_doctor_unavailability(
 
 
 @router.get("/{doctor_id}/unavailability", response_model=list[DoctorUnavailabilityRead])
-def list_doctor_unavailabilities(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+def list_doctor_unavailabilities(
+    doctor_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_doctor_or_department_admin),
+):
     """
     Lists the unavailability dates of a doctor
     """

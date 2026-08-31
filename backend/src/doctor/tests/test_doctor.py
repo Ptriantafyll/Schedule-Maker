@@ -1199,3 +1199,71 @@ def test_create_unavailability_requires_authentication(client, session, new_doct
     )
 
     assert retrieved_unavailability is None
+
+
+def test_department_admin_can_create_unavailability(client, new_doctor, department_admin_headers):
+    """Tests the POST /doctors/{doctor_id}/unavailability route"""
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        json={
+            "date": str(datetime.date(2026, 8, 12)),
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["date"] == str(datetime.date(2026, 8, 12))
+    assert data["doctor_id"] == str(new_doctor.id)
+    assert "id" in data
+    assert "created_at" in data
+    assert "updated_at" in data
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_non_doctor_or_dept_admin_cannot_list_unavailability(
+    client,
+    new_doctor,
+    role,
+    user_factory,
+    auth_headers_factory,
+    department,
+):
+    """Tests the get /doctors/{doctor_id}/unavailability route with non allowed headers"""
+    user = user_factory(
+        role=role,
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else department.id
+        ),
+        doctor_id=None,
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_list_unavailability_requires_authentication(client, new_doctor):
+    """Tests the GET /doctors/{doctor_id}/unavailability route with no headers"""
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
