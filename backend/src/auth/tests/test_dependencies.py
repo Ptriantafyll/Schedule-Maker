@@ -4,7 +4,8 @@ Tests for the auth dependencies
 
 import uuid
 import pytest
-import fastapi
+
+from fastapi import HTTPException
 
 from src.auth import dependencies
 from src.user.models import UserRole
@@ -58,7 +59,7 @@ def test_department_member_guard_rejects_super_admin():
     """Tests that the department member guard rejects super admin"""
     user = _make_user(UserRole.SUPER_ADMIN)
 
-    with pytest.raises(fastapi.HTTPException) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         dependencies.require_department_member(
             current_user=user
         )
