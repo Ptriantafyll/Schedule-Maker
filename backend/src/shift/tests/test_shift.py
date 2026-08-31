@@ -21,6 +21,7 @@ from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
 from src.team.schemas import TeamCreate
 from src.team import repository as team_repository
+from src.user.models import UserRole
 
 #####################
 # Helpers
@@ -151,6 +152,39 @@ def unavailability_fixture(session, new_doctor):
     """Creates a reusable pre-assignment for tests"""
     return create_test_unavailability(session, new_doctor, datetime.date(2026, 8, 13))
 
+
+@pytest.fixture(name="department_admin_user")
+def department_admin_user_fixture(user_factory, department):
+    """Creates a reusable department admin user for tests"""
+    return user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="department_admin_headers")
+def department_admin_headers_fixture(department_admin_user, auth_headers_factory):
+    """Creates reusable department admin auth headers for tests"""
+
+    return auth_headers_factory(department_admin_user)
+
+
+@pytest.fixture(name="viewer_user")
+def viewer_user_fixture(user_factory, department):
+    """Creates a reusable viewer user for tests"""
+    return user_factory(
+        role=UserRole.VIEWER,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="viewer_headers")
+def viewer_headers_fixture(viewer_user, auth_headers_factory):
+    """Creates reusable viewer auth headers for tests"""
+
+    return auth_headers_factory(viewer_user)
 #####################
 # Repository Tests
 #####################
@@ -436,7 +470,7 @@ def test_create_shift_assignment_capacity_limit(session, shift, new_doctor, depa
 #####################
 
 
-def test_create_shift_route(client, position):
+def test_create_shift_route(client, position, department_admin_headers):
     """Tests post /api/v1/shifts route"""
     response = client.post(
         "api/v1/shifts",
@@ -445,7 +479,8 @@ def test_create_shift_route(client, position):
             "doctors_per_shift": 1,
             "grants_day_off": False,
             "position_id": str(position.id)
-        }
+        },
+        headers=department_admin_headers
     )
 
     assert response.status_code == 201
@@ -457,7 +492,7 @@ def test_create_shift_route(client, position):
     assert "updated_at" in data
 
 
-def test_create_shift_route_invalid_payload(client, position):
+def test_create_shift_route_invalid_payload(client, position, department_admin_headers):
     """Tests post /api/v1/shifts route with invalid payload"""
     response = client.post(
         "api/v1/shifts",
@@ -465,46 +500,67 @@ def test_create_shift_route_invalid_payload(client, position):
             "doctors_per_shift": 1,
             "grants_day_off": False,
             "position_id": str(position.id)
-        }
+        },
+        headers=department_admin_headers
     )
 
     assert response.status_code == 422
 
 
-def test_list_shifts_route(client, shift):
+def test_list_shifts_route(client, shift, viewer_headers):
     """Tests get /api/v1/shifts route"""
-    response = client.get("/api/v1/shifts")
+    response = client.get(
+        "/api/v1/shifts",
+        headers=viewer_headers,
+    )
 
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert data[0]["id"] == str(shift.id)
+
+    returned_shift = next(
+        (
+            item
+            for item in data
+            if item["id"] == str(shift.id)
+        ),
+        None
+    )
+
+    assert returned_shift["id"] == str(shift.id)
 
 
-def test_get_shift_route(client, shift):
+def test_get_shift_route(client, shift, viewer_headers):
     """Tests get /api/v1/shifts/{shift_name} route"""
-    response = client.get(f"/api/v1/shifts/{shift.name}")
+    response = client.get(
+        f"/api/v1/shifts/{shift.name}",
+        headers=viewer_headers,
+    )
 
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == str(shift.id)
 
 
-def test_get_shift_route_nonexistent_id(client):
+def test_get_shift_route_nonexistent_id(client, viewer_headers):
     """Tests get /api/v1/shifts/{shift_id} route with invalid payload"""
-    response = client.get(f"/api/v1/shifts/{uuid.uuid4()}")
+    response = client.get(
+        f"/api/v1/shifts/{uuid.uuid4()}",
+        headers=viewer_headers,
+    )
 
     assert response.status_code == 404
 
 
-def test_create_shift_assignment_route(client, shift, new_doctor):
+def test_create_shift_assignment_route(client, shift, new_doctor, department_admin_headers):
     """Tests post /api/v1/shifts/{shift_id}/assignments"""
     response = client.post(
         f"/api/v1/shifts/{shift.id}/assignments",
         json={
             "doctor_id": str(new_doctor.id),
             "date": str(datetime.date(2026, 8, 12))
-        }
+        },
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 201
@@ -515,26 +571,28 @@ def test_create_shift_assignment_route(client, shift, new_doctor):
     assert "updated_at" in data
 
 
-def test_create_shift_assignment_route_invalid_payload(client, shift, new_doctor):
+def test_create_shift_assignment_route_invalid_payload(client, shift, new_doctor, department_admin_headers):
     """Tests post /api/v1/shifts/{shift_id}/assignments with invalid payload"""
     response = client.post(
         f"/api/v1/shifts/{shift.id}/assignments",
         json={
             "doctor_id": str(new_doctor.id),
-        }
+        },
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 422
 
 
-def test_create_shift_assignment_route_duplicate(client, shift, new_doctor):
+def test_create_shift_assignment_route_duplicate(client, shift, new_doctor, department_admin_headers):
     """Tests post /api/v1/shifts/{shift_id}/assignments with invalid payload"""
     client.post(
         f"/api/v1/shifts/{shift.id}/assignments",
         json={
             "doctor_id": str(new_doctor.id),
             "date": str(datetime.date(2026, 8, 12))
-        }
+        },
+        headers=department_admin_headers,
     )
 
     response = client.post(
@@ -548,11 +606,24 @@ def test_create_shift_assignment_route_duplicate(client, shift, new_doctor):
     assert response.status_code == 400
 
 
-def tests_list_shift_assignments_route(client, shift_assignment):
+def test_list_shift_assignments_route(client, shift_assignment, viewer_headers):
     """Tests get /api/v1/shifts/assignments"""
-    response = client.get("api/v1/shifts/assignments")
+    response = client.get(
+        "api/v1/shifts/assignments",
+        headers=viewer_headers
+    )
 
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert data[0]["id"] == str(shift_assignment.id)
+
+    returned_shift_assignment = next(
+        (
+            item
+            for item in data
+            if item["id"] == str(shift_assignment.id)
+        ),
+        None
+    )
+
+    assert returned_shift_assignment["id"] == str(shift_assignment.id)
