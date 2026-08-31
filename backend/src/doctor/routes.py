@@ -32,7 +32,7 @@ router = APIRouter(
 def create_doctor(
     doctor_data: DoctorCreate,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_admin)
+    current_user: UserModel = Depends(require_department_admin),
 ):
     """
     Creates a new doctor
@@ -41,7 +41,10 @@ def create_doctor(
 
 
 @router.get("/", response_model=list[DoctorRead])
-def list_doctors(session: Session = Depends(get_session)):
+def list_doctors(
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
     """
     Retrieves all active doctors
     """
@@ -49,7 +52,11 @@ def list_doctors(session: Session = Depends(get_session)):
 
 
 @router.get("/{doctor_id}", response_model=DoctorRead)
-def get_doctor(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+def get_doctor(
+    doctor_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
     """
     Retrieves a doctor by their UUID.
     """

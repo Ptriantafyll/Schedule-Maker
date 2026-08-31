@@ -879,7 +879,7 @@ def test_non_department_admin_cannot_create_doctor(
             "name": "Dr Panos",
             "email": "drpanos@gmail.com",
             "department_id": str(department.id),
-            "team_id": str(team.id)
+            "team_id": str(team.id),
         },
         headers=headers,
     )
@@ -890,7 +890,7 @@ def test_non_department_admin_cannot_create_doctor(
     assert response.headers.get("WWW-Authenticate") is None
     assert doctor_repository.get_doctor_by_email(
         session=session,
-        email="drpanos@gmail.com"
+        email="drpanos@gmail.com",
     ) is None
 
 
@@ -902,7 +902,7 @@ def test_create_doctor_requires_authentication(client, session, department, team
             "name": "Dr Panos",
             "email": "drpanos@gmail.com",
             "department_id": str(department.id),
-            "team_id": str(team.id)
+            "team_id": str(team.id),
         },
     )
 
@@ -911,5 +911,33 @@ def test_create_doctor_requires_authentication(client, session, department, team
     assert response.headers.get("WWW-Authenticate") == "Bearer"
     assert doctor_repository.get_doctor_by_email(
         session=session,
-        email="drpanos@gmail.com"
+        email="drpanos@gmail.com",
     ) is None
+
+
+@pytest.mark.parametrize(
+    "path_template",
+    [
+        pytest.param(
+            "/api/v1/doctors/",
+            id="list-doctors",
+        ),
+        pytest.param(
+            "/api/v1/doctors/{doctor_id}",
+            id="get-shift",
+        ),
+    ],
+)
+def test_doctor_read_routes_require_authentication(
+    client,
+    new_doctor,
+    path_template,
+):
+    """Tests that the doctor read routes require auth"""
+    path = path_template.format(doctor_id=new_doctor.id)
+
+    response = client.get(path)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"

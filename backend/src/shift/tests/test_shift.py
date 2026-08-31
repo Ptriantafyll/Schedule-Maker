@@ -790,7 +790,7 @@ def test_shift_read_routes_require_authentication(
     shift,
     path_template,
 ):
-    """Tests that the team read routes require auth"""
+    """Tests that the shift read routes require auth"""
     path = path_template.format(shift_name=shift.name)
 
     response = client.get(path)
