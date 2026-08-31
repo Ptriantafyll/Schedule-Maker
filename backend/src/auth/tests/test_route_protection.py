@@ -2,8 +2,6 @@
 Route protection auth tests
 """
 
-import pytest
-
 from src.main import app
 
 EXPECTED_PUBLIC_OPERATIONS = {
@@ -16,7 +14,7 @@ HTTP_METHODS = {
     "post",
     "put",
     "patch",
-    "deleted",
+    "delete",
 }
 
 
@@ -36,3 +34,22 @@ def test_only_expected_api_operations_are_public():
                 )
 
     assert public_operations == EXPECTED_PUBLIC_OPERATIONS
+
+
+def test_public_signup_route_is_not_exposed():
+    """Tests legacy signup route is not exposed"""
+    assert "/api/v1/users/signup" not in app.openapi()["pahts"]
+
+
+def test_user_email_lookup_route_is_not_exposed():
+    """Tests legacy user email lookup route is not exposed"""
+    assert "/api/v1/users/{user_email}" not in app.openapi()["pahts"]
+
+
+def test_department_creation_method_is_not_exposed():
+    """Tests document creation method is not exposed"""
+    department_operations = app.openapi()["paths"][
+        "/api/v1/departments/"
+    ]
+
+    assert "post" not in department_operations
