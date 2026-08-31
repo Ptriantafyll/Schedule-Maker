@@ -189,6 +189,7 @@ def viewer_headers_fixture(viewer_user, auth_headers_factory):
 
     return auth_headers_factory(viewer_user)
 
+
 #####################
 # Repository tests
 #####################
@@ -842,3 +843,73 @@ def test_get_doctor_position_route(client, session, new_doctor, position):
     assert data[0]["doctor_id"] == str(new_doctor.id)
     assert "created_at" in data[0]
     assert "updated_at" in data[0]
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_non_department_admin_cannot_create_doctor(
+    client,
+    role,
+    user_factory,
+    auth_headers_factory,
+    department,
+    team,
+    session,
+):
+    """Tests post /api/v1/doctors route with non department admin headers"""
+    user = user_factory(
+        role=role,
+        department_id=(
+            None
+            if role == UserRole.SUPER_ADMIN
+            else department.id
+        ),
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.post(
+        "/api/v1/doctors",
+        json={
+            "name": "Dr Panos",
+            "email": "drpanos@gmail.com",
+            "department_id": str(department.id),
+            "team_id": str(team.id)
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_by_email(
+        session=session,
+        email="drpanos@gmail.com"
+    ) is None
+
+
+def test_create_doctor_requires_authentication(client, session, department, team):
+    """Tests the post /api/v1/doctors route without auth"""
+    response = client.post(
+        "/api/v1/doctors",
+        json={
+            "name": "Dr Panos",
+            "email": "drpanos@gmail.com",
+            "department_id": str(department.id),
+            "team_id": str(team.id)
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+    assert doctor_repository.get_doctor_by_email(
+        session=session,
+        email="drpanos@gmail.com"
+    ) is None

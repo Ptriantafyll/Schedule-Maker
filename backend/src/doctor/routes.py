@@ -8,8 +8,19 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel import Session
 from src.db.connection import get_session
 
-from src.doctor.schemas import DoctorCreate, DoctorRead, DoctorPreAssignmentCreate, DoctorPreAssignmentRead, DoctorPositionCreate, DoctorPositionRead, DoctorUnavailabilityCreate, DoctorUnavailabilityRead
+from src.doctor.schemas import (
+    DoctorCreate,
+    DoctorRead,
+    DoctorPreAssignmentCreate,
+    DoctorPreAssignmentRead,
+    DoctorPositionCreate,
+    DoctorPositionRead,
+    DoctorUnavailabilityCreate,
+    DoctorUnavailabilityRead
+)
 import src.doctor.controllers as doctor_controllers
+from src.user.models import User as UserModel
+from src.auth.dependencies import require_department_member, require_department_admin
 
 router = APIRouter(
     prefix="/doctors",
@@ -18,7 +29,11 @@ router = APIRouter(
 
 
 @router.post("/", response_model=DoctorRead, status_code=status.HTTP_201_CREATED)
-def create_doctor(doctor_data: DoctorCreate, session: Session = Depends(get_session)):
+def create_doctor(
+    doctor_data: DoctorCreate,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin)
+):
     """
     Creates a new doctor
     """
@@ -89,4 +104,4 @@ def list_doctor_positions(doctor_id: uuid.UUID, session: Session = Depends(get_s
     """
     Lists the positions of a doctor
     """
-    return doctor_controllers.list_doctor_positions_controller(session,doctor_id)
+    return doctor_controllers.list_doctor_positions_controller(session, doctor_id)
