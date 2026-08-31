@@ -4,11 +4,40 @@ Tests for the department module
 
 import datetime
 import uuid
-from src.department.repository import create_department, get_active_departments, get_department_by_name
-from src.department.schemas import DepartmentCreate
-
-# Session fixture for database tests
 import pytest
+from fastapi import HTTPException
+
+from src.department.schemas import DepartmentCreate
+from src.department import repository as department_repository
+from src.department import controllers as department_controllers
+from src.user.models import UserRole
+
+
+#####################
+# Fixtures
+#####################
+@pytest.fixture(name="department")
+def department_fixture(session):
+    """Creates a reusable department for tests"""
+    dept_data = DepartmentCreate(name="Cardiology", code="CARD")
+    return department_repository.create_department(session, dept_data)
+
+
+@pytest.fixture(name="department_admin_user")
+def department_admin_user_fixture(user_factory, department):
+    """Creates a reusable department admin user for tests"""
+    return user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="department_admin_headers")
+def department_admin_headers_fixture(department_admin_user, auth_headers_factory):
+    """Creates reusable department admin auth headers for tests"""
+
+    return auth_headers_factory(department_admin_user)
 
 #####################
 # Repository tests
@@ -19,7 +48,7 @@ def test_create_department(session):
     """Test creating a department and verifying its fields."""
 
     dept_data = DepartmentCreate(name="Cardiology", code="CARD")
-    new_dept = create_department(session, dept_data)
+    new_dept = department_repository.create_department(session, dept_data)
 
     assert isinstance(new_dept.id, uuid.UUID)
     assert new_dept.name == "Cardiology"
@@ -30,21 +59,19 @@ def test_create_department(session):
     assert isinstance(new_dept.updated_at, datetime.datetime)
 
 
-def test_get_department_by_name(session):
+def test_get_department_by_name(session, department):
     """Test retrieving a department by its name."""
-    dept_data = DepartmentCreate(name="Neurology", code="NEURO")
-    new_dept = create_department(session, dept_data)
+    retrieved_dept = department_repository.get_department_by_name(
+        session, department.name)
 
-    retrieved_dept = get_department_by_name(session, "Neurology")
-
-    assert retrieved_dept == new_dept
+    assert retrieved_dept == department
 
 
 def test_get_active_departments(session):
     """Test retrieving only active (non-deleted) departments."""
-    dept1 = create_department(
+    dept1 = department_repository.create_department(
         session, DepartmentCreate(name="Oncology", code="ONC"))
-    dept2 = create_department(
+    dept2 = department_repository.create_department(
         session, DepartmentCreate(name="Pediatrics", code="PED"))
 
     # Mark one department as deleted
@@ -52,7 +79,7 @@ def test_get_active_departments(session):
     session.add(dept2)
     session.commit()
 
-    active_departments = get_active_departments(session)
+    active_departments = department_repository.get_active_departments(session)
     assert dept1 in active_departments
     assert dept2 not in active_departments
 
@@ -64,13 +91,10 @@ def test_get_active_departments(session):
 def test_create_department_controller_duplicate_name(session):
     """Test that creating a department with a duplicate name raises an error."""
     dept_data = DepartmentCreate(name="Radiology", code="RAD")
-    create_department(session, dept_data)
-
-    from src.department.controllers import create_department_controller
-    from fastapi import HTTPException
+    department_repository.create_department(session, dept_data)
 
     with pytest.raises(HTTPException) as exc_info:
-        create_department_controller(dept_data, session)
+        department_controllers.create_department_controller(dept_data, session)
 
     assert exc_info.value.status_code == 400
     assert "already exists" in exc_info.value.detail
@@ -78,33 +102,27 @@ def test_create_department_controller_duplicate_name(session):
 
 def test_get_department_controller_nonexistent(session):
     """Test that fetching a non-existent department raises a 404 error."""
-    from src.department.controllers import get_department_controller
-    from fastapi import HTTPException
 
     non_existent_id = uuid.uuid4()
 
     with pytest.raises(HTTPException) as exc_info:
-        get_department_controller(non_existent_id, session)
+        department_controllers.get_department_controller(
+            non_existent_id, session)
 
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
 
 
-def test_get_department_controller_deleted(session):
+def test_get_department_controller_deleted(session, department):
     """Test that fetching a deleted department raises a 404 error."""
-    dept_data = DepartmentCreate(name="Gastroenterology", code="GASTRO")
-    new_dept = create_department(session, dept_data)
-
     # Mark the department as deleted
-    new_dept.is_deleted = True
-    session.add(new_dept)
+    department.is_deleted = True
+    session.add(department)
     session.commit()
 
-    from src.department.controllers import get_department_controller
-    from fastapi import HTTPException
-
     with pytest.raises(HTTPException) as exc_info:
-        get_department_controller(new_dept.id, session)
+        department_controllers.get_department_controller(
+            department.id, session)
 
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
@@ -114,23 +132,42 @@ def test_get_department_controller_deleted(session):
 # Route tests
 ###############################
 
-def test_get_department_by_id_route(session, client):
+def test_get_department_by_id_route(client, department):
     """Tests that the GET /departments/{department_id} route returns a department"""
 
-    dept_data = DepartmentCreate(name="Radiology", code="RAD")
-    new_dept = create_department(session, dept_data)
-
     response = client.get(
-        f"/api/v1/departments/{new_dept.id}"
+        f"/api/v1/departments/{department.id}"
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert data["name"] == "Radiology"
-    assert data["code"] == "RAD"
+    assert data["name"] == department.name
+    assert data["code"] == department.code
     assert "created_at" in data
     assert "updated_at" in data
 
 
-def test_list_departments_route():
+def test_list_departments_route(client, department_admin_headers, department):
     """Tests the GET /departments/ route"""
+
+    response = client.get(
+        "/api/v1/departments/",
+        headers=department_admin_headers
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+
+    returned_department = next(
+        (
+            item
+            for item in data
+            if item["id"] == str(department.id)
+        ),
+        None
+    )
+
+    assert returned_department is not None
+    assert returned_department["code"] == department.code
+    assert returned_department["name"] == department.name
