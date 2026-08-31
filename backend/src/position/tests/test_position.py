@@ -11,10 +11,7 @@ from src.position import repository as position_repository
 from src.position import controllers as position_controllers
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
-
-#####################
-# Helpers
-#####################
+from src.user.models import UserRole
 
 #####################
 # Fixtures
@@ -38,6 +35,42 @@ def position_fixture(session, department):
     )
 
     return position_repository.create_position(session, position_data)
+
+
+@pytest.fixture(name="department_admin_user")
+def department_admin_user_fixture(user_factory, department):
+    """Creates a reusable department admin user for tests"""
+    return user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="department_admin_headers")
+def department_admin_headers_fixture(department_admin_user, auth_headers_factory):
+    """Creates reusable department admin auth headers for tests"""
+
+    return auth_headers_factory(department_admin_user)
+
+
+@pytest.fixture(name="viewer_user")
+def viewer_user_fixture(user_factory, department):
+    """Creates a reusable viewer user for tests"""
+    return user_factory(
+        role=UserRole.VIEWER,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="viewer_headers")
+def viewer_headers_fixture(viewer_user, auth_headers_factory):
+    """Creates reusable viewer auth headers for tests"""
+
+    return auth_headers_factory(viewer_user)
+
+
 #####################
 # Repository tests
 #####################
@@ -158,7 +191,11 @@ def test_get_position_controller_deleted(session, position):
 #####################
 
 
-def test_create_position_route(client, department):
+def test_create_position_route(
+        client,
+        department,
+        department_admin_headers,
+):
     """Tests post /api/v1/positions route"""
     response = client.post(
         "api/v1/positions",
@@ -166,7 +203,8 @@ def test_create_position_route(client, department):
             "name": "ER",
             "department_id": str(department.id),
             "duty_days": [1, 2, 3]
-        }
+        },
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 201
@@ -178,21 +216,25 @@ def test_create_position_route(client, department):
     assert "updated_at" in data
 
 
-def test_create_position_route_invalid_payload(client):
+def test_create_position_route_invalid_payload(client, department_admin_headers):
     """Tests post /api/v1/positions route with invalid payload"""
     response = client.post(
         "api/v1/positions",
         json={
             "name": "ER",
-        }
+        },
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 422
 
 
-def test_list_positions_route(client, position):
+def test_list_positions_route(client, position, department_admin_headers):
     """Tests get /api/v1/positionsroute"""
-    response = client.get("/api/v1/positions")
+    response = client.get(
+        "/api/v1/positions",
+        headers=department_admin_headers,
+    )
 
     assert response.status_code == 200
     data = response.json()
@@ -200,17 +242,23 @@ def test_list_positions_route(client, position):
     assert data[0]["id"] == str(position.id)
 
 
-def test_get_position_route(client, position):
+def test_get_position_route(client, position, department_admin_headers):
     """Tests get /api/v1/positions/{position_name} route"""
-    response = client.get(f"/api/v1/positions/{position.name}")
+    response = client.get(
+        f"/api/v1/positions/{position.name}",
+        headers=department_admin_headers,
+    )
 
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == str(position.id)
 
 
-def test_get_position_route_nonexistent_name(client):
+def test_get_position_route_nonexistent_name(client, department_admin_headers):
     """Tests get /api/v1/positions/{position_name} route with invalid payload"""
-    response = client.get("/api/v1/positions/test")
+    response = client.get(
+        "/api/v1/positions/test",
+        headers=department_admin_headers,
+    )
 
     assert response.status_code == 404

@@ -277,7 +277,11 @@ def test_non_department_admin_cannot_create_team(
         ),
     ],
 )
-def test_team_read_routes_require_authentication(client, team, path_template):
+def test_team_read_routes_require_authentication(
+    client,
+    team,
+    path_template,
+):
     """Tests that the team read routes require auth"""
     path = path_template.format(team_id=team.id)
 
