@@ -249,7 +249,7 @@ def test_list_positions_route(client, position, viewer_headers):
         None
     )
     assert returned_position is not None
-    assert returned_position.name == position.name
+    assert returned_position["name"] == position.name
 
 
 def test_get_position_route(client, position, viewer_headers):
@@ -302,7 +302,7 @@ def test_non_allowed_roles_cannot_create_position(
         json={
             "name": "ICU",
             "department_id": str(department.id),
-            "duty_dats": [1, 2],
+            "duty_days": [1, 2],
         },
         headers=headers,
     )
