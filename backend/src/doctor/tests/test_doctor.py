@@ -191,12 +191,12 @@ def viewer_headers_fixture(viewer_user, auth_headers_factory):
 
 
 @pytest.fixture(name="doctor_user")
-def doctor_user_fixture(user_factory, department):
+def doctor_user_fixture(user_factory, department, new_doctor):
     """Creates a reusable doctor user for tests"""
     return user_factory(
         role=UserRole.DOCTOR,
         department_id=department.id,
-        doctor_id=None
+        doctor_id=new_doctor.id
     )
 
 
@@ -832,10 +832,12 @@ def test_get_doctor_unavailability_route(client, new_doctor, unavailability, doc
             item
             for item in data
             if item["id"] == str(unavailability.id)
-        )
+        ),
+        None
     )
 
     assert isinstance(data, list)
+    assert returned_unavailability is not None
     assert returned_unavailability["id"] == str(unavailability.id)
     assert returned_unavailability["date"] == str(datetime.date(2026, 8, 12))
     assert returned_unavailability["doctor_id"] == str(new_doctor.id)
@@ -1133,11 +1135,10 @@ def test_list_pre_assignments_requires_authentication(client, new_doctor):
     "role",
     [
         UserRole.VIEWER,
-        UserRole.DOCTOR,
         UserRole.SUPER_ADMIN,
     ]
 )
-def test_non_department_admin_cannot_create_pre_assignment(
+def test_non_doctor_or_dept_admin_cannot_create_unavailability(
     client,
     role,
     user_factory,
@@ -1147,7 +1148,7 @@ def test_non_department_admin_cannot_create_pre_assignment(
     shift,
     session,
 ):
-    """Tests post /api/v1/doctors/{doctor_id}/pre-assignments route with non department admin headers"""
+    """Tests the POST /doctors/{doctor_id}/unavailability route with non allowed headers"""
     user = user_factory(
         role=role,
         department_id=(
@@ -1164,11 +1165,9 @@ def test_non_department_admin_cannot_create_pre_assignment(
     headers = auth_headers_factory(user)
 
     response = client.post(
-        f"api/v1/doctors/{new_doctor.id}/pre-assignments",
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
         json={
             "date": str(datetime.date(2026, 8, 12)),
-            "doctor_id": str(new_doctor.id),
-            "shift_id": str(shift.id)
         },
         headers=headers,
     )
@@ -1177,10 +1176,10 @@ def test_non_department_admin_cannot_create_pre_assignment(
     assert response.json() == {
         "detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") is None
-    retrieved_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_date(
+    retrieved_unavailability = doctor_repository.get_doctor_unavailability_by_date(
         session=session,
         doctor_id=new_doctor.id,
         target_date=datetime.date(2026, 8, 12),
     )
 
-    assert retrieved_pre_assignment is None
+    assert retrieved_unavailability is None
