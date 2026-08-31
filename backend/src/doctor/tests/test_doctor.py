@@ -704,7 +704,7 @@ def test_list_doctors_route(client, new_doctor, viewer_headers):
     assert returned_doctor["id"] == str(new_doctor.id)
 
 
-def test_create_doctor_pre_assignments_route(client, shift, new_doctor):
+def test_create_doctor_pre_assignments_route(client, shift, new_doctor, department_admin_headers):
     """Tests the POST /doctors/{doctor_id}/pre-assignments route"""
 
     response = client.post(
@@ -713,7 +713,8 @@ def test_create_doctor_pre_assignments_route(client, shift, new_doctor):
             "date": str(datetime.date(2026, 8, 12)),
             "doctor_id": str(new_doctor.id),
             "shift_id": str(shift.id)
-        }
+        },
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 201
@@ -726,32 +727,48 @@ def test_create_doctor_pre_assignments_route(client, shift, new_doctor):
     assert "updated_at" in data
 
 
-def test_create_doctor_pre_assignments_route_invalid_payload(client,  new_doctor):
+def test_create_doctor_pre_assignments_route_invalid_payload(client,  new_doctor, department_admin_headers):
     """Tests the POST /doctors/{doctor_id}/pre-assignments route rejects invalid payload"""
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/pre-assignments",
         json={
             "date": str(datetime.date(2026, 8, 12)),
             "doctor_id": str(new_doctor.id),
-        }
+        },
+        headers=department_admin_headers,
     )
     assert response.status_code == 422
 
 
-def test_get_doctor_pre_assigments_route(client, new_doctor, pre_assignment):
+def test_get_doctor_pre_assignments_route(
+    client,
+    new_doctor,
+    pre_assignment,
+    department_admin_headers,
+):
     """Tests the GET /doctors/{doctor_id}/pre-assignments route"""
     response = client.get(
         f"api/v1/doctors/{new_doctor.id}/pre-assignments",
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert data[0]["date"] == str(datetime.date(2026, 8, 12))
-    assert data[0]["doctor_id"] == str(new_doctor.id)
-    assert data[0]["id"] == str(pre_assignment.id)
-    assert "created_at" in data[0]
-    assert "updated_at" in data[0]
+
+    returned_pre_assignment = next(
+        (
+            item
+            for item in data
+            if item["id"] == str(pre_assignment.id)
+        )
+    )
+
+    assert returned_pre_assignment["date"] == str(datetime.date(2026, 8, 12))
+    assert returned_pre_assignment["doctor_id"] == str(new_doctor.id)
+    assert returned_pre_assignment["id"] == str(pre_assignment.id)
+    assert "created_at" in returned_pre_assignment
+    assert "updated_at" in returned_pre_assignment
 
 
 def test_create_doctor_unavailability_route(client, new_doctor):
@@ -924,7 +941,7 @@ def test_create_doctor_requires_authentication(client, session, department, team
         ),
         pytest.param(
             "/api/v1/doctors/{doctor_id}",
-            id="get-shift",
+            id="get-doctor",
         ),
     ],
 )
