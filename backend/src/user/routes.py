@@ -25,15 +25,3 @@ def list_users(
 ):
     """Endpoint to lsit all active users"""
     return user_controllers.list_users_controller(session)
-
-
-@router.post("/signup", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def create_user(user_data: UserCreate, session: Session = Depends(get_session)):
-    """Endpoint to create a new user"""
-    return user_controllers.create_user_controller(user_data, session)
-
-
-@router.get("/{user_email}", response_model=UserRead)
-def get_user(user_email: str, session: Session = Depends(get_session)):
-    """Fetches a specific user by their email"""
-    return user_controllers.get_user_controller(user_email, session)

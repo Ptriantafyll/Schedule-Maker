@@ -23,15 +23,6 @@ router = APIRouter(
 )
 
 
-@router.post("/", response_model=DepartmentRead, status_code=status.HTTP_201_CREATED)
-def create_department(department_data: DepartmentCreate, session: Session = Depends(get_session)):
-    """Creates a new hospital department.
-
-    The backend automatically generates the ID, timestamps, and sync metadata flags.
-    """
-    return create_department_controller(department_data, session)
-
-
 @router.get("/", response_model=list[DepartmentRead])
 def list_departments(session: Session = Depends(get_session), current_user: UserModel = Depends(require_department_admin)):
     """Retrieves all active, non-deleted hospital departments."""
