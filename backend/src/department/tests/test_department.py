@@ -234,6 +234,6 @@ def test_non_super_admin_cannot_list_departments(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Unauthorized"
+        "detail": "Insufficient permissions for this operation"
     }
-    assert response.headers.get("WWW-Authenticate") == "Bearer"
+    assert response.headers.get("WWW-Authenticate") is None
