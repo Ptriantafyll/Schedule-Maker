@@ -3,12 +3,17 @@ Configuration for tests
 """
 
 import pytest
+import uuid
 from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
 from src.db.connection import get_session
 from src.main import app
+from src.user.models import UserRole
+from src.user.models import User as UserModel
+from src.user.schemas import UserCreate
+from src.user import controllers as user_controllers
 
 
 @pytest.fixture(name="session")
@@ -38,3 +43,32 @@ def client_fixture(session, monkeypatch):
             yield test_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture(name="user_factory")
+def user_factory_fixture(session):
+    """Create persisted users with customizable roles and relationships"""
+
+    def create_user(
+        *,
+        role: UserRole,
+        department_id: uuid.UUID | None = None,
+        doctor_id: uuid.UUID | None = None,
+        email: str | None = None,
+        full_name: str = "test User",
+        password: str = "test-password"
+    ) -> UserModel:
+        user_email = email or f"user-{uuid.uuid4().hex}@test.com"
+
+        user_data = UserCreate(
+            email=user_email,
+            full_name=full_name,
+            password=password,
+            role=role,
+            department_id=department_id,
+            doctor_id=doctor_id,
+        )
+
+        return user_controllers.create_user_controller(user_data, session)
+
+    return create_user

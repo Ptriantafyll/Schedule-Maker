@@ -62,17 +62,15 @@ def department_b_fixture(session):
 
 
 @pytest.fixture(name="department_admin_user")
-def admin_user_fixture(session, department):
+def admin_user_fixture(user_factory, department):
     """Creates a reusable admin user for tests"""
-    admin_user_data = UserCreate(
-        email="admin@gmail.com",
-        full_name="admin admin",
-        password="password123",
+    return user_factory(
         role=UserRole.DEPARTMENT_ADMIN,
-        department_id=department.id
+        department_id=department.id,
+        email="admin@gmail.com",
+        full_name="Admin User",
+        password="test-password",
     )
-
-    return user_controllers.create_user_controller(admin_user_data, session)
 
 
 @pytest.fixture(name="department_b_user")
