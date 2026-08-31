@@ -62,6 +62,8 @@ def viewer_headers_fixture(viewer_user, auth_headers_factory):
     """Creates reusable viewer auth headers for tests"""
 
     return auth_headers_factory(viewer_user)
+
+
 ################################
 # Repository tests
 ################################
@@ -260,3 +262,27 @@ def test_non_department_admin_cannot_create_team(
     assert data == {"detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") is None
     assert team_repository.get_team_by_name(session, "Rad Team E") is None
+
+
+@pytest.mark.parametrize(
+    "path_template",
+    [
+        pytest.param(
+            "/api/v1/teams/",
+            id="list-teams",
+        ),
+        pytest.param(
+            "/api/v1/teams/{team_id}",
+            id="get-team"
+        ),
+    ],
+)
+def test_team_read_routes_require_authentication(client, team, path_template):
+    """Tests that the team read routes require auth"""
+    path = path_template.format(team_id=team.id)
+
+    response = client.get(path)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
