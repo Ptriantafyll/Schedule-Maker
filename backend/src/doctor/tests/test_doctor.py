@@ -872,7 +872,7 @@ def test_create_doctor_position_route_invalid_payload(client, new_doctor):
     assert response.status_code == 422
 
 
-def test_get_doctor_position_route(client, session, new_doctor, position):
+def test_get_doctor_position_route(client, session, new_doctor, position, department_admin_headers):
     """Tests the GET /doctors/{doctor_id}/position route"""
     new_doctor_pos = create_test_doctor_position(
         session=session,
@@ -881,16 +881,27 @@ def test_get_doctor_position_route(client, session, new_doctor, position):
     )
 
     response = client.get(
-        f"api/v1/doctors/{new_doctor.id}/position"
+        f"api/v1/doctors/{new_doctor.id}/position",
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 200
     data = response.json()
     assert isinstance(data, list)
-    assert data[0]["id"] == str(new_doctor_pos.id)
-    assert data[0]["doctor_id"] == str(new_doctor.id)
-    assert "created_at" in data[0]
-    assert "updated_at" in data[0]
+
+    returned_doctor_position = next(
+        (
+            item
+            for item in data
+            if item["id"] == str(new_doctor_pos.id)
+        ),
+        None
+    )
+
+    assert returned_doctor_position["id"] == str(new_doctor_pos.id)
+    assert returned_doctor_position["doctor_id"] == str(new_doctor.id)
+    assert "created_at" in returned_doctor_position
+    assert "updated_at" in returned_doctor_position
 
 
 @pytest.mark.parametrize(
@@ -1201,7 +1212,7 @@ def test_create_unavailability_requires_authentication(client, session, new_doct
     assert retrieved_unavailability is None
 
 
-def test_department_admin_can_create_unavailability(client, new_doctor, department_admin_headers):
+def test_department_admin_can_create_unavailability(client, new_doctor, department_admin_headers, session):
     """Tests the POST /doctors/{doctor_id}/unavailability route"""
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/unavailability",
@@ -1218,6 +1229,12 @@ def test_department_admin_can_create_unavailability(client, new_doctor, departme
     assert "id" in data
     assert "created_at" in data
     assert "updated_at" in data
+    retrieved_unavailability = doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12)
+    )
+    assert retrieved_unavailability is not None
 
 
 @pytest.mark.parametrize(
@@ -1227,7 +1244,7 @@ def test_department_admin_can_create_unavailability(client, new_doctor, departme
         UserRole.SUPER_ADMIN,
     ]
 )
-def test_non_doctor_or_dept_admin_cannot_list_unavailability(
+def test_non_doctor_or_departmentt_admin_cannot_list_unavailability(
     client,
     new_doctor,
     role,
@@ -1260,10 +1277,13 @@ def test_non_doctor_or_dept_admin_cannot_list_unavailability(
 
 def test_list_unavailability_requires_authentication(client, new_doctor):
     """Tests the GET /doctors/{doctor_id}/unavailability route with no headers"""
-    response = client.post(
+    response = client.get(
         f"api/v1/doctors/{new_doctor.id}/unavailability",
     )
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+# def test_non_department_admin_cannot_create_doctor_position(client):

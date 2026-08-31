@@ -99,7 +99,7 @@ def create_doctor_unavailability(
     doctor_id: uuid.UUID,
     doctor_unavailability_data: DoctorUnavailabilityCreate,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_doctor_or_department_admin)
+    current_user: UserModel = Depends(require_doctor_or_department_admin),
 ):
     """
     Creates unavailability for a doctor on a specific date
