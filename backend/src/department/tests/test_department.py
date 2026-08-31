@@ -245,4 +245,4 @@ def test_department_list_requires_authentication(client):
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
-    assert response.headers.get("WWW-Authenticat") == "Bearer"
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
