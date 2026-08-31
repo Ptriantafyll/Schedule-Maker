@@ -64,7 +64,12 @@ def get_doctor(
 
 
 @router.post("/{doctor_id}/pre-assignments", response_model=DoctorPreAssignmentRead, status_code=status.HTTP_201_CREATED)
-def create_doctor_pre_assignments(doctor_id: uuid.UUID, pre_assignment_data: DoctorPreAssignmentCreate, session: Session = Depends(get_session)):
+def create_doctor_pre_assignments(
+    doctor_id: uuid.UUID,
+    pre_assignment_data: DoctorPreAssignmentCreate,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin),
+):
     """
     Creates pre assignments for a doctor.
     """
