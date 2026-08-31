@@ -1145,7 +1145,6 @@ def test_non_doctor_or_dept_admin_cannot_create_unavailability(
     auth_headers_factory,
     department,
     new_doctor,
-    shift,
     session,
 ):
     """Tests the POST /doctors/{doctor_id}/unavailability route with non allowed headers"""
@@ -1156,11 +1155,7 @@ def test_non_doctor_or_dept_admin_cannot_create_unavailability(
             if role == UserRole.SUPER_ADMIN
             else department.id
         ),
-        doctor_id=(
-            new_doctor.id
-            if role == UserRole.DOCTOR
-            else None
-        ),
+        doctor_id=None,
     )
     headers = auth_headers_factory(user)
 
@@ -1176,6 +1171,27 @@ def test_non_doctor_or_dept_admin_cannot_create_unavailability(
     assert response.json() == {
         "detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") is None
+    retrieved_unavailability = doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12),
+    )
+
+    assert retrieved_unavailability is None
+
+
+def test_create_unavailability_requires_authentication(client, session, new_doctor):
+    """Tests the POST /doctors/{doctor_id}/unavailability route with no headers"""
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        json={
+            "date": str(datetime.date(2026, 8, 12)),
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
     retrieved_unavailability = doctor_repository.get_doctor_unavailability_by_date(
         session=session,
         doctor_id=new_doctor.id,

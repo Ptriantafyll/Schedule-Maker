@@ -20,7 +20,11 @@ from src.doctor.schemas import (
 )
 import src.doctor.controllers as doctor_controllers
 from src.user.models import User as UserModel
-from src.auth.dependencies import require_department_member, require_department_admin
+from src.auth.dependencies import (
+    require_department_member,
+    require_department_admin,
+    require_doctor_or_department_admin,
+)
 
 router = APIRouter(
     prefix="/doctors",
@@ -91,7 +95,12 @@ def list_doctor_pre_assignments(
 
 
 @router.post("/{doctor_id}/unavailability", response_model=DoctorUnavailabilityRead, status_code=status.HTTP_201_CREATED)
-def create_doctor_unavailability(doctor_id: uuid.UUID, doctor_unavailability_data: DoctorUnavailabilityCreate, session: Session = Depends(get_session)):
+def create_doctor_unavailability(
+    doctor_id: uuid.UUID,
+    doctor_unavailability_data: DoctorUnavailabilityCreate,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_doctor_or_department_admin)
+):
     """
     Creates unavailability for a doctor on a specific date
     """
