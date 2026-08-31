@@ -12,6 +12,7 @@ from src.team import repository as team_repository
 from src.team import controllers as team_controllers
 from src.department.schemas import DepartmentCreate
 from src.department.repository import create_department
+from src.user.models import UserRole
 
 
 @pytest.fixture(name="department")
@@ -28,6 +29,22 @@ def team_fixture(session, department):
     team_data = TeamCreate(name="ER Team A", department_id=department.id)
     return team_repository.create_team(session, team_data)
 
+
+@pytest.fixture(name="department_admin_user")
+def department_admin_user_fixture(user_factory, department):
+    """Creates a reusable department admin user for tests"""
+    return user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department.id,
+        doctor_id=None
+    )
+
+
+@pytest.fixture(name="department_admin_headers")
+def department_admin_headers_fixture(department_admin_user, auth_headers_factory):
+    """Creates reusable department admin auth headers for tests"""
+
+    return auth_headers_factory(department_admin_user)
 ################################
 # Repository tests
 ################################
@@ -117,11 +134,13 @@ def test_get_team_controller_deleted(session, team):
 ###############################
 
 
-def test_create_team_route(client, department):
+def test_create_team_route(client, department, department_admin_headers):
     """Test the POST /teams/ route for creating a team."""
 
     response = client.post(
-        "/api/v1/teams", json={"name": "Rad Team E", "department_id": str(department.id)}
+        "/api/v1/teams",
+        json={"name": "Rad Team E", "department_id": str(department.id)},
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 201
@@ -133,11 +152,13 @@ def test_create_team_route(client, department):
     assert "updated_at" in data
 
 
-def test_create_team_route_invalid_payload(client):
+def test_create_team_route_invalid_payload(client, department_admin_headers):
     """Tests that the POST /teams/ route rejects invalid payloads."""
 
     response = client.post(
-        "/api/v1/teams/", json={"name": "Team A"}
+        "/api/v1/teams/",
+        json={"name": "Team A"},
+        headers=department_admin_headers,
     )
     assert response.status_code == 422
 
