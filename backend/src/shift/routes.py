@@ -29,19 +29,29 @@ def create_shift(
 
 
 @router.get("/", response_model=list[ShiftRead])
-def list_shifts(session: Session = Depends(get_session)):
+def list_shifts(
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
     """Endpoint to list all shifts"""
     return shift_controllers.list_shifts_controller(session)
 
 
 @router.get("/assignments", response_model=list[ShiftAssignmentRead])
-def list_shift_assignments(session: Session = Depends(get_session)):
+def list_shift_assignments(
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
     """Fetches a specific shift by its UUID."""
     return shift_controllers.list_shift_assignments_controller(session)
 
 
 @router.get("/{shift_name}", response_model=ShiftRead)
-def get_shift(shift_name: str, session: Session = Depends(get_session)):
+def get_shift(
+    shift_name: str,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
     """Fetches a specific shift by its name."""
     return shift_controllers.get_shift_controller(shift_name, session)
 

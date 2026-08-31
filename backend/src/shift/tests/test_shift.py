@@ -647,6 +647,7 @@ def test_non_department_admin_cannot_create_shift(
     user_factory,
     auth_headers_factory,
     department,
+    session,
 ):
     """Tests post /api/v1/shifts route with non department admin headers"""
     user = user_factory(
@@ -674,6 +675,7 @@ def test_non_department_admin_cannot_create_shift(
     assert response.json() == {
         "detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") is None
+    assert shift_repository.get_shift_by_name(session, "ER 1") is None
 
 
 def test_create_shift_requires_authentication(client, session, position):
@@ -690,6 +692,7 @@ def test_create_shift_requires_authentication(client, session, position):
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
     assert shift_repository.get_shift_by_name(session, "ER 1") is None
 
 
@@ -756,9 +759,42 @@ def test_create_shift_assignment_requires_authentication(client, shift, new_doct
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
     retrieved_shift_assignments = shift_repository.get_shift_assignments_by_date(
         session=session,
         shift_id=shift.id,
         target_date=datetime.date(2026, 8, 12)
     )
     assert retrieved_shift_assignments == []
+
+
+@pytest.mark.parametrize(
+    "path_template",
+    [
+        pytest.param(
+            "/api/v1/shifts/",
+            id="list-shifts",
+        ),
+        pytest.param(
+            "/api/v1/shifts/{shift_name}",
+            id="get-shift",
+        ),
+        pytest.param(
+            "/api/v1/shifts/assignments",
+            id="list-shift-assignments",
+        ),
+    ],
+)
+def test_shift_read_routes_require_authentication(
+    client,
+    shift,
+    path_template,
+):
+    """Tests that the team read routes require auth"""
+    path = path_template.format(shift_name=shift.name)
+
+    response = client.get(path)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
