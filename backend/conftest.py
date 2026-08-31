@@ -2,8 +2,8 @@
 Configuration for tests
 """
 
-import pytest
 import uuid
+import pytest
 from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
@@ -14,6 +14,7 @@ from src.user.models import UserRole
 from src.user.models import User as UserModel
 from src.user.schemas import UserCreate
 from src.user import controllers as user_controllers
+from src.auth.security import create_access_token
 
 
 @pytest.fixture(name="session")
@@ -75,3 +76,12 @@ def user_factory_fixture(session):
         )
 
     return create_user
+
+
+@pytest.fixture(name="auth_headers_factory")
+def auth_headers_factory_fixture(user: UserModel):
+    """Create auth headers factory fixture"""
+
+    access_token = create_access_token({"sub": str(user.id)})
+
+    return {"Authorization": f"Bearer {access_token}"}

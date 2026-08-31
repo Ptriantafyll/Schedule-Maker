@@ -87,11 +87,9 @@ def department_b_user(session, department_b):
 
 
 @pytest.fixture(name="department_admin_headers")
-def admin_headers_fixture(department_admin_user):
+def admin_headers_fixture(department_admin_user, auth_headers_factory):
     """Creates reusable admin headers"""
-    access_token = create_access_token({"sub": str(department_admin_user.id)})
-
-    return {"Authorization": f"Bearer {access_token}"}
+    return auth_headers_factory(department_admin_user)
 
 
 @pytest.fixture(name="team")
