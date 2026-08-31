@@ -334,3 +334,31 @@ def test_create_position_requires_authentication(client, department, session):
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
     assert position_repository.get_position_by_name(session, "ICU") is None
+
+
+@pytest.mark.parametrize(
+    "path_template",
+    [
+        pytest.param(
+            "/api/v1/positions/",
+            id="list-positions",
+        ),
+        pytest.param(
+            "/api/v1/positions/{position_name}",
+            id="get-position",
+        ),
+    ],
+)
+def test_position_read_routes_require_authentication(
+    client,
+    position,
+    path_template,
+):
+    """Tests that the team read routes require auth"""
+    path = path_template.format(position_name=position.name)
+
+    response = client.get(path)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
