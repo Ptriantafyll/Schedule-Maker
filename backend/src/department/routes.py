@@ -3,13 +3,12 @@ Module: routes.py
 Description: This module defines the API routes for managing hospital departments.
 """
 import uuid
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 from sqlmodel import Session
 from src.db.connection import get_session
 
-from src.department.schemas import DepartmentCreate, DepartmentRead
+from src.department.schemas import DepartmentRead
 from src.department.controllers import (
-    create_department_controller,
     get_department_controller,
     list_departments_controller,
 )

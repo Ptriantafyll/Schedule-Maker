@@ -47,7 +47,7 @@ def test_user_email_lookup_route_is_not_exposed():
 
 
 def test_department_creation_method_is_not_exposed():
-    """Tests document creation method is not exposed"""
+    """Tests department creation method is not exposed"""
     department_operations = app.openapi()["paths"][
         "/api/v1/departments/"
     ]

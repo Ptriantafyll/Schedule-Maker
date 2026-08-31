@@ -246,39 +246,6 @@ def test_create_user_controller_hashes_password(session, department):
 # Route tests
 #####################
 
-def test_create_user_route(client):
-    """Tests POST /api/v1/users route"""
-    response = client.post(
-        "api/v1/users/signup",
-        json={
-            "full_name": "Test2 Testakis",
-            "email": "test@gmail.com",
-            "password": "test123",
-        }
-    )
-
-    assert response.status_code == 201
-    data = response.json()
-    assert data["full_name"] == "Test2 Testakis"
-    assert data["role"] == "doctor"
-    assert data["email"] == "test@gmail.com"
-    assert "id" in data
-    assert "created_at" in data
-    assert "updated_at" in data
-
-
-def test_create_user_route_invalid_payload(client):
-    """Tests POST /api/v1/users route with invalid payload returns error"""
-    response = client.post(
-        "api/v1/users/signup",
-        json={
-            "password": "test123",
-        }
-    )
-
-    assert response.status_code == 422
-
-
 def test_department_admin_lists_users_only_in_own_department(client, department_admin_user, department_admin_headers, department_b_user, department):
     """Tests GET /api/v1/users route with sufficient permissions"""
     response = client.get(
@@ -331,37 +298,6 @@ def test_list_users_rejects_invalid_token(client):
     data = response.json()
     assert data == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
-
-
-def test_get_user_route_nonexistent_email(client):
-    """Tests GET /api/v1/users/{user_email} with invalid payload"""
-    response = client.get("/api/v1/users/123")
-
-    assert response.status_code == 404
-
-
-@pytest.mark.parametrize(
-    "role",
-    [
-        UserRole.DEPARTMENT_ADMIN,
-        UserRole.SUPER_ADMIN,
-    ],
-)
-def test_public_signup_rejects_privileged_roles(client, session, role):
-    """Test POST /api/v1/users/signup should reject privileged roles"""
-    email = f"{role.value}@test.com"
-    response = client.post(
-        "api/v1/users/signup",
-        json={
-            "full_name": "Test2 Testakis",
-            "email": email,
-            "password": "test123",
-            "role": role.value,
-        }
-    )
-
-    assert response.status_code == 422
-    assert user_repository.get_user_by_email(session, email) is None
 
 
 def test_deleted_user_token_is_rejected(session, client, department_admin_user, department_admin_headers):

@@ -2,11 +2,11 @@
 User routes for handling API requests related to user management.
 """
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from src.db.connection import get_session
-from src.user.schemas import UserCreate, UserRead
+from src.user.schemas import UserRead
 from src.user.models import User as UserModel
 from src.user import controllers as user_controllers
 

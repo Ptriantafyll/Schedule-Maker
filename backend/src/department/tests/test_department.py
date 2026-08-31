@@ -143,26 +143,6 @@ def client_fixture(session):
     app.dependency_overrides.clear()
 
 
-def test_create_department_route(client):
-    """Test the POST /departments/ route for creating a department."""
-    response = client.post(
-        "api/v1/departments/", json={"name": "Urology", "code": "URO"})
-    assert response.status_code == 201
-    data = response.json()
-    assert data["name"] == "Urology"
-    assert data["code"] == "URO"
-    assert "id" in data
-    assert "created_at" in data
-    assert "updated_at" in data
-
-
-def test_create_department_route_invalid_payload(client):
-    """Test that the POST /departments/ route rejects invalid payloads."""
-    response = client.post(
-        "api/v1/departments/", json={"code": "URO"})  # Missing 'name'
-    assert response.status_code == 422
-
-
 def test_get_department_by_id_route(session, client):
     """Tests that the GET /departments/{department_id} route returns a department"""
 
