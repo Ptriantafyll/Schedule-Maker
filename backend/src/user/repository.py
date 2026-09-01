@@ -50,3 +50,16 @@ def get_active_users(session: Session) -> list[UserModel]:
     )
 
     return session.exec(statement).all()
+
+
+def get_active_users_by_department(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[UserModel]:
+    """Retrieved all active users of a department"""
+    statement = select(UserModel).where(
+        UserModel.department_id == department_id,
+        not_(UserModel.is_deleted)
+    )
+
+    return session.exec(statement).all()
