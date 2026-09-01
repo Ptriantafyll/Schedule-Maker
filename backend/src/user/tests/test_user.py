@@ -7,6 +7,7 @@ import uuid
 import datetime
 import pytest
 from sqlmodel import Session
+from unittest.mock import Mock
 
 from src.user.schemas import UserCreate
 from src.user.models import UserRole
@@ -293,9 +294,36 @@ def test_create_user_controller_hashes_password(session, department):
     assert not verify_password("wrong_password", new_user.hashed_password)
 
 
+def test_list_users_controller_uses_department_scope(
+    session,
+    department,
+    monkeypatch,
+):
+    """Tests that user listing passes department scope to the repository"""
+    expected_users = []
+    scoped_repository_mock = Mock(returned_value=expected_users)
+
+    monkeypatch.setattr(
+        user_controllers.repository,
+        "get_active_users_by_department",
+        scoped_repository_mock,
+    )
+
+    result = user_controllers.list_users_controller(
+        session=session,
+        department_id=department.id
+    )
+
+    assert result is expected_users
+    scoped_repository_mock.assert_called_once_with(
+        session=session,
+        department_id=department.id
+    )
+
 #####################
 # Route tests
 #####################
+
 
 def test_department_admin_lists_users_only_in_own_department(client, department_admin_user, department_admin_headers, department_b_user, department):
     """Tests GET /api/v1/users route with sufficient permissions"""
