@@ -189,13 +189,12 @@ def test_get_active_users(session, user):
 def test_get_active_users_by_department(
     session,
     department,
-    department_b,
     user_factory,
-    user,
+    department_admin_user,
     department_b_user
 ):
     """Tests listing users in a department"""
-    department_a_admin = user
+    department_a_admin = department_admin_user
     department_a_viewer = user_factory(
         role=UserRole.VIEWER,
         department_id=department.id,
