@@ -186,9 +186,46 @@ def test_get_active_users(session, user):
     assert new_user not in active_users
 
 
+def test_get_active_users_by_department(
+    session,
+    department,
+    department_b,
+    user_factory,
+    user,
+    department_b_user
+):
+    """Tests listing users in a department"""
+    department_a_admin = user
+    department_a_viewer = user_factory(
+        role=UserRole.VIEWER,
+        department_id=department.id,
+    )
+
+    department_a_del_user = user_factory(
+        role=UserRole.VIEWER,
+        department_id=department.id,
+    )
+    department_a_del_user.is_deleted = True
+    session.add(department_a_del_user)
+    session.commit()
+
+    active_users = user_repository.get_active_users_by_department(
+        session=session,
+        department_id=department.id
+    )
+
+    returned_ids = {user.id for user in active_users}
+    assert department_b_user.id not in returned_ids
+    assert returned_ids == {
+        department_a_admin.id,
+        department_a_viewer.id
+    }
+
+
 #####################
 # Controller tests
 #####################
+
 
 def test_create_user_controller_duplicate_email(session, user):
     """Tests that creating a user with a duplicate email returns error"""
