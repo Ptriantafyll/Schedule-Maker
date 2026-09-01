@@ -32,12 +32,6 @@ def create_user_controller(user_data: UserCreate, session: Session) -> UserModel
 
 def list_users_controller(session: Session, department_id: uuid.UUID) -> list[UserModel]:
     """Handles the logic for listing users in a department"""
-    if department_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid account scope",
-        )
-
     return repository.get_active_users_by_department(
         session=session,
         department_id=department_id,
