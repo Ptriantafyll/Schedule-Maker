@@ -1295,4 +1295,73 @@ def test_list_unavailability_requires_authentication(client, new_doctor):
     assert response.headers.get("WWW-Authenticate") == "Bearer"
 
 
-# def test_non_department_admin_cannot_create_doctor_position(client):
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.SUPER_ADMIN,
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+    ]
+)
+def test_non_department_admin_cannot_create_doctor_position(
+    client,
+    user_factory,
+    auth_headers_factory,
+    new_doctor,
+    department,
+    role,
+    session,
+    position,
+):
+    """Tests the POST /doctors/{doctor_id}/position route with non allowed headers"""
+    user = user_factory(
+        role=role,
+        department_id=(
+            None if role == UserRole.SUPER_ADMIN
+            else department.id
+        ),
+        doctor_id=(
+            new_doctor.id if role == UserRole.DOCTOR
+            else None
+        )
+    )
+
+    headers = auth_headers_factory(user)
+
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/position",
+        json={
+            "position_id": str(position.id),
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"
+    }
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_position_by_id(
+        doctor_id=new_doctor.id,
+        position_id=position.id,
+        session=session,
+    ) is None
+
+
+def test_create_doctor_position_requires_authentication(client, new_doctor, position, session):
+    """Tests the POST /doctors/{doctor_id}/position route with no headers"""
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/position",
+        json={
+            "position_id": str(position.id),
+        },
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+    assert doctor_repository.get_doctor_position_by_id(
+        doctor_id=new_doctor.id,
+        position_id=position.id,
+        session=session,
+    ) is None
