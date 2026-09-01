@@ -142,16 +142,43 @@ def test_team_name_cannot_repeat_within_department(
     session,
     team,
 ):
-    """Tests that team name remain unique within department"""
+    """Tests that team name remain unique within a department."""
     duplicate_team = TeamCreate(
         name=team.name,
         department_id=team.department_id,
     )
 
-    with pytest.raises(IntegrityError) as exc_info:
+    with pytest.raises(IntegrityError):
         team_repository.create_team(session, duplicate_team)
 
     session.rollback()
+
+
+def test_soft_deleted_team_name_remains_reserved_within_department(
+    session,
+    team,
+):
+    """Tests that soft deletion does not release a team name."""
+    team.is_deleted = True
+    session.add(team)
+    session.commit()
+
+    replacement_team = TeamCreate(
+        name=team.name,
+        department_id=team.department_id
+    )
+
+    with pytest.raises(IntegrityError):
+        team_repository.create_team(
+            session,
+            replacement_team,
+        )
+
+    session.rollback()
+    session.refresh(team)
+
+    assert team.is_deleted is True
+
 
 #######################
 # Controller tests
