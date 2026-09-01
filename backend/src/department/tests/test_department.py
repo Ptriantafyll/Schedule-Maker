@@ -102,20 +102,15 @@ def test_get_active_departments(session):
     assert dept2 not in active_departments
 
 
-def test_get_department_by_id_for_member_returns_users_department(
+def test_get_department_by_id_for_member_returns_own_active_department(
     session,
     department,
-    user_factory,
 ):
     """Tests retrieving a department by its id for a member"""
-    user = user_factory(
-        role=UserRole.VIEWER,
-        department_id=department.id
-    )
     retrieved_department = department_repository.get_department_by_id_for_member(
         session=session,
         department_id=department.id,
-        member_department_id=user.department_id
+        member_department_id=department.id
     )
 
     assert retrieved_department == department
@@ -124,21 +119,15 @@ def test_get_department_by_id_for_member_returns_users_department(
 def test_get_department_by_id_for_member_hides_foreign_department(
     session,
     department,
-    user_factory,
 ):
     """Tests retrieving a foreign department by its id"""
     department_b = department_repository.create_department(
         session, DepartmentCreate(name="Pediatrics", code="PED")
     )
-
-    user = user_factory(
-        role=UserRole.VIEWER,
-        department_id=department.id
-    )
     retrieved_department = department_repository.get_department_by_id_for_member(
         session=session,
         department_id=department_b.id,
-        member_department_id=user.department_id
+        member_department_id=department.id
     )
 
     assert retrieved_department is None
@@ -147,24 +136,19 @@ def test_get_department_by_id_for_member_hides_foreign_department(
 def test_get_department_by_id_for_member_hides_deleted_department(
     session,
     department,
-    user_factory,
 ):
     """Tests retrieving a foreign department by its id"""
     department.is_deleted = True
     session.add(department)
     session.commit()
 
-    user = user_factory(
-        role=UserRole.VIEWER,
-        department_id=department.id
-    )
     retrieved_department = department_repository.get_department_by_id_for_member(
         session=session,
-        department_id=department_b.id,
-        member_department_id=user.department_id
+        department_id=department.id,
+        member_department_id=department.id
     )
 
-    assert result is None
+    assert retrieved_department is None
 
 
 #######################

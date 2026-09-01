@@ -41,10 +41,10 @@ def create_department(session: Session, department_data: DepartmentCreate) -> De
     return new_department
 
 
-def get_department_by_id_for_member(
-    session: Session,
-    department_id: uuid.UUID,
-    member_department_id: uuid.UUID,
-) -> DepartmentModel:
-    """Retrieved the members department"""
-    pass
+# def get_department_by_id_for_member(
+#     session: Session,
+#     department_id: uuid.UUID,
+#     member_department_id: uuid.UUID,
+# ) -> DepartmentModel | None:
+#     """Retrieved the members department"""
+#     return None
