@@ -460,6 +460,7 @@ def test_list_users_rejects_department_admin_without_department(
     """Tests that a department admin without a department id cannot list users"""
     department_admin_user = user_factory(
         role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None
     )
     headers = auth_headers_factory(department_admin_user)
 
