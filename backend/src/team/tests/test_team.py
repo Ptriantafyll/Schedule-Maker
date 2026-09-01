@@ -6,6 +6,7 @@ import uuid
 import datetime
 import pytest
 from fastapi import HTTPException
+from sqlalchemy.exc import IntegrityError
 
 from src.team.schemas import TeamCreate
 from src.team import repository as team_repository
@@ -137,9 +138,26 @@ def test_team_name_can_repeat_across_departments(
     assert team_a.name == team_b.name == team_name
 
 
+def test_team_name_cannot_repeat_within_department(
+    session,
+    team,
+):
+    """Tests that team name remain unique within department"""
+    duplicate_team = TeamCreate(
+        name=team.name,
+        department_id=team.department_id,
+    )
+
+    with pytest.raises(IntegrityError) as exc_info:
+        team_repository.create_team(session, duplicate_team)
+
+    session.rollback()
+
 #######################
 # Controller tests
 #######################
+
+
 def test_create_team_controller_duplicate_name(session, department, team):
     """Test that creating a team with a duplicate name raises an error."""
 
