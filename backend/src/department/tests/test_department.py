@@ -6,6 +6,7 @@ import datetime
 import uuid
 import pytest
 from fastapi import HTTPException
+from unittest.mock import Mock
 
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
@@ -168,14 +169,17 @@ def test_create_department_controller_duplicate_name(session):
     assert "already exists" in exc_info.value.detail
 
 
-def test_get_department_controller_nonexistent(session):
+def test_get_department_controller_nonexistent(session, department):
     """Test that fetching a non-existent department raises a 404 error."""
 
     non_existent_id = uuid.uuid4()
 
     with pytest.raises(HTTPException) as exc_info:
         department_controllers.get_department_controller(
-            non_existent_id, session)
+            department_id=non_existent_id,
+            member_department_id=department.id,
+            session=session,
+        )
 
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
@@ -190,15 +194,55 @@ def test_get_department_controller_deleted(session, department):
 
     with pytest.raises(HTTPException) as exc_info:
         department_controllers.get_department_controller(
-            department.id, session)
+            department_id=department.id,
+            member_department_id=department.id,
+            session=session,
+        )
 
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
 
 
+def test_get_department_controller_uses_member_scope(
+    session,
+    department,
+    monkeypatch,
+):
+    """Tests that the get department controller uses member scope"""
+    requested_department_id = uuid.uuid4()
+    member_department_id = uuid.uuid4()
+    scoped_repository_mock = Mock(return_value=department)
+    global_repository_mock = Mock()
+
+    monkeypatch.setattr(
+        department_controllers.repository,
+        "get_department_by_id_for_member",
+        scoped_repository_mock,
+    )
+    monkeypatch.setattr(
+        department_controllers.repository,
+        "get_department_by_id",
+        global_repository_mock,
+    )
+
+    result = department_controllers.get_department_controller(
+        department_id=requested_department_id,
+        member_department_id=member_department_id,
+        session=session,
+    )
+
+    assert result is department
+    scoped_repository_mock.assert_called_once_with(
+        session=session,
+        department_id=requested_department_id,
+        member_department_id=member_department_id,
+    )
+    global_repository_mock.assert_not_called()
+
 ###############################
 # Route tests
 ###############################
+
 
 def test_get_department_by_id_route(client, department, department_admin_headers):
     """Tests that the GET /departments/{department_id} route returns a department"""

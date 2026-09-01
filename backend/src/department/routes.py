@@ -38,4 +38,8 @@ def get_department(
     current_user: UserModel = Depends(require_department_member),
 ):
     """Fetches a specific department by its UUID."""
-    return get_department_controller(department_id, session)
+    return get_department_controller(
+        department_id=department_id,
+        member_department_id=current_user.department_id,
+        session=session,
+    )

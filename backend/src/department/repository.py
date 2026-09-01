@@ -46,7 +46,7 @@ def get_department_by_id_for_member(
     department_id: uuid.UUID,
     member_department_id: uuid.UUID,
 ) -> Optional[DepartmentModel]:
-    """Retrieved an active department only when it belongs to the member"""
+    """Retrieves an active department only when it belongs to the member."""
     statement = select(DepartmentModel).where(
         DepartmentModel.id == department_id,
         DepartmentModel.id == member_department_id,

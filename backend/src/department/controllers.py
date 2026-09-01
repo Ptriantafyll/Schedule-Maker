@@ -22,7 +22,11 @@ def create_department_controller(department_data: DepartmentCreate, session: Ses
     return repository.create_department(session, department_data)
 
 
-def get_department_controller(department_id: uuid.UUID, session: Session) -> DepartmentModel:
+def get_department_controller(
+    department_id: uuid.UUID,
+    member_department_id: uuid.UUID,
+    session: Session,
+) -> DepartmentModel:
     """Handles logic for fetching a department, verifying existence and deletion status."""
     department = repository.get_department_by_id(session, department_id)
     if not department or department.is_deleted:
