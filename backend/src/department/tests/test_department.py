@@ -137,7 +137,7 @@ def test_get_department_by_id_for_member_hides_deleted_department(
     session,
     department,
 ):
-    """Tests retrieving a foreign department by its id"""
+    """Tests retrieving a deleted department by its id"""
     department.is_deleted = True
     session.add(department)
     session.commit()
@@ -333,7 +333,7 @@ def test_department_member_cannot_get_another_department(
     )
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Department not found"}
+    assert response.json() == {"detail": "Department not found."}
     assert response.headers.get("WWW-Authenticate") is None
 
 

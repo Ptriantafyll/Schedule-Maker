@@ -41,10 +41,16 @@ def create_department(session: Session, department_data: DepartmentCreate) -> De
     return new_department
 
 
-# def get_department_by_id_for_member(
-#     session: Session,
-#     department_id: uuid.UUID,
-#     member_department_id: uuid.UUID,
-# ) -> DepartmentModel | None:
-#     """Retrieved the members department"""
-#     return None
+def get_department_by_id_for_member(
+    session: Session,
+    department_id: uuid.UUID,
+    member_department_id: uuid.UUID,
+) -> Optional[DepartmentModel]:
+    """Retrieved an active department only when it belongs to the member"""
+    statement = select(DepartmentModel).where(
+        DepartmentModel.id == department_id,
+        DepartmentModel.id == member_department_id,
+        not_(DepartmentModel.is_deleted),
+    )
+
+    return session.exec(statement).first()
