@@ -115,7 +115,7 @@ def test_team_name_can_repeat_across_departments(
     session,
     department,
 ):
-    """Tests that team names are unique only within a department"""
+    """Tests that team names are unique only within a department."""
     department_b = department_repository.create_department(
         session,
         DepartmentCreate(name="Radiology", code="RAD"),
@@ -142,7 +142,7 @@ def test_team_name_cannot_repeat_within_department(
     session,
     team,
 ):
-    """Tests that team name remain unique within a department."""
+    """Tests that team name remains unique within a department."""
     duplicate_team = TeamCreate(
         name=team.name,
         department_id=team.department_id,
@@ -165,7 +165,7 @@ def test_soft_deleted_team_name_remains_reserved_within_department(
 
     replacement_team = TeamCreate(
         name=team.name,
-        department_id=team.department_id
+        department_id=team.department_id,
     )
 
     with pytest.raises(IntegrityError):

@@ -10,6 +10,7 @@ from __future__ import annotations
 import uuid
 
 from sqlmodel import Field
+from sqlalchemy import UniqueConstraint
 from src.db.schemas import SyncBase
 
 
@@ -20,6 +21,15 @@ class Team(SyncBase, table=True):
     - `name` is indexed and unique
     - `department_id` references a Department row
     """
-    name: str = Field(index=True, unique=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "department_id",
+            "name",
+            name="uq_team_department_name",
+        ),
+    )
+
+    name: str = Field(index=True)
 
     department_id: uuid.UUID = Field(foreign_key="department.id")
