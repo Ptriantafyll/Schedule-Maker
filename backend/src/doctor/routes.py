@@ -121,7 +121,12 @@ def list_doctor_unavailabilities(
 
 
 @router.post("/{doctor_id}/position", response_model=DoctorPositionRead, status_code=status.HTTP_201_CREATED)
-def create_doctor_position(doctor_id: uuid.UUID, doctor_position_data: DoctorPositionCreate, session: Session = Depends(get_session)):
+def create_doctor_position(
+    doctor_id: uuid.UUID,
+    doctor_position_data: DoctorPositionCreate,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin),
+):
     """
     Assigns a position to a doctor
     """
@@ -129,7 +134,11 @@ def create_doctor_position(doctor_id: uuid.UUID, doctor_position_data: DoctorPos
 
 
 @router.get("/{doctor_id}/position", response_model=list[DoctorPositionRead])
-def list_doctor_positions(doctor_id: uuid.UUID, session: Session = Depends(get_session)):
+def list_doctor_positions(
+    doctor_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
     """
     Lists the positions of a doctor
     """

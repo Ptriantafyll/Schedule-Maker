@@ -1365,3 +1365,14 @@ def test_create_doctor_position_requires_authentication(client, new_doctor, posi
         position_id=position.id,
         session=session,
     ) is None
+
+
+def test_list_doctor_positions_requires_authentication(client, new_doctor):
+    """Tests the GET /api/v1/doctors/{doctor_id}/position with no headers"""
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}/position"
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
