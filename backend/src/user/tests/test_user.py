@@ -189,15 +189,23 @@ def test_get_active_users(session, user):
 def test_get_active_users_by_department(
     session,
     department,
+    department_b,
     user_factory,
-    department_admin_user,
-    department_b_user
 ):
     """Tests listing users in a department"""
-    department_a_admin = department_admin_user
+    department_a_admin = user_factory(
+        role=UserRole.VIEWER,
+        department_id=department.id,
+    )
+
     department_a_viewer = user_factory(
         role=UserRole.VIEWER,
         department_id=department.id,
+    )
+
+    department_b_viewer = user_factory(
+        role=UserRole.VIEWER,
+        department_id=department_b.id,
     )
 
     department_a_del_user = user_factory(
@@ -208,6 +216,11 @@ def test_get_active_users_by_department(
     session.add(department_a_del_user)
     session.commit()
 
+    super_admin_user = user_factory(
+        role=UserRole.SUPER_ADMIN,
+        department_id=None,
+    )
+
     active_users = user_repository.get_active_users_by_department(
         session=session,
         department_id=department.id
@@ -215,6 +228,7 @@ def test_get_active_users_by_department(
 
     returned_ids = {user.id for user in active_users}
     assert department_b_user.id not in returned_ids
+    assert super_admin_user.id not in returned_ids
     assert returned_ids == {
         department_a_admin.id,
         department_a_viewer.id
