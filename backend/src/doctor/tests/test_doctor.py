@@ -845,13 +845,14 @@ def test_get_doctor_unavailability_route(client, new_doctor, unavailability, doc
     assert "updated_at" in returned_unavailability
 
 
-def test_create_doctor_position_route(client, position, new_doctor):
+def test_create_doctor_position_route(client, position, new_doctor, department_admin_headers):
     """Tests the POST /doctors/{doctor_id}/position route"""
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/position",
         json={
             "position_id": str(position.id)
-        }
+        },
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 201
@@ -862,17 +863,18 @@ def test_create_doctor_position_route(client, position, new_doctor):
     assert "updated_at" in data
 
 
-def test_create_doctor_position_route_invalid_payload(client, new_doctor):
+def test_create_doctor_position_route_invalid_payload(client, new_doctor, department_admin_headers):
     """Tests the POST /doctors/{doctor_id}/position route rejects invalid payload"""
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/position",
-        json={}
+        json={},
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 422
 
 
-def test_get_doctor_position_route(client, session, new_doctor, position, department_admin_headers):
+def test_get_doctor_position_route(client, session, new_doctor, position, viewer_headers):
     """Tests the GET /doctors/{doctor_id}/position route"""
     new_doctor_pos = create_test_doctor_position(
         session=session,
@@ -882,7 +884,7 @@ def test_get_doctor_position_route(client, session, new_doctor, position, depart
 
     response = client.get(
         f"api/v1/doctors/{new_doctor.id}/position",
-        headers=department_admin_headers,
+        headers=viewer_headers,
     )
 
     assert response.status_code == 200
@@ -898,6 +900,7 @@ def test_get_doctor_position_route(client, session, new_doctor, position, depart
         None
     )
 
+    assert returned_doctor_position is not None
     assert returned_doctor_position["id"] == str(new_doctor_pos.id)
     assert returned_doctor_position["doctor_id"] == str(new_doctor.id)
     assert "created_at" in returned_doctor_position
