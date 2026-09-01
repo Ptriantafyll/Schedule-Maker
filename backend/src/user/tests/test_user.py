@@ -301,7 +301,7 @@ def test_list_users_controller_uses_department_scope(
 ):
     """Tests that user listing passes department scope to the repository"""
     expected_users = []
-    scoped_repository_mock = Mock(returned_value=expected_users)
+    scoped_repository_mock = Mock(return_value=expected_users)
 
     monkeypatch.setattr(
         user_controllers.repository,

@@ -2,6 +2,7 @@
 User controller functions for handling business logic related to user management
 """
 
+import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session
 
@@ -29,9 +30,12 @@ def create_user_controller(user_data: UserCreate, session: Session) -> UserModel
     return repository.create_user(session, user_data)
 
 
-def list_users_controller(session: Session) -> list[UserModel]:
+def list_users_controller(session: Session, department_id: uuid.UUID) -> list[UserModel]:
     """Handles the logic for listing all active users"""
-    return repository.get_active_users(session)
+    return repository.get_active_users_by_department(
+        session=session,
+        department_id=department_id,
+    )
 
 
 def get_user_controller(user_email: str, session: Session) -> UserModel:
