@@ -28,7 +28,11 @@ def get_department_controller(
     session: Session,
 ) -> DepartmentModel:
     """Handles logic for fetching a department, verifying existence and deletion status."""
-    department = repository.get_department_by_id(session, department_id)
+    department = repository.get_department_by_id_for_member(
+        department_id=department_id,
+        member_department_id=member_department_id,
+        session=session,
+    )
     if not department or department.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
