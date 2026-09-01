@@ -248,12 +248,21 @@ def test_department_list_requires_authentication(client):
     assert response.headers.get("WWW-Authenticate") == "Bearer"
 
 
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+        UserRole.DEPARTMENT_ADMIN,
+    ]
+)
 def test_department_member_cannot_get_another_department(
     client,
     session,
     user_factory,
     auth_headers_factory,
     department,
+    role,
 ):
     """Tests that GET /api/v1/departments/{department_id} using user aithenticated to different department"""
     dept_b_data = DepartmentCreate(name="Radiology", code="RAD")
@@ -263,7 +272,7 @@ def test_department_member_cannot_get_another_department(
     )
 
     department_a_user = user_factory(
-        role=UserRole.VIEWER,
+        role=role,
         department_id=department.id
     )
     department_a_user_headers = auth_headers_factory(department_a_user)
@@ -275,4 +284,36 @@ def test_department_member_cannot_get_another_department(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Department not found"}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+        UserRole.DEPARTMENT_ADMIN,
+    ]
+)
+def test_get_department_rejects_users_without_department(
+    client,
+    user_factory,
+    auth_headers_factory,
+    department,
+    role,
+):
+    """Tests GET /api/v1/departments/{department_id} rejects authenticated user with no department"""
+    user = user_factory(
+        role=role,
+        department_id=None
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.get(
+        f"/api/v1/departments/{department.id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope"}
     assert response.headers.get("WWW-Authenticate") is None
