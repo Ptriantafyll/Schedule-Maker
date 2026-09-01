@@ -33,7 +33,7 @@ def get_department_controller(
         member_department_id=member_department_id,
         session=session,
     )
-    if not department or department.is_deleted:
+    if department is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Department not found."

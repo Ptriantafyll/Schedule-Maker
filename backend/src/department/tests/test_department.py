@@ -409,5 +409,5 @@ def test_get_department_rejects_member_without_department(
     )
 
     assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid account scope"}
+    assert response.json() == {"detail": "Invalid account scope."}
     assert response.headers.get("WWW-Authenticate") is None
