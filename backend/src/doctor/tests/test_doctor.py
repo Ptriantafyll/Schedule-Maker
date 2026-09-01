@@ -1149,7 +1149,7 @@ def test_list_pre_assignments_requires_authentication(client, new_doctor):
         UserRole.SUPER_ADMIN,
     ]
 )
-def test_non_doctor_or_dept_admin_cannot_create_unavailability(
+def test_non_doctor_or_department_admin_cannot_create_unavailability(
     client,
     role,
     user_factory,
@@ -1212,7 +1212,12 @@ def test_create_unavailability_requires_authentication(client, session, new_doct
     assert retrieved_unavailability is None
 
 
-def test_department_admin_can_create_unavailability(client, new_doctor, department_admin_headers, session):
+def test_department_admin_can_create_unavailability(
+    client,
+    new_doctor,
+    department_admin_headers,
+    session,
+):
     """Tests the POST /doctors/{doctor_id}/unavailability route"""
     response = client.post(
         f"api/v1/doctors/{new_doctor.id}/unavailability",
@@ -1235,6 +1240,7 @@ def test_department_admin_can_create_unavailability(client, new_doctor, departme
         target_date=datetime.date(2026, 8, 12)
     )
     assert retrieved_unavailability is not None
+    assert str(retrieved_unavailability.id) == data["id"]
 
 
 @pytest.mark.parametrize(
@@ -1244,7 +1250,7 @@ def test_department_admin_can_create_unavailability(client, new_doctor, departme
         UserRole.SUPER_ADMIN,
     ]
 )
-def test_non_doctor_or_departmentt_admin_cannot_list_unavailability(
+def test_non_doctor_or_department_admin_cannot_list_unavailability(
     client,
     new_doctor,
     role,
