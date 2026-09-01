@@ -246,3 +246,33 @@ def test_department_list_requires_authentication(client):
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_department_member_cannot_get_another_department(
+    client,
+    session,
+    user_factory,
+    auth_headers_factory,
+    department,
+):
+    """Tests that GET /api/v1/departments/{department_id} using user aithenticated to different department"""
+    dept_b_data = DepartmentCreate(name="Radiology", code="RAD")
+    department_b = department_repository.create_department(
+        session=session,
+        department_data=dept_b_data
+    )
+
+    department_a_user = user_factory(
+        role=UserRole.VIEWER,
+        department_id=department.id
+    )
+    department_a_user_headers = auth_headers_factory(department_a_user)
+
+    response = client.get(
+        f"/api/v1/departments/{department_b.id}",
+        headers=department_a_user_headers
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Department not found"}
+    assert response.headers.get("WWW-Authenticate") is None

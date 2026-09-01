@@ -23,7 +23,7 @@ def list_users(
     session: Session = Depends(get_session),
     current_user: UserModel = Depends(require_department_admin),
 ):
-    """Endpoint to lsit all active users"""
+    """Endpoint to list active users in the authenticated user's department"""
     if current_user.department_id is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
