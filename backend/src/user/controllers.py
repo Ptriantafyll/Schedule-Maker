@@ -31,7 +31,7 @@ def create_user_controller(user_data: UserCreate, session: Session) -> UserModel
 
 
 def list_users_controller(session: Session, department_id: uuid.UUID) -> list[UserModel]:
-    """Handles the logic for listing all active users"""
+    """Handles the logic for listing users in a department"""
     return repository.get_active_users_by_department(
         session=session,
         department_id=department_id,

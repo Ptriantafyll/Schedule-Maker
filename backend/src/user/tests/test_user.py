@@ -450,3 +450,26 @@ def test_user_list_rejects_non_department_admin_roles(client, user_factory, auth
         "detail": "Insufficient permissions for this operation"
     }
     assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_list_users_rejects_department_admin_without_department(
+    client,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that a department admin without a department id cannot list users"""
+    department_admin_user = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+    )
+    headers = auth_headers_factory(department_admin_user)
+
+    response = client.get(
+        "/api/v1/users",
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Invalid account scope"
+    }
+    assert response.headers.get("WWW-Authenticate") is None

@@ -24,4 +24,4 @@ def list_users(
     current_user: UserModel = Depends(require_department_admin),
 ):
     """Endpoint to lsit all active users"""
-    return user_controllers.list_users_controller(session)
+    return user_controllers.list_users_controller(session, current_user.department_id)
