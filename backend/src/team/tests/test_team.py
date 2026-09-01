@@ -11,7 +11,7 @@ from src.team.schemas import TeamCreate
 from src.team import repository as team_repository
 from src.team import controllers as team_controllers
 from src.department.schemas import DepartmentCreate
-from src.department.repository import create_department
+from src.department import repository as department_repository
 from src.user.models import UserRole
 
 
@@ -19,7 +19,7 @@ from src.user.models import UserRole
 def department_fixture(session):
     """Creates a reusable department for team tests."""
     dept_data = DepartmentCreate(name="Cardiology", code="CARD")
-    return create_department(session, dept_data)
+    return department_repository.create_department(session, dept_data)
 
 
 @pytest.fixture(name="team")
@@ -108,6 +108,33 @@ def test_get_active_teams(session, department):
 
     assert team1 in active_teams
     assert team2 not in active_teams
+
+
+def test_team_name_can_repeat_across_departments(
+    session,
+    department,
+):
+    """Tests that team names are unique only within a department"""
+    department_b = department_repository.create_department(
+        session,
+        DepartmentCreate(name="Radiology", code="RAD"),
+    )
+    team_name = "Shared team"
+
+    team_a = team_repository.create_team(
+        session,
+        TeamCreate(name=team_name, department_id=department.id)
+    )
+
+    team_b = team_repository.create_team(
+        session,
+        TeamCreate(name=team_name, department_id=department_b.id)
+    )
+
+    assert team_a.id != team_b.id
+    assert team_a.department_id == department.id
+    assert team_b.department_id == department_b.id
+    assert team_a.name == team_b.name == team_name
 
 
 #######################

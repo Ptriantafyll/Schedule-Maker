@@ -27,7 +27,7 @@ def list_users(
     if current_user.department_id is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid account scope",
+            detail="Invalid account scope.",
         )
 
     return user_controllers.list_users_controller(session, current_user.department_id)
