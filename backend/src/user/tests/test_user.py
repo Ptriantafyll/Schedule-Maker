@@ -194,7 +194,7 @@ def test_get_active_users_by_department(
 ):
     """Tests listing users in a department"""
     department_a_admin = user_factory(
-        role=UserRole.VIEWER,
+        role=UserRole.DEPARTMENT_ADMIN,
         department_id=department.id,
     )
 
@@ -227,8 +227,9 @@ def test_get_active_users_by_department(
     )
 
     returned_ids = {user.id for user in active_users}
-    assert department_b_user.id not in returned_ids
+    assert department_b_viewer.id not in returned_ids
     assert super_admin_user.id not in returned_ids
+    assert department_a_del_user.id not in returned_ids
     assert returned_ids == {
         department_a_admin.id,
         department_a_viewer.id
