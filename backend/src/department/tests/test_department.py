@@ -212,7 +212,7 @@ def test_get_department_controller_uses_member_scope(
     requested_department_id = uuid.uuid4()
     member_department_id = uuid.uuid4()
     scoped_repository_mock = Mock(return_value=department)
-    global_repository_mock = Mock()
+    global_repository_mock = Mock(return_value=department)
 
     monkeypatch.setattr(
         department_controllers.repository,
