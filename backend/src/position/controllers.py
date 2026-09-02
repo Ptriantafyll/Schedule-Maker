@@ -16,7 +16,7 @@ def create_position_controller(
     position_data: PositionCreate,
     department_id: uuid.UUID,
     session: Session,
-) -> PositionModel:
+) -> PositionModel | None:
     """Handled the logic for creating a new position"""
     existing_position = repository.get_position_by_name_for_department(
         session=session,
@@ -28,16 +28,6 @@ def create_position_controller(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Position already exists"
-        )
-
-    department = department_repository.get_department_by_id(
-        session=session,
-        department_id=department_id,
-    )
-    if not department:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Department does not exist"
         )
 
     return repository.create_position(
