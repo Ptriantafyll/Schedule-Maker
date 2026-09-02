@@ -2,9 +2,9 @@
 Team repository functions for handling database operations.
 """
 
+import uuid
 
 from sqlmodel import Session, not_, select
-from src.team.schemas import TeamCreate
 from src.team.models import Team as TeamModel
 
 
@@ -25,11 +25,15 @@ def get_active_teams(session: Session) -> list[TeamModel]:
     return list(session.exec(select(TeamModel).where(not_(TeamModel.is_deleted))).all())
 
 
-def create_team(session: Session, team_data: TeamCreate) -> TeamModel:
+def create_team(
+    session: Session,
+    name: str,
+    department_id: uuid.UUID
+) -> TeamModel:
     """Creates a new team in the database."""
     new_team = TeamModel(
-        name=team_data.name,
-        department_id=team_data.department_id
+        name=name,
+        department_id=department_id
     )
     session.add(new_team)
     session.commit()

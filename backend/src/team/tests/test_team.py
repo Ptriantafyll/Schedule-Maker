@@ -245,7 +245,12 @@ def test_create_team_route(client, department, department_admin_headers):
     assert "updated_at" in data
 
 
-def test_create_team_route_invalid_payload(client, department, department_admin_headers):
+def test_create_team_route_rejects_supplied_department_id(
+    client,
+    department,
+    department_admin_headers,
+    session,
+):
     """Tests that the POST /teams/ route rejects invalid payloads."""
 
     response = client.post(
@@ -257,6 +262,10 @@ def test_create_team_route_invalid_payload(client, department, department_admin_
         headers=department_admin_headers,
     )
     assert response.status_code == 422
+    assert team_repository.get_team_by_name(
+        session=session,
+        name="Team A"
+    ) is None
 
 
 def test_get_team_by_id_route(client, department, team, viewer_headers):

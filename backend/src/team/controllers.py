@@ -7,7 +7,6 @@ from fastapi import HTTPException, status
 from src.team import repository
 
 
-
 def create_team_controller(team_data, session):
     """Handles the business logic for creating a new team."""
     existing_team = repository.get_team_by_name(session, team_data.name)
@@ -16,7 +15,11 @@ def create_team_controller(team_data, session):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"A team named '{team_data.name}' already exists."
         )
-    return repository.create_team(session, team_data)
+    return repository.create_team(
+        session=session,
+        name=team_data.name,
+        department_id=team_data.department_id,
+    )
 
 
 def list_teams_controller(session):
