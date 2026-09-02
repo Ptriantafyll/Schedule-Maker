@@ -6,6 +6,7 @@ import uuid
 import datetime
 import pytest
 from sqlmodel import Session
+from sqlalchemy.exc import IntegrityError
 
 from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate
 from src.shift.models import Shift as ShiftModel
@@ -50,7 +51,7 @@ def create_new_shift(
     name: str,
     position_id: uuid.UUID,
     grants_day_off: bool,
-    doctor_per_shift: int
+    doctors_per_shift: int
 ) -> ShiftModel:
     """Helper that creates a shift in the db"""
 
@@ -58,7 +59,7 @@ def create_new_shift(
         name=name,
         position_id=position_id,
         grants_day_off=grants_day_off,
-        doctors_per_shift=doctor_per_shift
+        doctors_per_shift=doctors_per_shift
     )
 
     return shift_repository.create_shift(session, shift_data)
@@ -299,6 +300,91 @@ def test_get_active_shift_assignments(session, new_doctor, shift):
     assert shift_assignment1 in retrieved_shift_assignments
     assert shift_assignment2 not in retrieved_shift_assignments
 
+
+def test_shift_name_can_repeat_across_positions(
+    session,
+    position,
+):
+    """Tests that a shift name is unique only within positions."""
+    position_b = position_repository.create_position(
+        session=session,
+        position_data=PositionCreate(
+            name="Position B",
+            department_id=position.department_id,
+            duty_days=position.duty_days
+        ),
+    )
+
+    shift_name = "Shared shift"
+
+    shift_a = create_new_shift(
+        session=session,
+        name=shift_name,
+        position_id=position.id,
+        grants_day_off=False,
+        doctors_per_shift=1,
+    )
+
+    shift_b = create_new_shift(
+        session=session,
+        name=shift_name,
+        position_id=position_b.id,
+        grants_day_off=False,
+        doctors_per_shift=1,
+    )
+
+    assert shift_a.id != shift_b.id
+    assert shift_a.position_id == position.id
+    assert shift_b.position_id == position_b.id
+    assert shift_a.name == shift_b.name == shift_name
+
+
+def test_shift_name_cannot_repeat_within_position(
+    session,
+    shift,
+):
+    """Tests that a shift name is unique within a position."""
+    duplicate_shift = ShiftCreate(
+        name=shift.name,
+        doctors_per_shift=shift.doctors_per_shift,
+        grants_day_off=shift.grants_day_off,
+        position_id=shift.position_id,
+    )
+
+    with pytest.raises(IntegrityError):
+        shift_repository.create_shift(
+            session=session,
+            shift_data=duplicate_shift,
+        )
+
+    session.rollback()
+
+
+def test_soft_deleted_shift_name_remains_reserved_within_position(
+    session,
+    shift,
+):
+    """Tests that soft deletion does not release the shift name."""
+    shift.is_deleted = True
+    replacement_shift = ShiftCreate(
+        name=shift.name,
+        doctors_per_shift=shift.doctors_per_shift,
+        grants_day_off=shift.grants_day_off,
+        position_id=shift.position_id,
+    )
+
+    with pytest.raises(IntegrityError):
+        shift_repository.create_shift(
+            session=session,
+            shift_data=replacement_shift,
+        )
+
+    session.rollback()
+    session.refresh(shift)
+
+    assert shift.is_deleted is True
+
+
 #####################
 # Controller Tests
 #####################
@@ -310,7 +396,7 @@ def test_create_shift_controller_duplicate_name(session, shift):
         name=shift.name,
         position_id=shift.position_id,
         grants_day_off=False,
-        doctor_per_shift=1
+        doctors_per_shift=1
     )
 
     with pytest.raises(Exception) as exc_info:

@@ -20,7 +20,7 @@ class Position(SyncBase, table=True):
         UniqueConstraint(
             "department_id",
             "name",
-            name="uq_team_department_name",
+            name="uq_position_department_name",
         ),
     )
 
