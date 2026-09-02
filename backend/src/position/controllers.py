@@ -31,7 +31,9 @@ def create_position_controller(
         )
 
     department = department_repository.get_department_by_id(
-        session, position_data.department_id)
+        session=session,
+        department_id=department_id,
+    )
     if not department:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

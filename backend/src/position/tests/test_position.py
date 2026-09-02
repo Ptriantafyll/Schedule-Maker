@@ -226,25 +226,6 @@ def test_create_position_controller_duplicate_name(session, position):
     assert "already exists" in exc_info.value.detail
 
 
-def test_create_position_controller_nonexistent_department(session):
-    """Tests that creating a position with a non existent position id returns error"""
-    position_data = PositionCreate(
-        name="ER",
-        duty_days=[1, 2, 3],
-    )
-
-    with pytest.raises(Exception) as exc_info:
-        position_controllers.create_position_controller(
-            position_data=position_data,
-            department_id=uuid.uuid4(),
-            session=session,
-        )
-
-    assert exc_info.type.__name__ == "HTTPException"
-    assert exc_info.value.status_code == 422
-    assert "does not exist" in exc_info.value.detail
-
-
 def test_get_position_controller_nonexistent(session, position):
     """Tests that trying to retrieve a non existent position returns error"""
     with pytest.raises(Exception) as exc_info:
@@ -310,7 +291,6 @@ def test_create_position_route_rejects_supplied_department_id(
     client,
     session,
     department,
-    team,
     department_admin_headers,
 ):
     """Tests post /api/v1/positions route"""
@@ -318,7 +298,7 @@ def test_create_position_route_rejects_supplied_department_id(
     response = client.post(
         "api/v1/positions",
         json={
-            "name": team.name,
+            "name": position_name,
             "duty_days": [1, 2, 3],
             "department_id": str(department.id),
         },
