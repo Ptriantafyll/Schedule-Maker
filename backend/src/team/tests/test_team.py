@@ -109,9 +109,16 @@ def test_get_team_by_name_for_department(
         name=team.name,
         department_id=team.department_id,
     )
+    retrieved_team_b = team_repository.get_team_by_name_for_department(
+        session=session,
+        name=same_name_team.name,
+        department_id=same_name_team.department_id,
+    )
 
     assert retrieved_team is not None
     assert retrieved_team.id == team.id
+    assert retrieved_team_b is not None
+    assert retrieved_team_b.id == same_name_team.id
 
 
 def test_get_active_teams(session, department):

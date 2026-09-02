@@ -33,6 +33,8 @@ class TeamCreate(BaseModel):
     """
     name: str
 
+    model_config = ConfigDict(extra="forbid")
+
 
 class TeamUpdate(BaseModel):
     """Schema for partial team updates.
