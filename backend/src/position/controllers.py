@@ -9,7 +9,6 @@ from sqlmodel import Session
 from src.position import repository
 from src.position.schemas import PositionCreate
 from src.position.models import Position as PositionModel
-from src.department import repository as department_repository
 
 
 def create_position_controller(
@@ -50,14 +49,14 @@ def list_positions_controller(
 
 
 def get_position_controller(
-    position_name: str,
+    position_id: uuid.UUID,
     department_id: uuid.UUID,
     session: Session,
 ) -> PositionModel:
     """Handles the logic for retrieving a position by its name"""
-    position = repository.get_position_by_name_for_department(
+    position = repository.get_position_by_id_for_department(
         session=session,
-        position_name=position_name,
+        position_id=position_id,
         department_id=department_id,
     )
 

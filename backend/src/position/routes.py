@@ -51,16 +51,16 @@ def list_positions(
     )
 
 
-@router.get("/{position_name}", response_model=PositionRead)
+@router.get("/{position_id}", response_model=PositionRead)
 def get_positions(
-    position_name: str,
+    position_id: uuid.UUID,
     session: Session = Depends(get_session),
     _current_user: UserModel = Depends(require_department_member),
     department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Fetches a specific position by its name."""
     return position_controllers.get_position_controller(
-        position_name=position_name,
+        position_id=position_id,
         department_id=department_id,
         session=session,
     )
