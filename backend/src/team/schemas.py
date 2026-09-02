@@ -26,12 +26,12 @@ class TeamBase(BaseModel):
     department_id: uuid.UUID
 
 
-class TeamCreate(TeamBase):
+class TeamCreate(BaseModel):
     """Schema for team creation requests.
 
-    Inherits all required fields from `TeamBase`. Use this DTO as the
-    request body for POST /teams.
+    Use this DTO as the request body for POST /teams.
     """
+    name: str
 
 
 class TeamUpdate(BaseModel):

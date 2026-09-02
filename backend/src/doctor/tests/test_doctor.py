@@ -109,11 +109,10 @@ def department_fixture(session):
 @pytest.fixture(name="team")
 def team_fixture(session, department):
     """Creates a reusable team for tests"""
-    team_data = TeamCreate(name="ER Team A", department_id=department.id)
     return create_team(
         session=session,
-        name=team_data.name,
-        department_id=team_data.department_id,
+        name="ER Team A",
+        department_id=department.id,
     )
 
 
