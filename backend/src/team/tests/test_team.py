@@ -89,7 +89,7 @@ def test_get_team_by_name_for_department(
     session,
     team,
 ):
-    """ Tests retrieving a team by its name."""
+    """Tests retrieving a team by its name and department id."""
     department_b = department_repository.create_department(
         session=session,
         department_data=DepartmentCreate(
@@ -141,7 +141,10 @@ def test_get_active_teams(session, department):
     session.add(team2)
     session.commit()
 
-    active_teams = team_repository.get_active_teams(session)
+    active_teams = team_repository.get_active_teams_by_department(
+        session=session,
+        department_id=department.id,
+    )
 
     assert team1 in active_teams
     assert team2 not in active_teams
@@ -335,8 +338,27 @@ def test_get_team_by_id_route(client, department, team, viewer_headers):
     assert "updated_at" in data
 
 
-def test_list_teams_route(client, team, viewer_headers):
+def test_list_teams_route(
+    client,
+    session,
+    department,
+    team,
+    viewer_headers,
+):
     """Tests the GET /teams/ route"""
+    department_b = department_repository.create_department(
+        session=session,
+        department_data=DepartmentCreate(
+            name="Department B",
+            code="DEPT B",
+        )
+    )
+    department_b_team = team_repository.create_team(
+        session=session,
+        name=team.name,
+        department_id=department_b.id,
+    )
+
     response = client.get(
         "/api/v1/teams",
         headers=viewer_headers,
@@ -347,17 +369,14 @@ def test_list_teams_route(client, team, viewer_headers):
     data = response.json()
     assert isinstance(data, list)
 
-    returned_team = next(
-        (
-            item
-            for item in data
-            if item["id"] == str(team.id)
-        ),
-        None
-    )
+    returned_ids = {item["id"] for item in data}
 
-    assert returned_team is not None
-    assert returned_team["name"] == team.name
+    assert str(team.id) in returned_ids
+    assert str(department_b_team.id) not in returned_ids
+    assert all(
+        item["department_id"] == str(department.id)
+        for item in data
+    )
 
 
 @pytest.mark.parametrize(

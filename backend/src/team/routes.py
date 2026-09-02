@@ -40,10 +40,14 @@ def create_team(
 @router.get("/", response_model=list[TeamRead])
 def list_teams(
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Endpoint to list all teams"""
-    return team_controllers.list_teams_controller(session)
+    return team_controllers.list_teams_controller(
+        session=session,
+        department_id=department_id,
+    )
 
 
 @router.get("/{team_id}", response_model=TeamRead)

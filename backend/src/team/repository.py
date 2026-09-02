@@ -13,7 +13,7 @@ def get_team_by_name_for_department(
     name: str,
     department_id: uuid.UUID,
 ) -> TeamModel | None:
-    """Retrieves a team by its unique name"""
+    """Retrieves a team by its unique name in the team's department"""
     statement = select(TeamModel).where(
         TeamModel.name == name,
         TeamModel.department_id == department_id,
@@ -27,9 +27,17 @@ def get_team_by_id(session: Session, team_id: str) -> TeamModel:
     return session.get(TeamModel, team_id)
 
 
-def get_active_teams(session: Session) -> list[TeamModel]:
+def get_active_teams_by_department(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[TeamModel]:
     """Retrieves all active (non-deleted) teams"""
-    return list(session.exec(select(TeamModel).where(not_(TeamModel.is_deleted))).all())
+    statement = select(TeamModel).where(
+        not_(TeamModel.is_deleted),
+        TeamModel.department_id == department_id
+    )
+
+    return list(session.exec(statement).all())
 
 
 def create_team(

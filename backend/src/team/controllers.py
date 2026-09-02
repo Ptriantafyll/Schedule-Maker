@@ -35,9 +35,15 @@ def create_team_controller(
     )
 
 
-def list_teams_controller(session):
+def list_teams_controller(
+    session: Session,
+    department_id: uuid.UUID,
+):
     """Handles logic for listing all active teams."""
-    return repository.get_active_teams(session)
+    return repository.get_active_teams_by_department(
+        session=session,
+        department_id=department_id,
+    )
 
 
 def get_team_controller(team_id, session):
