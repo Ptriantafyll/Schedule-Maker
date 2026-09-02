@@ -280,6 +280,7 @@ def test_get_position_controller_deleted(session, position):
 
 def test_create_position_route(
     client,
+    department,
     department_admin_headers,
 ):
     """Tests post /api/v1/positions route"""
@@ -295,6 +296,7 @@ def test_create_position_route(
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "ER"
+    assert data["department_id"] == department.id
     assert "duty_days" in data
     assert "id" in data
     assert "created_at" in data
@@ -303,10 +305,12 @@ def test_create_position_route(
 
 def test_create_position_route_rejects_supplied_department_id(
     client,
+    session,
     department,
     department_admin_headers,
 ):
     """Tests post /api/v1/positions route"""
+    position_name = "Client scoped position"
     response = client.post(
         "api/v1/positions",
         json={
@@ -323,7 +327,7 @@ def test_create_position_route_rejects_supplied_department_id(
         (
             error
             for error in validation_errors
-            if errors["loc"] == ["body", "department_id"]
+            if error["loc"] == ["body", "department_id"]
         ),
         None,
     )
@@ -336,7 +340,7 @@ def test_create_position_route_rejects_supplied_department_id(
     ) is None
 
 
-def test_create_position_route_invalid_payload(client, department_admin_headers):
+def test_create_position_route_missing_duty_days(client, department_admin_headers):
     """Tests post /api/v1/positions route with invalid payload"""
     response = client.post(
         "api/v1/positions",
