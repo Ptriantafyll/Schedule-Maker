@@ -97,7 +97,11 @@ def admin_headers_fixture(department_admin_user, auth_headers_factory):
 def team_fixture(session, department):
     """Creates a reusable team for tests"""
     team_data = TeamCreate(name="ER Team A", department_id=department.id)
-    return team_repository.create_team(session, team_data)
+    return team_repository.create_team(
+        session=session,
+        name=team_data.name,
+        department_id=team_data.department_id,
+    )
 
 
 @pytest.fixture(name="doctor")

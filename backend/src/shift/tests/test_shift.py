@@ -133,7 +133,11 @@ def position_fixture(session, department):
 def team_fixture(session, department):
     """Creates a reusable team for tests"""
     team_data = TeamCreate(name="ER Team A", department_id=department.id)
-    return team_repository.create_team(session, team_data)
+    return team_repository.create_team(
+        session=session,
+        name=team_data.name,
+        department_id=department.id
+    )
 
 
 @pytest.fixture(name="new_doctor")
