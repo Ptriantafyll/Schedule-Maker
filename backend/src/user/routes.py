@@ -2,7 +2,7 @@
 User routes for handling API requests related to user management.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from src.db.connection import get_session
@@ -24,10 +24,4 @@ def list_users(
     current_user: UserModel = Depends(require_department_admin),
 ):
     """Endpoint to list active users in the authenticated user's department"""
-    if current_user.department_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid account scope.",
-        )
-
     return user_controllers.list_users_controller(session, current_user.department_id)

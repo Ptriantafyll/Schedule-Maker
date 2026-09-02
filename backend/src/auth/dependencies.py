@@ -52,7 +52,7 @@ def get_current_user(
 
 
 def require_department_scope(current_user: UserModel = Depends(get_current_user)) -> uuid.UUID:
-    """Returns the authenticated user's department UUID or 403 if missing"""
+    """Returns the authenticated user's department UUID or HTTP 403 if missing"""
     if current_user.department_id is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
