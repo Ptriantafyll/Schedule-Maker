@@ -121,8 +121,8 @@ def test_get_team_by_name_for_department(
     assert retrieved_team_b.id == same_name_team.id
 
 
-def test_get_active_teams(session, department):
-    """ Tests retrieving only active (non-deleted) teams."""
+def test_get_active_teams_by_department(session, department):
+    """Tests retrieving only active (non-deleted) teams."""
 
     team1 = team_repository.create_team(
         session=session,
@@ -153,8 +153,6 @@ def test_get_active_teams(session, department):
 def test_team_name_can_repeat_across_departments(
     session,
     department,
-
-
 ):
     """Tests that team names are unique only within a department."""
     department_b = department_repository.create_department(
@@ -450,3 +448,74 @@ def test_team_read_routes_require_authentication(
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+        UserRole.DEPARTMENT_ADMIN,
+    ]
+)
+def test_department_member_cannot_get_team_from_another_department(
+    client,
+    session,
+    user_factory,
+    auth_headers_factory,
+    role,
+    team,
+):
+    """Tests that a department member cannot get a team from another department"""
+    department_b = department_repository.create_department(
+        session=session,
+        department_data=DepartmentCreate(
+            name="Department B",
+            code="DEPT B",
+        )
+    )
+
+    user = user_factory(
+        role=role,
+        department_id=department_b.id
+    )
+
+    headers = auth_headers_factory(user)
+
+    response = client.get(
+        f"/api/v1/teams/{team.id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Team not found."}
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+        UserRole.DEPARTMENT_ADMIN,
+    ]
+)
+def test_department_member_can_get_team_from_their_department(
+    client,
+    session,
+    team,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that a user can retrieve a team from their department"""
+    user = user_factory(
+        role=role,
+        department_id=department_b.id
+    )
+    headers = auth_headers_factory(user)
+
+    response = client.get(
+        f"/api/v1/teams/{team.id}",
+        headers=headers,
+    )
+
+    assert response.status_code = 200

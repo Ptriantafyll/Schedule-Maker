@@ -31,7 +31,7 @@ def get_active_teams_by_department(
     session: Session,
     department_id: uuid.UUID,
 ) -> list[TeamModel]:
-    """Retrieves all active (non-deleted) teams"""
+    """Retrieves all active (non-deleted) teams in a department"""
     statement = select(TeamModel).where(
         not_(TeamModel.is_deleted),
         TeamModel.department_id == department_id
