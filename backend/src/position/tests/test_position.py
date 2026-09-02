@@ -126,6 +126,46 @@ def test_get_active_positions(session, position):
     assert position in retrieved_positions
     assert position2 not in retrieved_positions
 
+
+def test_position_name_can_repeat_accross_departments(
+    session,
+    department,
+):
+    """Tests that position names are unique only within a department."""
+    department_b = department_repository.create_department(
+        session=session,
+        department_data=DepartmentCreate(
+            name="Radiology",
+            code="RAD",
+        ),
+    )
+
+    position_name = "Shared Position"
+
+    position_a = position_repository.create_position(
+        session=session,
+        position_data=PositionCreate(
+            name=position_name,
+            department_id=department.id,
+            duty_days=[1, 2, 3],
+        ),
+    )
+
+    position_b = position_repository.create_position(
+        session=session,
+        position_data=PositionCreate(
+            name=position_name,
+            department_id=department_b.id,
+            duty_days=[4, 5, 6],
+        ),
+    )
+
+    assert posiiton_a.id != position_b.id
+    assert position_a.department_id == department.id
+    assert position_b.department_id == department_b.id
+    assert position_a.name == position_b.name == position_name
+
+
 #####################
 # Controller tests
 #####################
