@@ -8,13 +8,14 @@ from sqlmodel import Session
 
 from src.team import repository
 from src.team.schemas import TeamCreate
+from src.team.models import Team as TeamModel
 
 
 def create_team_controller(
     team_data: TeamCreate,
     department_id: uuid.UUID,
     session: Session,
-):
+) -> TeamModel:
     """Handles the business logic for creating a new team."""
     existing_team = repository.get_team_by_name_for_department(
         session=session,
@@ -38,7 +39,7 @@ def create_team_controller(
 def list_teams_controller(
     session: Session,
     department_id: uuid.UUID,
-):
+) -> list[TeamModel]:
     """Handles logic for listing all active teams."""
     return repository.get_active_teams_by_department(
         session=session,
@@ -49,8 +50,8 @@ def list_teams_controller(
 def get_team_controller(
     team_id: uuid.UUID,
     department_id: uuid.UUID,
-    session=Session | None,
-):
+    session: Session,
+) -> TeamModel:
     """Handles logic for fetching a specific team by its UUID."""
     team = repository.get_team_by_id_for_department(
         session=session,

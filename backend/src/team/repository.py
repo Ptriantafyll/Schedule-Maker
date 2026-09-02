@@ -24,9 +24,9 @@ def get_team_by_name_for_department(
 
 def get_team_by_id_for_department(
     session: Session,
-    team_id: str,
+    team_id: uuid.UUID,
     department_id: uuid.UUID,
-) -> TeamModel:
+) -> TeamModel | None:
     """Retrieves a specific team by its UUID"""
     statement = select(TeamModel).where(
         TeamModel.id == team_id,

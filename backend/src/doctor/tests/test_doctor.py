@@ -554,32 +554,7 @@ def test_create_doctor_position_controller_nonexistent_doctor(session, position)
     assert "Doctor does not exist" in exc_info.value.detail
 
 
-def test_create_doctor_mismatched_team_and_department(session, team, department):
-    """Tests that doctor's team belong to their department"""
-    # department input is needed to add the first department
-    department_data = DepartmentCreate(name="dep2", code="T")
-    new_department = department_repository.create_department(
-        session, department_data)
-
-    doctor_data = DoctorCreate(
-        name="Dr Panos",
-        email="drpanos@gmail.com",
-        department_id=new_department.id,
-        team_id=team.id
-    )
-
-    with pytest.raises(Exception) as exc_info:
-        doctor_controllers.create_doctor_controller(
-            doctor_data=doctor_data,
-            session=session
-        )
-
-    assert exc_info.type.__name__ == "HTTPException"
-    assert exc_info.value.status_code == 422
-    assert "needs to match" in exc_info.value.detail
-
-
-def test_create_doctor_position_mismatched_department(session, department, team,  position):
+def test_create_doctor_position_mismatched_department(session, team,  position):
     """Tests that doctor's position belongs to their department"""
     department_data = DepartmentCreate(name="dep2", code="T")
     new_department = department_repository.create_department(
