@@ -9,10 +9,10 @@ from src.team.models import Team as TeamModel
 
 
 def get_team_by_name_for_department(
-        session: Session,
-        name: str,
-        department_id: uuid.UUID,
-) -> TeamModel:
+    session: Session,
+    name: str,
+    department_id: uuid.UUID,
+) -> TeamModel | None:
     """Retrieves a team by its unique name"""
     statement = select(TeamModel).where(
         TeamModel.name == name,

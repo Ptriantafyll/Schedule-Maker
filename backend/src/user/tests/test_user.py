@@ -20,7 +20,6 @@ from src.doctor import repository as doctor_repository
 from src.doctor.schemas import DoctorCreate
 from src.doctor.models import Doctor as DoctorModel
 from src.team import repository as team_repository
-from src.team.schemas import TeamCreate
 from src.auth.security import verify_password
 
 #####################

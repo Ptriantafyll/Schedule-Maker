@@ -20,7 +20,6 @@ from src.doctor.schemas import DoctorCreate, DoctorUnavailabilityCreate
 from src.doctor import repository as doctor_repository
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
-from src.team.schemas import TeamCreate
 from src.team import repository as team_repository
 from src.user.models import UserRole
 

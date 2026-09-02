@@ -85,8 +85,24 @@ def test_create_team(department, team):
     assert isinstance(team.updated_at, datetime.datetime)
 
 
-def test_get_team_by_name_for_department(session, team):
+def test_get_team_by_name_for_department(
+    session,
+    team,
+):
     """ Tests retrieving a team by its name."""
+    department_b = department_repository.create_department(
+        session=session,
+        department_data=DepartmentCreate(
+            name="Department B",
+            code="DEPT B",
+        )
+    )
+
+    same_name_team = team_repository.create_team(
+        session=session,
+        name=team.name,
+        department_id=department_b.id,
+    )
 
     retrieved_team = team_repository.get_team_by_name_for_department(
         session=session,
@@ -266,7 +282,7 @@ def test_create_team_route_rejects_supplied_department_id(
     department_admin_headers,
     session,
 ):
-    """Tests that the POST /teams/ route rejects invalid payloads."""
+    """Tests that the POST /teams/ route rejects client-supplied department scope."""
 
     response = client.post(
         "/api/v1/teams/",
@@ -288,7 +304,8 @@ def test_create_team_route_rejects_supplied_department_id(
         (
             error for error in validation_errors
             if error["loc"] == ["body", "department_id"]
-        )
+        ),
+        None,
     )
 
     assert department_id_error is not None

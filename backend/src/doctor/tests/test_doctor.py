@@ -10,7 +10,6 @@ from sqlmodel import Session
 
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
-from src.team.schemas import TeamCreate
 from src.team.repository import create_team
 from src.shift import repository as shift_repository
 from src.shift.schemas import ShiftCreate
