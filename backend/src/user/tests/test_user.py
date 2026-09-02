@@ -404,7 +404,7 @@ def test_department_admin_can_create_team(client, department_admin_headers, depa
     """Tests that a department admin can create a team"""
     response = client.post(
         "/api/v1/teams",
-        json={"name": "Rad Team E", "department_id": str(department.id)},
+        json={"name": "Rad Team E"},
         headers=department_admin_headers
     )
 
@@ -412,7 +412,11 @@ def test_department_admin_can_create_team(client, department_admin_headers, depa
     data = response.json()
     assert data["name"] == "Rad Team E"
     assert data["department_id"] == str(department.id)
-    new_team = team_repository.get_team_by_name(session, "Rad Team E")
+    new_team = team_repository.get_team_by_name(
+        session=session,
+        name="Rad Team E",
+        department_id=department.id,
+    )
     assert new_team is not None
     assert str(new_team.id) == data["id"]
 
