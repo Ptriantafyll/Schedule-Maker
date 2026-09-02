@@ -6,8 +6,10 @@ import uuid
 import datetime
 import pytest
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 
 from src.position.schemas import PositionCreate
+from src.position.models import Position as PositionModel
 from src.position import repository as position_repository
 from src.position import controllers as position_controllers
 from src.department.schemas import DepartmentCreate
@@ -23,6 +25,13 @@ from src.user.models import UserRole
 def department_fixture(session):
     """Creates a reusable department for tests"""
     dept_data = DepartmentCreate(name="Cardiology", code="CARD")
+    return department_repository.create_department(session, dept_data)
+
+
+@pytest.fixture(name="department_b")
+def department_b_fixture(session):
+    """Creates a second department for tenant-isolation tests."""
+    dept_data = DepartmentCreate(name="Radiology", code="RAD")
     return department_repository.create_department(session, dept_data)
 
 
@@ -85,8 +94,11 @@ def test_create_position(position):
     assert isinstance(position.updated_at, datetime.datetime)
 
 
-def test_get_position_by_id(session, position):
-    """Tests retrieving a position from the db"""
+def test_get_position_by_id_for_department_returns_own_active_position(
+    session,
+    position,
+):
+    """Tests retrieving an active Position from its department."""
     retrieved_position = position_repository.get_position_by_id_for_department(
         session=session,
         position_id=position.id,
@@ -97,36 +109,116 @@ def test_get_position_by_id(session, position):
     assert retrieved_position.id == position.id
 
 
-def test_get_position_by_name_for_department(session, position):
-    """Tests retrieving a position by its name"""
-    retrieved_position = position_repository.get_position_by_name_for_department(
+def test_get_position_by_id_for_department_hides_foreign_position(
+    session,
+    department,
+    department_b,
+):
+    """Tests that a scoped ID lookup hides foreign Positions."""
+    foreign_position = position_repository.create_position(
+        session=session,
+        position_name="Radiology Position",
+        department_id=department_b.id,
+        duty_days=[1, 3, 5],
+    )
+
+    retrieved_position = position_repository.get_position_by_id_for_department(
+        session=session,
+        position_id=foreign_position.id,
+        department_id=department.id,
+    )
+
+    assert retrieved_position is None
+
+
+def test_get_position_by_id_for_department_hides_deleted_position(
+    session,
+    position,
+):
+    """Tests that a scoped ID lookup hides deleted Positions."""
+    position.is_deleted = True
+    session.add(position)
+    session.commit()
+
+    retrieved_position = position_repository.get_position_by_id_for_department(
+        session=session,
+        position_id=position.id,
+        department_id=position.department_id,
+    )
+
+    assert retrieved_position is None
+
+
+def test_get_position_by_name_for_department(
+    session,
+    department_b,
+    position,
+):
+    """Tests resolving same-named Positions by department."""
+    position_b = position_repository.create_position(
+        session=session,
+        position_name=position.name,
+        department_id=department_b.id,
+        duty_days=[2, 4, 6],
+    )
+
+    retrieved_position_a = position_repository.get_position_by_name_for_department(
         session=session,
         department_id=position.department_id,
         position_name=position.name,
     )
+    retrieved_position_b = position_repository.get_position_by_name_for_department(
+        session=session,
+        department_id=position_b.department_id,
+        position_name=position_b.name,
+    )
 
-    assert retrieved_position is not None
-    assert retrieved_position.id == position.id
+    assert retrieved_position_a is not None
+    assert retrieved_position_b is not None
+    assert retrieved_position_a.id == position.id
+    assert retrieved_position_b.id == position_b.id
 
 
-def test_get_active_positions(session, position):
-    """Tests retrieving all active positions"""
-    position2 = position_repository.create_position(
+def test_get_active_positions_for_department_excludes_foreign_and_deleted(
+    session,
+    department,
+    department_b,
+    position,
+):
+    """Tests listing only active Positions within department scope."""
+    deleted_position = position_repository.create_position(
         session=session,
         position_name="Clinic",
         department_id=position.department_id,
-        duty_days=[4, 5, 6]
+        duty_days=[4, 5, 6],
+    )
+    foreign_position = position_repository.create_position(
+        session=session,
+        position_name=position.name,
+        department_id=department_b.id,
+        duty_days=[2, 4, 6],
     )
 
-    position2.is_deleted = True
-    session.add(position2)
+    deleted_position.is_deleted = True
+    session.add(deleted_position)
     session.commit()
 
-    retrieved_positions = position_repository.get_active_positions(session)
+    retrieved_positions = position_repository.get_active_positions_for_department(
+        session=session,
+        department_id=department.id,
+    )
 
-    assert isinstance(retrieved_positions, list)
-    assert position in retrieved_positions
-    assert position2 not in retrieved_positions
+    returned_ids = {
+        retrieved_position.id
+        for retrieved_position in retrieved_positions
+    }
+    assert position.id in returned_ids
+    assert deleted_position.id not in returned_ids
+    assert foreign_position.id not in returned_ids
+    assert all(
+        retrieved_position.department_id == department.id
+        for retrieved_position in retrieved_positions
+    )
 
 
 def test_position_name_can_repeat_across_departments(
@@ -230,7 +322,7 @@ def test_get_position_controller_nonexistent(session, position):
     """Tests that trying to retrieve a non existent position returns error"""
     with pytest.raises(Exception) as exc_info:
         position_controllers.get_position_controller(
-            position_name="test",
+            position_id=uuid.uuid4(),
             department_id=position.department_id,
             session=session,
         )
@@ -248,7 +340,7 @@ def test_get_position_controller_deleted(session, position):
 
     with pytest.raises(Exception) as exc_info:
         position_controllers.get_position_controller(
-            position_name=position.name,
+            position_id=position.id,
             department_id=position.department_id,
             session=session,
         )
@@ -338,27 +430,136 @@ def test_create_position_route_missing_duty_days(client, department_admin_header
     assert response.status_code == 422
 
 
-def test_list_positions_route(client, position, viewer_headers):
-    """Tests get /api/v1/positions route"""
+def test_create_position_rejects_admin_without_department(
+    client,
+    session,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that an unscoped department admin cannot create a Position."""
+    position_name = "Unscoped Position"
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None,
+    )
+
+    response = client.post(
+        "/api/v1/positions/",
+        json={
+            "name": position_name,
+            "duty_days": [1, 3, 5],
+        },
+        headers=auth_headers_factory(department_admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+    stored_positions = session.exec(
+        select(PositionModel).where(PositionModel.name == position_name)
+    ).all()
+    assert stored_positions == []
+
+
+def test_create_position_rejects_duplicate_name_within_department(
+    client,
+    session,
+    position,
+    department_admin_headers,
+):
+    """Tests that a department cannot duplicate one of its Position names."""
+    response = client.post(
+        "/api/v1/positions/",
+        json={
+            "name": position.name,
+            "duty_days": [2, 4, 6],
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Position already exists"}
+
+    stored_positions = session.exec(
+        select(PositionModel).where(
+            PositionModel.department_id == position.department_id,
+            PositionModel.name == position.name,
+        )
+    ).all()
+    assert {
+        stored_position.id
+        for stored_position in stored_positions
+    } == {position.id}
+
+
+def test_create_position_allows_same_name_in_another_department(
+    client,
+    session,
+    department_b,
+    position,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that separate departments may use the same Position name."""
+    department_b_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department_b.id,
+    )
+
+    response = client.post(
+        "/api/v1/positions/",
+        json={
+            "name": position.name,
+            "duty_days": [2, 4, 6],
+        },
+        headers=auth_headers_factory(department_b_admin),
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["name"] == position.name
+    assert data["department_id"] == str(department_b.id)
+
+    stored_position = position_repository.get_position_by_name_for_department(
+        session=session,
+        position_name=position.name,
+        department_id=department_b.id,
+    )
+    assert stored_position is not None
+    assert str(stored_position.id) == data["id"]
+
+
+def test_list_positions_route(
+    client,
+    session,
+    department,
+    department_b,
+    position,
+    viewer_headers,
+):
+    """Tests listing only Positions in the authenticated department."""
+    foreign_position = position_repository.create_position(
+        session=session,
+        position_name=position.name,
+        department_id=department_b.id,
+        duty_days=[2, 4, 6],
+    )
+
     response = client.get(
-        "/api/v1/positions",
+        "/api/v1/positions/",
         headers=viewer_headers,
     )
 
     assert response.status_code == 200
     data = response.json()
-    assert isinstance(data, list)
-
-    returned_position = next(
-        (
-            item
-            for item in data
-            if item["id"] == str(position.id)
-        ),
-        None
+    returned_ids = {item["id"] for item in data}
+    assert str(position.id) in returned_ids
+    assert str(foreign_position.id) not in returned_ids
+    assert all(
+        item["department_id"] == str(department.id)
+        for item in data
     )
-    assert returned_position is not None
-    assert returned_position["name"] == position.name
 
 
 def test_get_position_route(client, position, viewer_headers):
@@ -391,6 +592,45 @@ def test_get_position_route_nonexistent_id(client, viewer_headers):
     )
 
     assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DEPARTMENT_ADMIN,
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+    ],
+)
+def test_department_member_cannot_get_position_from_another_department(
+    client,
+    session,
+    department,
+    department_b,
+    role,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that foreign Position IDs are hidden from department members."""
+    foreign_position = position_repository.create_position(
+        session=session,
+        position_name="Radiology Position",
+        department_id=department_b.id,
+        duty_days=[1, 3, 5],
+    )
+    department_user = user_factory(
+        role=role,
+        department_id=department.id,
+    )
+
+    response = client.get(
+        f"/api/v1/positions/{foreign_position.id}",
+        headers=auth_headers_factory(department_user),
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Position not found"}
+    assert response.headers.get("WWW-Authenticate") is None
 
 
 @pytest.mark.parametrize(
@@ -487,3 +727,40 @@ def test_position_read_routes_require_authentication(
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+@pytest.mark.parametrize(
+    "path_template",
+    [
+        pytest.param(
+            "/api/v1/positions/",
+            id="list-positions",
+        ),
+        pytest.param(
+            "/api/v1/positions/{position_id}",
+            id="get-position",
+        ),
+    ],
+)
+def test_position_read_routes_reject_member_without_department(
+    client,
+    position,
+    path_template,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that Position reads reject accounts without tenant scope."""
+    viewer = user_factory(
+        role=UserRole.VIEWER,
+        department_id=None,
+    )
+    path = path_template.format(position_id=position.id)
+
+    response = client.get(
+        path,
+        headers=auth_headers_factory(viewer),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
