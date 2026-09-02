@@ -133,3 +133,29 @@ def test_role_guard_rejects_disallowed_roles(guard, role):
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Insufficient permissions for this operation"
     assert exc_info.value.headers is None
+
+
+def test_require_department_scope_returns_department_id():
+    """Tests that a valid tenant account provides its department scope."""
+    user = _make_user(UserRole.VIEWER)
+
+    result = dependencies.require_department_scope(
+        current_user=user,
+    )
+
+    assert result == user.department_id
+
+
+def test_require_department_scope_rejects_user_without_department():
+    """Tests that an account without department scope is rejected."""
+    user = _make_user(UserRole.DEPARTMENT_ADMIN)
+    user.department_id = None
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependencies.require_department_scope(
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Invalid account scope."
+    assert exc_info.value.headers is None
