@@ -18,9 +18,10 @@ def create_position_controller(
     session: Session,
 ) -> PositionModel:
     """Handled the logic for creating a new position"""
-    existing_position = repository.get_position_by_name(
+    existing_position = repository.get_position_by_name_for_department(
         session=session,
-        position_name=position_data.name
+        position_name=position_data.name,
+        department_id=department_id
     )
 
     if existing_position:
@@ -50,9 +51,17 @@ def list_positions_controller(session: Session) -> list[PositionModel]:
     return repository.get_active_positions(session)
 
 
-def get_position_controller(position_name: str, session: Session) -> PositionModel:
+def get_position_controller(
+    position_name: str,
+    department_id: uuid.UUID,
+    session: Session,
+) -> PositionModel:
     """Handles the logic for retrieving a position by its name"""
-    position = repository.get_position_by_name(session, position_name)
+    position = repository.get_position_by_name_for_department(
+        session=session,
+        position_name=position_name,
+        department_id=department_id,
+    )
 
     if not position or position.is_deleted:
         raise HTTPException(

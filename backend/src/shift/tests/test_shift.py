@@ -309,7 +309,7 @@ def test_shift_name_can_repeat_across_positions(
     """Tests that a shift name is allowed under different positions."""
     position_b = position_repository.create_position(
         session=session,
-        name="Position B",
+        position_name="Position B",
         department_id=position.department_id,
         duty_days=position.duty_days,
     )

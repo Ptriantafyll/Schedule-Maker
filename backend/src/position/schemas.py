@@ -27,12 +27,17 @@ class PositionBase(BaseModel):
     duty_days: list[int]
 
 
-class PositionCreate(PositionBase):
+class PositionCreate(BaseModel):
     """Schema for position creation requests.
 
     Inherits all required fields from `PositionBase`. Use this DTO as the
     request body for POST /positions.
     """
+
+    name: str
+    duty_days: list[int]
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class PositionUpdate(BaseModel):

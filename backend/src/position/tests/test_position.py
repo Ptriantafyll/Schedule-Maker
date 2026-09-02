@@ -87,20 +87,22 @@ def test_create_position(position):
 
 def test_get_position_by_id(session, position):
     """Tests retrieving a position from the db"""
-    retrieved_position = position_repository.get_position_by_id(
+    retrieved_position = position_repository.get_position_by_id_for_department(
         session=session,
-        position_id=position.id
+        position_id=position.id,
+        department_id=position.department_id,
     )
 
     assert retrieved_position is not None
     assert retrieved_position.id == position.id
 
 
-def test_get_position_by_name(session, position):
+def test_get_position_by_name_for_department(session, position):
     """Tests retrieving a position by its name"""
-    retrieved_position = position_repository.get_position_by_name(
+    retrieved_position = position_repository.get_position_by_name_for_department(
         session=session,
-        position_name=position.name
+        department_id=position.department_id,
+        position_name=position.name,
     )
 
     assert retrieved_position is not None
@@ -209,8 +211,7 @@ def test_create_position_controller_duplicate_name(session, position):
     """Tests that creating a position with a duplicate name returns error"""
     position_data = PositionCreate(
         name=position.name,
-        department_id=position.department_id,
-        duty_days=position.duty_days
+        duty_days=position.duty_days,
     )
 
     with pytest.raises(Exception) as exc_info:
@@ -229,8 +230,7 @@ def test_create_position_controller_nonexistent_department(session):
     """Tests that creating a position with a non existent position id returns error"""
     position_data = PositionCreate(
         name="ER",
-        department_id=uuid.uuid4(),
-        duty_days=[1, 2, 3]
+        duty_days=[1, 2, 3],
     )
 
     with pytest.raises(Exception) as exc_info:
@@ -245,10 +245,14 @@ def test_create_position_controller_nonexistent_department(session):
     assert "does not exist" in exc_info.value.detail
 
 
-def test_get_position_controller_nonexistent(session):
+def test_get_position_controller_nonexistent(session, position):
     """Tests that trying to retrieve a non existent position returns error"""
     with pytest.raises(Exception) as exc_info:
-        position_controllers.get_position_controller("test", session)
+        position_controllers.get_position_controller(
+            position_name="test",
+            department_id=position.department_id,
+            session=session,
+        )
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
@@ -262,7 +266,11 @@ def test_get_position_controller_deleted(session, position):
     session.commit()
 
     with pytest.raises(Exception) as exc_info:
-        position_controllers.get_position_controller(position.name, session)
+        position_controllers.get_position_controller(
+            position_name=position.name,
+            department_id=position.department_id,
+            session=session,
+        )
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
@@ -291,7 +299,7 @@ def test_create_position_route(
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "ER"
-    assert data["department_id"] == department.id
+    assert data["department_id"] == str(department.id)
     assert "duty_days" in data
     assert "id" in data
     assert "created_at" in data
@@ -302,6 +310,7 @@ def test_create_position_route_rejects_supplied_department_id(
     client,
     session,
     department,
+    team,
     department_admin_headers,
 ):
     """Tests post /api/v1/positions route"""
@@ -309,7 +318,7 @@ def test_create_position_route_rejects_supplied_department_id(
     response = client.post(
         "api/v1/positions",
         json={
-            "name": "ER",
+            "name": team.name,
             "duty_days": [1, 2, 3],
             "department_id": str(department.id),
         },
@@ -329,9 +338,10 @@ def test_create_position_route_rejects_supplied_department_id(
 
     assert department_id_error is not None
     assert department_id_error["type"] == "extra_forbidden"
-    assert position_repository.get_position_by_name(
+    assert position_repository.get_position_by_name_for_department(
         session=session,
         position_name=position_name,
+        department_id=department.id,
     ) is None
 
 
@@ -443,7 +453,11 @@ def test_non_department_admin_cannot_create_position(
     assert response.json() == {
         "detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") is None
-    assert position_repository.get_position_by_name(session, "ICU") is None
+    assert position_repository.get_position_by_name_for_department(
+        session=session,
+        position_name="ICU",
+        department_id=department.id,
+    ) is None
 
 
 def test_create_position_requires_authentication(client, department, session):
@@ -460,7 +474,11 @@ def test_create_position_requires_authentication(client, department, session):
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
-    assert position_repository.get_position_by_name(session, "ICU") is None
+    assert position_repository.get_position_by_name_for_department(
+        session=session,
+        position_name="ICU",
+        department_id=department.id,
+    ) is None
 
 
 @pytest.mark.parametrize(

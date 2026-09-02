@@ -28,18 +28,28 @@ def create_position(
     return new_position
 
 
-def get_position_by_id(session: Session, position_id: uuid.UUID) -> PositionModel:
+def get_position_by_id_for_department(
+    session: Session,
+    position_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> PositionModel:
     """Retrieves a position by its id"""
     statement = select(PositionModel).where(
-        PositionModel.id == position_id
+        PositionModel.id == position_id,
+        PositionModel.department_id == department_id,
     )
     return session.exec(statement).first()
 
 
-def get_position_by_name(session: Session, position_name: str) -> PositionModel:
+def get_position_by_name_for_department(
+    session: Session,
+    position_name: str,
+    department_id: uuid.UUID,
+) -> PositionModel:
     """Retrieves a position by its id"""
     statement = select(PositionModel).where(
-        PositionModel.name == position_name
+        PositionModel.name == position_name,
+        PositionModel.department_id == department_id,
     )
 
     return session.exec(statement).first()
