@@ -171,13 +171,11 @@ def test_position_name_cannot_repeat_within_department(
     session,
     position,
 ):
-    """Tests that a position name is unique within a department"""
-    position_name = "Shared Position"
-
+    """Tests that a position name is unique within a department."""
     duplicate_position = PositionCreate(
         name=position.name,
         department_id=position.department_id,
-        duty_days=[1, 2, 3],
+        duty_days=position.duty_days,
     )
 
     with pytest.raises(IntegrityError):
@@ -188,6 +186,32 @@ def test_position_name_cannot_repeat_within_department(
 
     session.rollback()
 
+
+def test_soft_deleted_position_name_remains_reserved_within_department(
+    session,
+    position,
+):
+    """Tests that a soft deletion does not release a position name."""
+    position.is_deleted = True
+    session.add(position)
+    session.commit()
+
+    replacement_position = PositionCreate(
+        name=position.name,
+        department_id=position.department_id,
+        duty_days=position.duty_days,
+    )
+
+    with pytest.raises(IntegrityError):
+        position_repository.create_position(
+            session=session,
+            position_data=replacement_position,
+        )
+
+    session.rollback()
+    session.refresh(position)
+
+    assert position.is_deleted is True
 
 #####################
 # Controller tests
