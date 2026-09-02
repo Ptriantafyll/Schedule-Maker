@@ -305,13 +305,13 @@ def test_shift_name_can_repeat_across_positions(
     session,
     position,
 ):
-    """Tests that a shift name is unique only within positions."""
+    """Tests that a shift name is allowed under different positions."""
     position_b = position_repository.create_position(
         session=session,
         position_data=PositionCreate(
             name="Position B",
             department_id=position.department_id,
-            duty_days=position.duty_days
+            duty_days=position.duty_days,
         ),
     )
 
@@ -366,6 +366,8 @@ def test_soft_deleted_shift_name_remains_reserved_within_position(
 ):
     """Tests that soft deletion does not release the shift name."""
     shift.is_deleted = True
+    session.add(shift)
+    session.commit()
     replacement_shift = ShiftCreate(
         name=shift.name,
         doctors_per_shift=shift.doctors_per_shift,

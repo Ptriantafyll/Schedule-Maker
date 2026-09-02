@@ -11,12 +11,22 @@ import uuid
 import datetime
 
 from sqlmodel import Field
+from sqlalchemy import UniqueConstraint
 from src.db.schemas import SyncBase
 
 
 class Shift(SyncBase, table=True):
     """Represents a work shift stored in the database."""
-    name: str = Field(index=True, unique=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "position_id",
+            "name",
+            name="uq_shift_position_name",
+        ),
+    )
+
+    name: str = Field(index=True)
     doctors_per_shift: int = 1
     grants_day_off: bool = False
     position_id: uuid.UUID = Field(foreign_key="position.id")
