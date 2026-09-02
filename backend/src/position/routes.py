@@ -41,17 +41,26 @@ def create_position(
 @router.get("/", response_model=list[PositionRead])
 def list_positions(
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Endpoint to list all positions"""
-    return position_controllers.list_positions_controller(session)
+    return position_controllers.list_positions_controller(
+        session=session,
+        department_id=department_id,
+    )
 
 
 @router.get("/{position_name}", response_model=PositionRead)
 def get_positions(
     position_name: str,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Fetches a specific position by its name."""
-    return position_controllers.get_position_controller(position_name, session)
+    return position_controllers.get_position_controller(
+        position_name=position_name,
+        department_id=department_id,
+        session=session,
+    )

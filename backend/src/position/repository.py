@@ -32,11 +32,12 @@ def get_position_by_id_for_department(
     session: Session,
     position_id: uuid.UUID,
     department_id: uuid.UUID,
-) -> PositionModel:
+) -> PositionModel | None:
     """Retrieves a position by its id"""
     statement = select(PositionModel).where(
         PositionModel.id == position_id,
         PositionModel.department_id == department_id,
+        not_(PositionModel.is_deleted),
     )
     return session.exec(statement).first()
 
@@ -45,7 +46,7 @@ def get_position_by_name_for_department(
     session: Session,
     position_name: str,
     department_id: uuid.UUID,
-) -> PositionModel:
+) -> PositionModel | None:
     """Retrieves a position by its id"""
     statement = select(PositionModel).where(
         PositionModel.name == position_name,
@@ -55,10 +56,14 @@ def get_position_by_name_for_department(
     return session.exec(statement).first()
 
 
-def get_active_positions(session: Session) -> list[PositionModel]:
+def get_active_positions_for_department(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[PositionModel]:
     """Retrieves all active (non deleted) positions"""
     statement = select(PositionModel).where(
-        not_(PositionModel.is_deleted)
+        not_(PositionModel.is_deleted),
+        PositionModel.department_id == department_id
     )
 
     return session.exec(statement).all()

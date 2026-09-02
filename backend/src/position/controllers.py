@@ -38,9 +38,15 @@ def create_position_controller(
     )
 
 
-def list_positions_controller(session: Session) -> list[PositionModel]:
+def list_positions_controller(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[PositionModel]:
     """Handles the logic for listing all active positions"""
-    return repository.get_active_positions(session)
+    return repository.get_active_positions_for_department(
+        session=session,
+        department_id=department_id,
+    )
 
 
 def get_position_controller(
