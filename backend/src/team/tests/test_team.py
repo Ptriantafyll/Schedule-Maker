@@ -468,7 +468,7 @@ def test_create_team_allows_same_name_in_another_department(
     stored_team = team_repository.get_team_by_name_for_department(
         session=session,
         name=team.name,
-        department_id=team.department_id,
+        department_id=department_b.id,
     )
 
     assert stored_team is not None
@@ -663,7 +663,7 @@ def test_team_read_routes_reject_member_without_department(
 
     assert response.status_code == 403
     assert response.json() == {"detail": "Invalid account scope."}
-    assert response.headers.get("WWW-Authenticate") == "Bearer"
+    assert response.headers.get("WWW-Authenticate") is None
 
 
 @pytest.mark.parametrize(

@@ -54,7 +54,12 @@ def list_teams(
 def get_team(
     team_id: uuid.UUID,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Fetches a specific team by its UUID."""
-    return team_controllers.get_team_controller(team_id, session)
+    return team_controllers.get_team_controller(
+        team_id=team_id,
+        department_id=department_id,
+        session=session,
+    )

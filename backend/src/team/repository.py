@@ -52,7 +52,7 @@ def get_active_teams_by_department(
 
 def create_team(
     session: Session,
-    name: str,
+    name: uuid.UUID,
     department_id: uuid.UUID,
 ) -> TeamModel:
     """Creates a new team in the database."""
