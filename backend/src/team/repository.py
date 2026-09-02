@@ -8,11 +8,14 @@ from sqlmodel import Session, not_, select
 from src.team.models import Team as TeamModel
 
 
-def get_team_by_name(session: Session, name: str) -> TeamModel:
+def get_team_by_name(session: Session, name: str, department_id: uuid.UUID) -> TeamModel:
     """Retrieves a team by its unique name"""
-    return session.exec(
-        select(TeamModel).where(TeamModel.name == name)
-    ).first()
+    statement = select(TeamModel).where(
+        TeamModel.name == name,
+        TeamModel.department_id == department_id,
+    )
+
+    return session.exec(statement).first()
 
 
 def get_team_by_id(session: Session, team_id: str) -> TeamModel:

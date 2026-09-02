@@ -10,7 +10,11 @@ from src.db.connection import get_session
 from src.team.schemas import TeamCreate, TeamRead
 from src.team import controllers as team_controllers
 from src.user.models import User as UserModel
-from src.auth.dependencies import require_department_admin, require_department_member
+from src.auth.dependencies import (
+    require_department_admin,
+    require_department_member,
+    require_department_scope,
+)
 
 router = APIRouter(
     prefix="/teams",
@@ -22,10 +26,15 @@ router = APIRouter(
 def create_team(
     team_data: TeamCreate,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_admin),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Endpoint to create a new team. Placeholder implementation."""
-    return team_controllers.create_team_controller(team_data, session)
+    return team_controllers.create_team_controller(
+        session=session,
+        team_data=team_data,
+        department_id=department_id,
+    )
 
 
 @router.get("/", response_model=list[TeamRead])

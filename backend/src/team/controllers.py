@@ -2,23 +2,36 @@
 Team controller functions for handling business logic related to team management.
 """
 
+import uuid
 from fastapi import HTTPException, status
+from sqlmodel import Session
 
 from src.team import repository
+from src.team.schemas import TeamCreate
 
 
-def create_team_controller(team_data, session):
+def create_team_controller(
+    team_data: TeamCreate,
+    department_id: uuid.UUID,
+    session: Session,
+):
     """Handles the business logic for creating a new team."""
-    existing_team = repository.get_team_by_name(session, team_data.name)
+    existing_team = repository.get_team_by_name(
+        session=session,
+        name=team_data.name,
+        department_id=department_id,
+    )
+
     if existing_team:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"A team named '{team_data.name}' already exists."
         )
+
     return repository.create_team(
         session=session,
         name=team_data.name,
-        department_id=team_data.department_id,
+        department_id=department_id,
     )
 
 

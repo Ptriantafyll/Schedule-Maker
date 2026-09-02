@@ -85,10 +85,14 @@ def test_create_team(department, team):
     assert isinstance(team.updated_at, datetime.datetime)
 
 
-def test_get_team_by_name(session, team):
+def test_get_team_by_name_for_department(session, team):
     """ Tests retrieving a team by its name."""
 
-    retrieved_team = team_repository.get_team_by_name(session, team.name)
+    retrieved_team = team_repository.get_team_by_name(
+        session=session,
+        name=team.name,
+        department_id=team.department_id,
+    )
 
     assert retrieved_team is not None
     assert retrieved_team.id == team.id
@@ -194,9 +198,12 @@ def test_soft_deleted_team_name_remains_reserved_within_department(
 def test_create_team_controller_duplicate_name(session, department, team):
     """Test that creating a team with a duplicate name raises an error."""
 
-    team_data = TeamCreate(name=team.name)
     with pytest.raises(HTTPException) as exc_info:
-        team_controllers.create_team_controller(team_data, session)
+        team_controllers.create_team_controller(
+            team_data=TeamCreate(name=team.name),
+            department_id=team.department_id,
+            session=session,
+        )
 
     assert exc_info.value.status_code == 400
     assert "already exists" in exc_info.value.detail
@@ -270,7 +277,8 @@ def test_create_team_route_rejects_supplied_department_id(
     assert response.status_code == 422
     assert team_repository.get_team_by_name(
         session=session,
-        name="Team A"
+        name="Team A",
+        department_id=department.id
     ) is None
 
 
@@ -353,7 +361,11 @@ def test_non_department_admin_cannot_create_team(
     data = response.json()
     assert data == {"detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") is None
-    assert team_repository.get_team_by_name(session, "Rad Team E") is None
+    assert team_repository.get_team_by_name(
+        session=session,
+        name="Rad Team E",
+        department_id=department.id,
+    ) is None
 
 
 @pytest.mark.parametrize(
