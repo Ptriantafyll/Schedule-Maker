@@ -230,7 +230,9 @@ def test_create_team_route(client, department, department_admin_headers):
 
     response = client.post(
         "/api/v1/teams",
-        json={"name": "Rad Team E", "department_id": str(department.id)},
+        json={
+            "name": "Rad Team E",
+        },
         headers=department_admin_headers,
     )
 
@@ -243,12 +245,15 @@ def test_create_team_route(client, department, department_admin_headers):
     assert "updated_at" in data
 
 
-def test_create_team_route_invalid_payload(client, department_admin_headers):
+def test_create_team_route_invalid_payload(client, department, department_admin_headers):
     """Tests that the POST /teams/ route rejects invalid payloads."""
 
     response = client.post(
         "/api/v1/teams/",
-        json={"name": "Team A"},
+        json={
+            "name": "Team A",
+            "department_id": str(department.id),
+        },
         headers=department_admin_headers,
     )
     assert response.status_code == 422
@@ -325,7 +330,7 @@ def test_non_department_admin_cannot_create_team(
 
     response = client.post(
         "/api/v1/teams",
-        json={"name": "Rad Team E", "department_id": str(department.id)},
+        json={"name": "Rad Team E"},
         headers=headers
     )
 
