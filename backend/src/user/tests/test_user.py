@@ -412,7 +412,7 @@ def test_department_admin_can_create_team(client, department_admin_headers, depa
     data = response.json()
     assert data["name"] == "Rad Team E"
     assert data["department_id"] == str(department.id)
-    new_team = team_repository.get_team_by_name(
+    new_team = team_repository.get_team_by_name_for_department(
         session=session,
         name="Rad Team E",
         department_id=department.id,

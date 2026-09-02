@@ -88,7 +88,7 @@ def test_create_team(department, team):
 def test_get_team_by_name_for_department(session, team):
     """ Tests retrieving a team by its name."""
 
-    retrieved_team = team_repository.get_team_by_name(
+    retrieved_team = team_repository.get_team_by_name_for_department(
         session=session,
         name=team.name,
         department_id=team.department_id,
@@ -127,6 +127,8 @@ def test_get_active_teams(session, department):
 def test_team_name_can_repeat_across_departments(
     session,
     department,
+
+
 ):
     """Tests that team names are unique only within a department."""
     department_b = department_repository.create_department(
@@ -275,11 +277,22 @@ def test_create_team_route_rejects_supplied_department_id(
         headers=department_admin_headers,
     )
     assert response.status_code == 422
-    assert team_repository.get_team_by_name(
+    assert team_repository.get_team_by_name_for_department(
         session=session,
         name="Team A",
         department_id=department.id
     ) is None
+
+    validation_errors = response.json()["detail"]
+    department_id_error = next(
+        (
+            error for error in validation_errors
+            if error["loc"] == ["body", "department_id"]
+        )
+    )
+
+    assert department_id_error is not None
+    assert department_id_error["type"] == "extra_forbidden"
 
 
 def test_get_team_by_id_route(client, department, team, viewer_headers):
@@ -361,7 +374,7 @@ def test_non_department_admin_cannot_create_team(
     data = response.json()
     assert data == {"detail": "Insufficient permissions for this operation"}
     assert response.headers.get("WWW-Authenticate") is None
-    assert team_repository.get_team_by_name(
+    assert team_repository.get_team_by_name_for_department(
         session=session,
         name="Rad Team E",
         department_id=department.id,

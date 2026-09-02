@@ -16,7 +16,7 @@ def create_team_controller(
     session: Session,
 ):
     """Handles the business logic for creating a new team."""
-    existing_team = repository.get_team_by_name(
+    existing_team = repository.get_team_by_name_for_department(
         session=session,
         name=team_data.name,
         department_id=department_id,
