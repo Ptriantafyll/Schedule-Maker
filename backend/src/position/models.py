@@ -10,11 +10,20 @@ from __future__ import annotations
 import uuid
 
 from sqlmodel import Field, Column, JSON
+from sqlalchemy import UniqueConstraint
 from src.db.schemas import SyncBase
 
 
 class Position(SyncBase, table=True):
     """Represents a position that needs to be staffed, such as "ER" or "ICU", stored in the database."""
-    name: str = Field(index=True, unique=True)
+    __table_args__ = (
+        UniqueConstraint(
+            "department_id",
+            "name",
+            name="uq_team_department_name",
+        ),
+    )
+
+    name: str = Field(index=True)
     department_id: uuid.UUID = Field(foreign_key="department.id")
     duty_days: list[int] = Field(default_factory=list, sa_column=Column(JSON))
