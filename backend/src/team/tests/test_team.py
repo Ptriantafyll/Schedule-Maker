@@ -28,7 +28,11 @@ def team_fixture(session, department):
     """Creates a reusable team for tests"""
 
     team_data = TeamCreate(name="ER Team A", department_id=department.id)
-    return team_repository.create_team(session, team_data)
+    return team_repository.create_team(
+        session=session,
+        name=team_data.name,
+        department_id=team_data.department_id,
+    )
 
 
 @pytest.fixture(name="department_admin_user")
@@ -95,10 +99,18 @@ def test_get_active_teams(session, department):
     """ Tests retrieving only active (non-deleted) teams."""
 
     team1_data = TeamCreate(name="Onco Team C", department_id=department.id)
-    team1 = team_repository.create_team(session, team1_data)
+    team1 = team_repository.create_team(
+        session=session,
+        name=team1_data.name,
+        department_id=team1_data.department_id
+    )
 
     team2_data = TeamCreate(name="Onco Team D", department_id=department.id)
-    team2 = team_repository.create_team(session, team2_data)
+    team2 = team_repository.create_team(
+        session=session,
+        name=team2_data.name,
+        department_id=team2_data.department_id,
+    )
 
     # Mark team2 as deleted
     team2.is_deleted = True
@@ -124,12 +136,14 @@ def test_team_name_can_repeat_across_departments(
 
     team_a = team_repository.create_team(
         session,
-        TeamCreate(name=team_name, department_id=department.id)
+        name=team_name,
+        department_id=department.id,
     )
 
     team_b = team_repository.create_team(
         session,
-        TeamCreate(name=team_name, department_id=department_b.id)
+        name=team_name,
+        department_id=department_b.id,
     )
 
     assert team_a.id != team_b.id
@@ -149,7 +163,11 @@ def test_team_name_cannot_repeat_within_department(
     )
 
     with pytest.raises(IntegrityError):
-        team_repository.create_team(session, duplicate_team)
+        team_repository.create_team(
+            session=session,
+            name=duplicate_team.name,
+            department_id=duplicate_team.department_id,
+        )
 
     session.rollback()
 
@@ -170,8 +188,9 @@ def test_soft_deleted_team_name_remains_reserved_within_department(
 
     with pytest.raises(IntegrityError):
         team_repository.create_team(
-            session,
-            replacement_team,
+            session=session,
+            name=replacement_team.name,
+            department_id=replacement_team.department_id,
         )
 
     session.rollback()

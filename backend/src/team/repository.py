@@ -28,7 +28,7 @@ def get_active_teams(session: Session) -> list[TeamModel]:
 def create_team(
     session: Session,
     name: str,
-    department_id: uuid.UUID
+    department_id: uuid.UUID,
 ) -> TeamModel:
     """Creates a new team in the database."""
     new_team = TeamModel(
