@@ -317,7 +317,7 @@ def test_create_position_route_invalid_payload(client, department_admin_headers)
 
 
 def test_list_positions_route(client, position, viewer_headers):
-    """Tests get /api/v1/positionsroute"""
+    """Tests get /api/v1/positions route"""
     response = client.get(
         "/api/v1/positions",
         headers=viewer_headers,
@@ -340,9 +340,9 @@ def test_list_positions_route(client, position, viewer_headers):
 
 
 def test_get_position_route(client, position, viewer_headers):
-    """Tests get /api/v1/positions/{position_name} route"""
+    """Tests get /api/v1/positions/{position_id} route"""
     response = client.get(
-        f"/api/v1/positions/{position.name}",
+        f"/api/v1/positions/{position.id}",
         headers=viewer_headers,
     )
 
@@ -351,10 +351,20 @@ def test_get_position_route(client, position, viewer_headers):
     assert data["id"] == str(position.id)
 
 
-def test_get_position_route_nonexistent_name(client, viewer_headers):
-    """Tests get /api/v1/positions/{position_name} route with invalid payload"""
+def test_get_position_route_malformed_id(client, viewer_headers):
+    """Tests get /api/v1/positions/{position_id} route with invalid payload"""
     response = client.get(
         "/api/v1/positions/test",
+        headers=viewer_headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_get_position_route_nonexistent_id(client, viewer_headers):
+    """Tests get /api/v1/positions/{position_id} route with nonexistent id"""
+    response = client.get(
+        f"/api/v1/positions/{uuid.uuid4()}",
         headers=viewer_headers,
     )
 
@@ -431,7 +441,7 @@ def test_create_position_requires_authentication(client, department, session):
             id="list-positions",
         ),
         pytest.param(
-            "/api/v1/positions/{position_name}",
+            "/api/v1/positions/{position_id}",
             id="get-position",
         ),
     ],
