@@ -5,6 +5,7 @@ Tests for the position module
 import uuid
 import datetime
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from src.position.schemas import PositionCreate
 from src.position import repository as position_repository
@@ -127,7 +128,7 @@ def test_get_active_positions(session, position):
     assert position2 not in retrieved_positions
 
 
-def test_position_name_can_repeat_accross_departments(
+def test_position_name_can_repeat_across_departments(
     session,
     department,
 ):
@@ -160,10 +161,32 @@ def test_position_name_can_repeat_accross_departments(
         ),
     )
 
-    assert posiiton_a.id != position_b.id
+    assert position_a.id != position_b.id
     assert position_a.department_id == department.id
     assert position_b.department_id == department_b.id
     assert position_a.name == position_b.name == position_name
+
+
+def test_position_name_cannot_repeat_within_department(
+    session,
+    position,
+):
+    """Tests that a position name is unique within a department"""
+    position_name = "Shared Position"
+
+    duplicate_position = PositionCreate(
+        name=position.name,
+        department_id=position.department_id,
+        duty_days=[1, 2, 3],
+    )
+
+    with pytest.raises(IntegrityError):
+        position_repository.create_position(
+            session=session,
+            position_data=duplicate_position,
+        )
+
+    session.rollback()
 
 
 #####################
