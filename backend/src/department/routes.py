@@ -14,7 +14,11 @@ from src.department.controllers import (
 )
 
 from src.user.models import User as UserModel
-from src.auth.dependencies import require_super_admin, require_department_member
+from src.auth.dependencies import (
+    require_super_admin,
+    require_department_member,
+    require_department_scope,
+)
 
 router = APIRouter(
     prefix="/departments",
@@ -35,11 +39,12 @@ def list_departments(
 def get_department(
     department_id: uuid.UUID,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    member_department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Fetches a specific department by its UUID."""
     return get_department_controller(
         department_id=department_id,
-        member_department_id=current_user.department_id,
+        member_department_id=member_department_id,
         session=session,
     )
