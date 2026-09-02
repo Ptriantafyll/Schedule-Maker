@@ -123,17 +123,30 @@ def test_get_team_by_name_for_department(
 
 def test_get_active_teams_by_department(session, department):
     """Tests retrieving only active (non-deleted) teams."""
-
     team1 = team_repository.create_team(
         session=session,
         name="Onco Team C",
-        department_id=department.id
+        department_id=department.id,
     )
 
     team2 = team_repository.create_team(
         session=session,
-        name="Onco team C",
+        name="Onco team D",
         department_id=department.id,
+    )
+
+    department_b = department_repository.create_department(
+        session=session,
+        department_data=DepartmentCreate(
+            name="Department B",
+            code="DEPT B",
+        )
+    )
+
+    foreign_team = team_repository.create_team(
+        session=session,
+        name=team1.name,
+        department_id=department_b.id,
     )
 
     # Mark team2 as deleted
@@ -148,6 +161,71 @@ def test_get_active_teams_by_department(session, department):
 
     assert team1 in active_teams
     assert team2 not in active_teams
+    assert foreign_team not in active_teams
+    assert all(
+        team.department_id == department.id
+        for team in active_teams
+    )
+
+
+def test_get_team_by_id_for_department_returns_own_active_team(
+    session,
+    team,
+):
+    """Tests retrieving an active team from its department."""
+    retrieved_team = team_repository.get_team_by_id_for_department(
+        session=session,
+        team_id=team.id,
+        department_id=team.department_id,
+    )
+
+    assert retrieved_team == team
+
+
+def test_get_team_by_id_for_department_hides_foreign_team(
+    session,
+    team
+):
+    """Tests that a department-scoped lookup hides foreign teams."""
+    department_b = department_repository.create_department(
+        session=session,
+        department_data=DepartmentCreate(
+            name="Department B",
+            code="DEPT B",
+        )
+    )
+
+    foreign_team = team_repository.create_team(
+        session=session,
+        name=team.name,
+        department_id=department_b.id,
+    )
+
+    retrieved_team = team_repository.get_team_by_id_for_department(
+        session=session,
+        team_id=foreign_team.id,
+        department_id=team.department_id,
+    )
+
+    assert retrieved_team is None
+
+
+def test_get_team_by_id_for_department_hides_deleted_team(
+    session,
+    team,
+):
+    """Tests tjat a department-scoped lookup hides deleted teams."""
+    team.is_deleted = True
+    session.add(team)
+    session.commit()
+
+    retrieved_team = team_repository.get_team_by_id_for_department(
+        session=session,
+        team_id=team.id,
+        department_id=team.department_id,
+    )
+
+    assert retrieved_team is None
 
 
 def test_team_name_can_repeat_across_departments(
@@ -221,7 +299,7 @@ def test_soft_deleted_team_name_remains_reserved_within_department(
 #######################
 
 
-def test_create_team_controller_duplicate_name(session, department, team):
+def test_create_team_controller_duplicate_name(session, team):
     """Test that creating a team with a duplicate name raises an error."""
 
     with pytest.raises(HTTPException) as exc_info:
@@ -235,12 +313,16 @@ def test_create_team_controller_duplicate_name(session, department, team):
     assert "already exists" in exc_info.value.detail
 
 
-def test_get_team_controller_nonexistent(session):
+def test_get_team_controller_nonexistent(session, department):
     """Test that fetching a non-existent team raises a 404 error"""
     non_existent_id = uuid.uuid4()
 
     with pytest.raises(HTTPException) as exc_info:
-        team_controllers.get_team_controller(non_existent_id, session)
+        team_controllers.get_team_controller(
+            session=session,
+            team_id=non_existent_id,
+            department_id=department.id,
+        )
 
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
@@ -254,7 +336,11 @@ def test_get_team_controller_deleted(session, team):
     session.commit()
 
     with pytest.raises(HTTPException) as exc_info:
-        team_controllers.get_team_controller(team.id, session)
+        team_controllers.get_team_controller(
+            session=session,
+            team_id=team.id,
+            department_id=team.department_id,
+        )
 
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
@@ -318,6 +404,75 @@ def test_create_team_route_rejects_supplied_department_id(
 
     assert department_id_error is not None
     assert department_id_error["type"] == "extra_forbidden"
+
+
+def test_create_team_rejects_duplicate_name_within_department(
+    client,
+    session,
+    team,
+    department_admin_headers,
+):
+    """Tests that an admin cannot dupliacte a team name in their department"""
+    response = client.post(
+        "/api/v1/teams",
+        json={"name": team.name},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "detail": f"A team named '{team.name}' already exists."
+    }
+
+    stored_teams = team_repository.get_active_teams_by_department(
+        session=session,
+        department_id=team.department_id,
+    )
+
+    assert {stored_team.id for stored_team in stored_teams} == {team.id}
+
+
+def test_create_team_allows_same_name_in_another_department(
+    client,
+    session,
+    team,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that another department may use the same team name."""
+    department_b = department_repository.create_department(
+        session=session,
+        department_data=DepartmentCreate(
+            name="Department B",
+            code="DEPT B",
+        )
+    )
+
+    department_b_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department_b.id
+    )
+
+    response = client.post(
+        "/api/v1/teams",
+        json={"name": team.name},
+        headers=auth_headers_factory(department_b_admin),
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+
+    assert data["name"] == team.name
+    assert data["department_id"] == str(department_b.id)
+
+    stored_team = team_repository.get_team_by_name_for_department(
+        session=session,
+        name=team.name,
+        department_id=team.department_id,
+    )
+
+    assert stored_team is not None
+    assert str(stored_team.id) == data["id"]
 
 
 def test_get_team_by_id_route(client, department, team, viewer_headers):
@@ -422,6 +577,30 @@ def test_non_department_admin_cannot_create_team(
     ) is None
 
 
+def test_create_team_rejects_admin_without_department(
+    client,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that a department admin without scope cannot create a team."""
+    attempted_name = "Unscoped team"
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None
+    )
+    headers = auth_headers_factory(department_admin)
+
+    response = client.post(
+        "/api/v1/teams/",
+        json={"name": attempted_name},
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
 @pytest.mark.parametrize(
     "path_template",
     [
@@ -447,6 +626,43 @@ def test_team_read_routes_require_authentication(
 
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+@pytest.mark.parametrize(
+    "path_template",
+    [
+        pytest.param(
+            "/api/v1/teams/",
+            id="list-teams",
+        ),
+        pytest.param(
+            "/api/v1/teams/{team_id}",
+            id="get-team",
+        ),
+    ],
+)
+def test_team_read_routes_reject_member_without_department(
+    client,
+    team,
+    user_factory,
+    auth_headers_factory,
+    path_template,
+):
+    """Tests that team reads reject a member without a department scope"""
+    viewer = user_factory(
+        role=UserRole.VIEWER,
+        department_id=None,
+    )
+    path = path_template.format(team_id=team.id)
+
+    response = client.get(
+        path,
+        headers=auth_headers_factory(viewer)
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
 
 
@@ -489,33 +705,4 @@ def test_department_member_cannot_get_team_from_another_department(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Team not found."}
-
-
-@pytest.mark.parametrize(
-    "role",
-    [
-        UserRole.VIEWER,
-        UserRole.DOCTOR,
-        UserRole.DEPARTMENT_ADMIN,
-    ]
-)
-def test_department_member_can_get_team_from_their_department(
-    client,
-    session,
-    team,
-    user_factory,
-    auth_headers_factory,
-):
-    """Tests that a user can retrieve a team from their department"""
-    user = user_factory(
-        role=role,
-        department_id=department_b.id
-    )
-    headers = auth_headers_factory(user)
-
-    response = client.get(
-        f"/api/v1/teams/{team.id}",
-        headers=headers,
-    )
-
-    assert response.status_code = 200
+    assert response.headers.get("WWW-Authenticate") is None

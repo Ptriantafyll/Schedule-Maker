@@ -22,9 +22,19 @@ def get_team_by_name_for_department(
     return session.exec(statement).first()
 
 
-def get_team_by_id(session: Session, team_id: str) -> TeamModel:
+def get_team_by_id_for_department(
+    session: Session,
+    team_id: str,
+    department_id: uuid.UUID,
+) -> TeamModel:
     """Retrieves a specific team by its UUID"""
-    return session.get(TeamModel, team_id)
+    statement = select(TeamModel).where(
+        TeamModel.id == team_id,
+        TeamModel.department_id == department_id,
+        not_(TeamModel.is_deleted),
+    )
+
+    return session.exec(statement).first()
 
 
 def get_active_teams_by_department(

@@ -46,9 +46,17 @@ def list_teams_controller(
     )
 
 
-def get_team_controller(team_id, session):
+def get_team_controller(
+    team_id: uuid.UUID,
+    department_id: uuid.UUID,
+    session=Session,
+):
     """Handles logic for fetching a specific team by its UUID."""
-    team = repository.get_team_by_id(session, team_id)
+    team = repository.get_team_by_id_for_department(
+        session=session,
+        team_id=team_id,
+        department_id=department_id
+    )
     if not team or team.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
