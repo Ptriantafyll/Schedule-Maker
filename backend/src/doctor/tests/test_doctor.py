@@ -118,13 +118,12 @@ def team_fixture(session, department):
 @pytest.fixture(name="position")
 def position_fixture(session, department):
     """Creates a reusable position for tests"""
-    position_data = PositionCreate(
-        name="ER",
+    return position_repository.create_position(
+        session=session,
+        position_name="ER",
         department_id=department.id,
         duty_days=[1, 3, 5],
     )
-
-    return position_repository.create_position(session, position_data)
 
 
 @pytest.fixture(name="shift")

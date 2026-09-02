@@ -12,7 +12,11 @@ from src.position.models import Position as PositionModel
 from src.department import repository as department_repository
 
 
-def create_position_controller(position_data: PositionCreate, session: Session) -> PositionModel:
+def create_position_controller(
+    position_data: PositionCreate,
+    department_id: uuid.UUID,
+    session: Session,
+) -> PositionModel:
     """Handled the logic for creating a new position"""
     existing_position = repository.get_position_by_name(
         session=session,
@@ -33,7 +37,12 @@ def create_position_controller(position_data: PositionCreate, session: Session) 
             detail="Department does not exist"
         )
 
-    return repository.create_position(session, position_data)
+    return repository.create_position(
+        session=session,
+        position_name=position_data.name,
+        duty_days=position_data.duty_days,
+        department_id=department_id,
+    )
 
 
 def list_positions_controller(session: Session) -> list[PositionModel]:

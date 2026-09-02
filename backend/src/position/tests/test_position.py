@@ -29,13 +29,12 @@ def department_fixture(session):
 @pytest.fixture(name="position")
 def position_fixture(session, department):
     """Creates a reusable position for tests"""
-    position_data = PositionCreate(
-        name="ER",
+    return position_repository.create_position(
+        session=session,
+        position_name="ER",
         department_id=department.id,
         duty_days=[1, 3, 5],
     )
-
-    return position_repository.create_position(session, position_data)
 
 
 @pytest.fixture(name="department_admin_user")
@@ -110,12 +109,12 @@ def test_get_position_by_name(session, position):
 
 def test_get_active_positions(session, position):
     """Tests retrieving all active positions"""
-    position_data = PositionCreate(
-        name="Clinic",
+    position2 = position_repository.create_position(
+        session=session,
+        position_name="Clinic",
         department_id=position.department_id,
         duty_days=[4, 5, 6]
     )
-    position2 = position_repository.create_position(session, position_data)
 
     position2.is_deleted = True
     session.add(position2)
@@ -145,20 +144,16 @@ def test_position_name_can_repeat_across_departments(
 
     position_a = position_repository.create_position(
         session=session,
-        position_data=PositionCreate(
-            name=position_name,
-            department_id=department.id,
-            duty_days=[1, 2, 3],
-        ),
+        position_name=position_name,
+        department_id=department.id,
+        duty_days=[1, 2, 3],
     )
 
     position_b = position_repository.create_position(
         session=session,
-        position_data=PositionCreate(
-            name=position_name,
-            department_id=department_b.id,
-            duty_days=[4, 5, 6],
-        ),
+        position_name=position_name,
+        department_id=department_b.id,
+        duty_days=[4, 5, 6],
     )
 
     assert position_a.id != position_b.id
@@ -172,16 +167,12 @@ def test_position_name_cannot_repeat_within_department(
     position,
 ):
     """Tests that a position name is unique within a department."""
-    duplicate_position = PositionCreate(
-        name=position.name,
-        department_id=position.department_id,
-        duty_days=position.duty_days,
-    )
-
     with pytest.raises(IntegrityError):
         position_repository.create_position(
             session=session,
-            position_data=duplicate_position,
+            position_name=position.name,
+            department_id=position.department_id,
+            duty_days=position.duty_days,
         )
 
     session.rollback()
@@ -196,16 +187,12 @@ def test_soft_deleted_position_name_remains_reserved_within_department(
     session.add(position)
     session.commit()
 
-    replacement_position = PositionCreate(
-        name=position.name,
-        department_id=position.department_id,
-        duty_days=position.duty_days,
-    )
-
     with pytest.raises(IntegrityError):
         position_repository.create_position(
             session=session,
-            position_data=replacement_position,
+            position_name=position.name,
+            department_id=position.department_id,
+            duty_days=position.duty_days,
         )
 
     session.rollback()
@@ -227,7 +214,11 @@ def test_create_position_controller_duplicate_name(session, position):
     )
 
     with pytest.raises(Exception) as exc_info:
-        position_controllers.create_position_controller(position_data, session)
+        position_controllers.create_position_controller(
+            position_data=position_data,
+            department_id=position.department_id,
+            session=session,
+        )
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 400
@@ -243,7 +234,11 @@ def test_create_position_controller_nonexistent_department(session):
     )
 
     with pytest.raises(Exception) as exc_info:
-        position_controllers.create_position_controller(position_data, session)
+        position_controllers.create_position_controller(
+            position_data=position_data,
+            department_id=uuid.uuid4(),
+            session=session,
+        )
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 422
