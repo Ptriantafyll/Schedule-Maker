@@ -132,7 +132,12 @@ def create_doctor_position(
     """
     Assigns a position to a doctor
     """
-    return doctor_controllers.create_doctor_position_controller(session, doctor_id, doctor_position_data)
+    return doctor_controllers.create_doctor_position_controller(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+        doctor_pos_data=doctor_position_data,
+    )
 
 
 @router.get("/{doctor_id}/position", response_model=list[DoctorPositionRead])
