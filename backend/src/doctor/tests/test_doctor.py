@@ -81,7 +81,11 @@ def create_test_unavailability(
     )
 
 
-def create_test_doctor_position(session: Session, doctor: DoctorModel, position: PositionModel):
+def create_test_doctor_position(
+    session: Session,
+    doctor: DoctorModel,
+    position: PositionModel,
+):
     """Helper that creates a doctor-position"""
     doctor_pos_data = DoctorPositionCreate(
         position_id=position.id
@@ -89,7 +93,7 @@ def create_test_doctor_position(session: Session, doctor: DoctorModel, position:
     return doctor_repository.create_doctor_position(
         session=session,
         doctor_id=doctor.id,
-        doctor_pos_data=doctor_pos_data
+        doctor_pos_data=doctor_pos_data,
     )
 
 
@@ -527,7 +531,8 @@ def test_create_doctor_position_controller_duplicate_assignment(session, new_doc
         doctor_controllers.create_doctor_position_controller(
             session=session,
             doctor_id=new_doctor.id,
-            doctor_pos_data=doctor_position_data
+            doctor_pos_data=doctor_position_data,
+            department_id=position.department_id,
         )
 
     assert exc_info.type.__name__ == "HTTPException"
@@ -545,7 +550,8 @@ def test_create_doctor_position_controller_nonexistent_doctor(session, position)
         doctor_controllers.create_doctor_position_controller(
             session=session,
             doctor_id=uuid.uuid4(),
-            doctor_pos_data=doctor_position_data
+            doctor_pos_data=doctor_position_data,
+            department_id=position.department_id,
         )
 
     assert exc_info.type.__name__ == "HTTPException"
@@ -575,7 +581,8 @@ def test_create_doctor_position_mismatched_department(session, team,  position):
         doctor_controllers.create_doctor_position_controller(
             session=session,
             doctor_id=new_doctor.id,
-            doctor_pos_data=doctor_pos_data
+            doctor_pos_data=doctor_pos_data,
+            department_id=position.department_id,
         )
 
     assert exc_info.type.__name__ == "HTTPException"

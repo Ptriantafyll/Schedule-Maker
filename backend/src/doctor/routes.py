@@ -24,6 +24,7 @@ from src.auth.dependencies import (
     require_department_member,
     require_department_admin,
     require_doctor_or_department_admin,
+    require_department_scope,
 )
 
 router = APIRouter(
@@ -125,7 +126,8 @@ def create_doctor_position(
     doctor_id: uuid.UUID,
     doctor_position_data: DoctorPositionCreate,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_admin),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """
     Assigns a position to a doctor

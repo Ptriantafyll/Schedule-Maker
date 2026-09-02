@@ -13,7 +13,11 @@ from src.doctor import repository as doctor_repository
 from src.position import repository as position_repository
 
 
-def create_shift_controller(shift_data: ShiftCreate, session: Session) -> ShiftModel:
+def create_shift_controller(
+    shift_data: ShiftCreate,
+    department_id: uuid.UUID,
+    session: Session,
+) -> ShiftModel:
     """Handles logic for creating a shift"""
     existing_shift = repository.get_shift_by_name(session, shift_data.name)
     if existing_shift:
@@ -22,8 +26,11 @@ def create_shift_controller(shift_data: ShiftCreate, session: Session) -> ShiftM
             detail="Shift already exists"
         )
 
-    position = position_repository.get_position_by_id(
-        session, shift_data.position_id)
+    position = position_repository.get_position_by_id_for_department(
+        session=session,
+        position_id=shift_data.position_id,
+        department_id=department_id,
+    )
     if not position:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -63,9 +70,9 @@ def create_shift_assignment_controller(shift_id: uuid.UUID, shift_assignment_dat
 
     if len(existing_shift_assignments) == shift.doctors_per_shift:
         raise HTTPException(
-            status_code = status.HTTP_400_BAD_REQUEST,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Shift already has max assignments"
-        ) 
+        )
 
     for existing_shift_assignment in existing_shift_assignments:
         if existing_shift_assignment and existing_shift_assignment.doctor_id == shift_assignment_data.doctor_id:
@@ -73,7 +80,6 @@ def create_shift_assignment_controller(shift_id: uuid.UUID, shift_assignment_dat
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Doctor is already assigned on this date"
             )
-
 
         # if existing_shift_assignment and existing_shift_assignment.doctor_id != shift_assignment_data.doctor_id and existing_shift_assignment.shift_id == shift_id:
         #     raise HTTPException(
@@ -93,9 +99,6 @@ def create_shift_assignment_controller(shift_id: uuid.UUID, shift_assignment_dat
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Doctor is unavailable on {shift_assignment_data.date}"
             )
-
-
-
 
     return repository.create_shift_assignment(session, shift_id, shift_assignment_data)
 

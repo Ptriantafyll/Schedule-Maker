@@ -151,7 +151,12 @@ def list_doctor_unavailability_controller(session: Session, doctor_id: uuid.UUID
     )
 
 
-def create_doctor_position_controller(session: Session, doctor_id: uuid.UUID, doctor_pos_data: DoctorPositionCreate) -> DoctorPositionModel:
+def create_doctor_position_controller(
+    session: Session,
+    doctor_id: uuid.UUID,
+    doctor_pos_data: DoctorPositionCreate,
+    department_id: uuid.UUID,
+) -> DoctorPositionModel:
     """Handles the logic for creating a new doctor-position assosiation"""
 
     existing_doctor_pos = doctor_repository.get_doctor_position_by_id(
@@ -173,8 +178,11 @@ def create_doctor_position_controller(session: Session, doctor_id: uuid.UUID, do
             detail="Doctor does not exist"
         )
 
-    position = position_repository.get_position_by_id(
-        session, doctor_pos_data.position_id)
+    position = position_repository.get_position_by_id_for_department(
+        session=session,
+        position_id=doctor_pos_data.position_id,
+        department_id=department_id,
+    )
     if doctor.department_id != position.department_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

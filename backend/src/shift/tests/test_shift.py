@@ -391,7 +391,7 @@ def test_soft_deleted_shift_name_remains_reserved_within_position(
 #####################
 
 
-def test_create_shift_controller_duplicate_name(session, shift):
+def test_create_shift_controller_duplicate_name(session, department, shift):
     """Tests that creating a shift with a duplicate name returns error"""
     shift2_data = ShiftCreate(
         name=shift.name,
@@ -401,14 +401,18 @@ def test_create_shift_controller_duplicate_name(session, shift):
     )
 
     with pytest.raises(Exception) as exc_info:
-        shift_controllers.create_shift_controller(shift2_data, session)
+        shift_controllers.create_shift_controller(
+            shift_data=shift2_data,
+            department_id=department.id,
+            session=session,
+        )
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 400
     assert "already exists" in exc_info.value.detail
 
 
-def test_create_shift_controller_nonexistent_position(session):
+def test_create_shift_controller_nonexistent_position(session, department):
     """Tests that creating a shift with a non existent position id returns error"""
     shift_data = ShiftCreate(
         name="ER 1",
@@ -418,7 +422,11 @@ def test_create_shift_controller_nonexistent_position(session):
     )
 
     with pytest.raises(Exception) as exc_info:
-        shift_controllers.create_shift_controller(shift_data, session)
+        shift_controllers.create_shift_controller(
+            shift_data=shift_data,
+            department_id=department.id,
+            session=session,
+        )
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 422
