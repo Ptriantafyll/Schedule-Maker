@@ -279,16 +279,14 @@ def test_get_position_controller_deleted(session, position):
 
 
 def test_create_position_route(
-        client,
-        department,
-        department_admin_headers,
+    client,
+    department_admin_headers,
 ):
     """Tests post /api/v1/positions route"""
     response = client.post(
         "api/v1/positions",
         json={
             "name": "ER",
-            "department_id": str(department.id),
             "duty_days": [1, 2, 3]
         },
         headers=department_admin_headers,
@@ -301,6 +299,41 @@ def test_create_position_route(
     assert "id" in data
     assert "created_at" in data
     assert "updated_at" in data
+
+
+def test_create_position_route_rejects_supplied_department_id(
+    client,
+    department,
+    department_admin_headers,
+):
+    """Tests post /api/v1/positions route"""
+    response = client.post(
+        "api/v1/positions",
+        json={
+            "name": "ER",
+            "duty_days": [1, 2, 3],
+            "department_id": str(department.id),
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 422
+    validation_errors = response.json()["detail"]
+    department_id_error = next(
+        (
+            error
+            for error in validation_errors
+            if errors["loc"] == ["body", "department_id"]
+        ),
+        None,
+    )
+
+    assert department_id_error is not None
+    assert department_id_error["type"] == "extra_forbidden"
+    assert position_repository.get_position_by_name(
+        session=session,
+        position_name=position_name,
+    ) is None
 
 
 def test_create_position_route_invalid_payload(client, department_admin_headers):
@@ -402,7 +435,6 @@ def test_non_department_admin_cannot_create_position(
         "/api/v1/positions",
         json={
             "name": "ICU",
-            "department_id": str(department.id),
             "duty_days": [1, 2],
         },
         headers=headers,
@@ -422,7 +454,6 @@ def test_create_position_requires_authentication(client, department, session):
         "/api/v1/positions",
         json={
             "name": "ICU",
-            "department_id": str(department.id),
             "duty_days": [1, 2],
         },
     )
@@ -451,8 +482,8 @@ def test_position_read_routes_require_authentication(
     position,
     path_template,
 ):
-    """Tests that the team read routes require auth"""
-    path = path_template.format(position_name=position.name)
+    """Tests that the position read routes require auth"""
+    path = path_template.format(position_id=position.id)
 
     response = client.get(path)
 
