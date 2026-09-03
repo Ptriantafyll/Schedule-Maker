@@ -169,6 +169,19 @@ def doctor_b_fixture(session, department_b, team_b):
     )
 
 
+@pytest.fixture(name="shift_b")
+def shift_b_fixture(session, position_b):
+    """Creates a reusable shift in Department B."""
+    shift_data = ShiftCreate(
+        name="ER 1",
+        position_id=position_b.id,
+        grants_day_off=False,
+        doctors_per_shift=2
+    )
+
+    return shift_repository.create_shift(session, shift_data)
+
+
 @pytest.fixture(name="shift")
 def shift_fixture(session, position):
     """Creates a reusable shift for tests"""
@@ -552,7 +565,8 @@ def test_create_doctor_pre_assignment_controller_duplicate_date(
 
 
 def test_create_doctor_pre_assignment_controller_nonexistent_doctor(session, department, shift):
-    """Tests that creating a pre assignment with a nonexistent doctor returns error"""
+    """Tests that creating a pre assignment with a nonexistent doctor returns a scoped 404."""
+    missing_doctor_id = uuid.uuid4()
     pre_assignment_data = DoctorPreAssignmentCreate(
         date=datetime.date(2026, 8, 12),
         shift_id=shift.id
@@ -561,14 +575,161 @@ def test_create_doctor_pre_assignment_controller_nonexistent_doctor(session, dep
     with pytest.raises(Exception) as exc_info:
         doctor_controllers.create_doctor_pre_assignment_controller(
             session=session,
-            doctor_id=uuid.uuid4(),
+            doctor_id=missing_doctor_id,
             department_id=department.id,
             pre_assignment_data=pre_assignment_data
         )
 
     assert exc_info.type.__name__ == "HTTPException"
-    assert exc_info.value.status_code == 422
-    assert "Doctor or shift does not exist" in exc_info.value.detail
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor or shift not found."
+    assert doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=missing_doctor_id,
+        target_date=datetime.date(2026, 8, 12),
+    ) is None
+
+
+def test_create_doctor_pre_assignment_controller_hides_foreign_doctor(
+    session,
+    department,
+    doctor_b,
+    shift,
+):
+    """Tests that a department admin cannot create a pre-assignment for a foreign doctor."""
+    pre_assignment_data = DoctorPreAssignmentCreate(
+        date=datetime.date(2026, 8, 12),
+        shift_id=shift.id,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_pre_assignment_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            department_id=department.id,
+            pre_assignment_data=pre_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor or shift not found."
+    assert doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=doctor_b.id,
+        target_date=datetime.date(2026, 8, 12),
+    ) is None
+
+
+def test_create_doctor_pre_assignment_controller_hides_foreign_shift(
+    session,
+    new_doctor,
+    shift_b,
+):
+    """Tests that a department admin cannot create a pre-assignment using a foreign shift."""
+    pre_assignment_data = DoctorPreAssignmentCreate(
+        date=datetime.date(2026, 8, 12),
+        shift_id=shift_b.id,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_pre_assignment_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            department_id=new_doctor.department_id,
+            pre_assignment_data=pre_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor or shift not found."
+    assert doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12),
+    ) is None
+
+
+def test_create_doctor_pre_assignment_controller_handles_missing_shift(
+    session,
+    new_doctor,
+):
+    """Tests that a missing Shift returns 404 instead of causing a 500."""
+    missing_shift_id = uuid.uuid4()
+    pre_assignment_data = DoctorPreAssignmentCreate(
+        date=datetime.date(2026, 8, 12),
+        shift_id=missing_shift_id,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_pre_assignment_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            department_id=new_doctor.department_id,
+            pre_assignment_data=pre_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor or shift not found."
+    assert doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12),
+    ) is None
+
+
+def test_create_doctor_pre_assignment_checks_scope_before_duplicate(
+    session,
+    department,
+    doctor_b,
+    shift_b,
+):
+    """Tests that foreign Doctor/Shift resources are hidden before duplicate-date checks."""
+    existing_pre_assignment = create_test_pre_assignment(
+        session, shift_b.id, doctor_b, datetime.date(2026, 8, 12)
+    )
+
+    pre_assignment_data = DoctorPreAssignmentCreate(
+        date=datetime.date(2026, 8, 12),
+        shift_id=shift_b.id,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_pre_assignment_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            department_id=department.id,
+            pre_assignment_data=pre_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor or shift not found."
+
+    stored_pre_assignments = doctor_repository.get_doctor_pre_assignments(
+        session=session,
+        doctor_id=doctor_b.id,
+    )
+    assert len(stored_pre_assignments) == 1
+    assert stored_pre_assignments[0].id == existing_pre_assignment.id
+
+
+def test_list_doctor_pre_assignments_controller_hides_foreign_doctor(
+    session,
+    department,
+    doctor_b,
+):
+    """Tests that listing pre-assignments for a foreign doctor returns 404, not an empty list."""
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.list_doctor_pre_assignments_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            department_id=department.id,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found."
 
 
 def test_create_doctor_unavailability_controller_duplicate_date(
@@ -1233,6 +1394,131 @@ def test_get_doctor_pre_assignments_route(
     assert returned_pre_assignment["id"] == str(pre_assignment.id)
     assert "created_at" in returned_pre_assignment
     assert "updated_at" in returned_pre_assignment
+
+
+def test_create_doctor_pre_assignments_route_hides_foreign_doctor(
+    client,
+    session,
+    doctor_b,
+    shift,
+    department_admin_headers,
+):
+    """Tests that an admin cannot create a pre-assignment for a foreign doctor."""
+    response = client.post(
+        f"/api/v1/doctors/{doctor_b.id}/pre-assignments",
+        json={
+            "date": str(datetime.date(2026, 8, 12)),
+            "shift_id": str(shift.id),
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Doctor or shift not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=doctor_b.id,
+        target_date=datetime.date(2026, 8, 12),
+    ) is None
+
+
+def test_create_doctor_pre_assignments_route_hides_foreign_shift(
+    client,
+    session,
+    new_doctor,
+    shift_b,
+    department_admin_headers,
+):
+    """Tests that an admin cannot create a pre-assignment using a foreign shift."""
+    response = client.post(
+        f"/api/v1/doctors/{new_doctor.id}/pre-assignments",
+        json={
+            "date": str(datetime.date(2026, 8, 12)),
+            "shift_id": str(shift_b.id),
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Doctor or shift not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12),
+    ) is None
+
+
+def test_create_doctor_pre_assignments_route_rejects_admin_without_department(
+    client,
+    session,
+    new_doctor,
+    shift,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that an unscoped admin cannot create a pre-assignment."""
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None,
+    )
+
+    response = client.post(
+        f"/api/v1/doctors/{new_doctor.id}/pre-assignments",
+        json={
+            "date": str(datetime.date(2026, 8, 12)),
+            "shift_id": str(shift.id),
+        },
+        headers=auth_headers_factory(department_admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 8, 12),
+    ) is None
+
+
+def test_get_doctor_pre_assignments_route_hides_foreign_doctor(
+    client,
+    doctor_b,
+    department_admin_headers,
+):
+    """Tests that listing pre-assignments for a foreign doctor returns 404, not an empty list."""
+    response = client.get(
+        f"/api/v1/doctors/{doctor_b.id}/pre-assignments",
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Doctor not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_get_doctor_pre_assignments_route_rejects_admin_without_department(
+    client,
+    new_doctor,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that an unscoped admin cannot list a doctor's pre-assignments."""
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None,
+    )
+
+    response = client.get(
+        f"/api/v1/doctors/{new_doctor.id}/pre-assignments",
+        headers=auth_headers_factory(department_admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
 
 
 def test_create_doctor_unavailability_route(client, new_doctor, doctor_headers):

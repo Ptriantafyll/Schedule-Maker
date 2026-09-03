@@ -6,7 +6,7 @@ Shift repository functions for handling database operations.
 import datetime
 import uuid
 from sqlmodel import Session, not_, select
-
+from src.position.models import Position as PositionModel
 from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate
 from src.shift.models import Shift as ShiftModel
 from src.shift.models import ShiftAssignment as ShiftAssignmentModel
@@ -26,12 +26,25 @@ def create_shift(session: Session, shift_data=ShiftCreate) -> ShiftModel:
     return new_shift
 
 
-def get_shift_by_id(session: Session, shift_id: uuid.UUID) -> ShiftModel:
-    """Retrieves a shift by its id"""
-    statement = select(ShiftModel).where(
-        ShiftModel.id == shift_id
+def get_shift_by_id_for_department(
+    session: Session,
+    shift_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> ShiftModel | None:
+    """Retrieves an active Shift through its Position's department."""
+    statement = (
+        select(ShiftModel)
+        .join(
+            PositionModel,
+            ShiftModel.position_id == PositionModel.id
+        )
+        .where(
+            ShiftModel.id == shift_id,
+            PositionModel.department_id == department_id,
+            not_(ShiftModel.is_deleted),
+            not_(PositionModel.is_deleted),
+        )
     )
-
     return session.exec(statement).first()
 
 

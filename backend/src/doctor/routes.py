@@ -123,12 +123,17 @@ def create_doctor_pre_assignments(
 def list_doctor_pre_assignments(
     doctor_id: uuid.UUID,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_admin),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """
     Lists the pre assignment dates of a doctor
     """
-    return doctor_controllers.list_doctor_pre_assignments_controller(session, doctor_id)
+    return doctor_controllers.list_doctor_pre_assignments_controller(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
 
 
 @router.post("/{doctor_id}/unavailability", response_model=DoctorUnavailabilityRead, status_code=status.HTTP_201_CREATED)

@@ -63,7 +63,7 @@ def get_shift(
     current_user: UserModel = Depends(require_department_member),
 ):
     """Fetches a specific shift by its name."""
-    return shift_controllers.get_shift_controller(shift_name, session)
+    return shift_controllers.get_shift_controller(shift_name, department_id=department_id, session=session)
 
 
 @router.post("/{shift_id}/assignments", response_model=ShiftAssignmentRead, status_code=status.HTTP_201_CREATED)
@@ -71,11 +71,13 @@ def create_shift_assignment(
     shift_id: uuid.UUID,
     shift_assignment_data: ShiftAssignmentCreate,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_admin)
+    current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Endpoint to create a new shift"""
     return shift_controllers.create_shift_assignment_controller(
         session=session,
         shift_assignment_data=shift_assignment_data,
-        shift_id=shift_id
+        shift_id=shift_id,
+        department_id=department_id
     )

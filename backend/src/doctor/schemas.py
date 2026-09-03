@@ -36,8 +36,7 @@ class DoctorBase(BaseModel):
 class DoctorCreate(BaseModel):
     """
     Schema for doctor creation requests
-
-    Inherits all required fields from `DoctorBase`. Use this DTO as the request body for POST /departments.
+    Use this DTO as the request body for POST /doctors.
     """
     name: str
     email: str

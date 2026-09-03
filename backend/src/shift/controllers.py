@@ -19,25 +19,33 @@ def create_shift_controller(
     session: Session,
 ) -> ShiftModel:
     """Handles logic for creating a shift"""
-    existing_shift = repository.get_shift_by_name(session, shift_data.name)
+    position = position_repository.get_position_by_id_for_department(
+        session=session,
+        position_id=shift_data.position_id,
+        department_id=department_id,
+    )
+    if position is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Position not found."
+        )
+
+    existing_shift = repository.get_shift_by_name_for_department(
+        session=session,
+        shift_name=shift_data.name,
+        department_id=department_id
+    )
     if existing_shift:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Shift already exists"
         )
 
-    position = position_repository.get_position_by_id_for_department(
+    return repository.create_shift_for_department(
         session=session,
-        position_id=shift_data.position_id,
-        department_id=department_id,
+        shift_data=shift_data,
+        department_id=department_id
     )
-    if not position:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Position does not exist"
-        )
-
-    return repository.create_shift(session, shift_data)
 
 
 def list_shifts_controller(session: Session) -> list[ShiftModel]:
@@ -45,9 +53,13 @@ def list_shifts_controller(session: Session) -> list[ShiftModel]:
     return repository.get_active_shifts(session)
 
 
-def get_shift_controller(shift_name: str, session: Session) -> ShiftModel:
+def get_shift_controller(shift_name: str, department_id: uuid.UUID, session: Session) -> ShiftModel:
     """Handles logic for retrieving a shift"""
-    shift = repository.get_shift_by_name(session, shift_name)
+    shift = repository.get_shift_by_name_for_department(
+        session=session,
+        shift_name=shift_name,
+        department_id=department_id
+    )
 
     if not shift or shift.is_deleted:
         raise HTTPException(
@@ -58,7 +70,12 @@ def get_shift_controller(shift_name: str, session: Session) -> ShiftModel:
     return shift
 
 
-def create_shift_assignment_controller(shift_id: uuid.UUID, shift_assignment_data: ShiftAssignmentCreate, session: Session) -> ShiftAssignmentModel:
+def create_shift_assignment_controller(
+    shift_id: uuid.UUID,
+    shift_assignment_data: ShiftAssignmentCreate,
+    department_id: uuid.UUID,
+    session: Session,
+) -> ShiftAssignmentModel:
     """Handles logic for creating a shift assignment"""
     existing_shift_assignments = repository.get_shift_assignments_by_date(
         session=session,
@@ -66,7 +83,11 @@ def create_shift_assignment_controller(shift_id: uuid.UUID, shift_assignment_dat
         target_date=shift_assignment_data.date
     )
 
-    shift = repository.get_shift_by_id(session, shift_id)
+    shift = repository.get_shift_by_id_for_department(
+        session=session,
+        shift_id=shift_id,
+        department_id=department_id
+    )
 
     if len(existing_shift_assignments) == shift.doctors_per_shift:
         raise HTTPException(

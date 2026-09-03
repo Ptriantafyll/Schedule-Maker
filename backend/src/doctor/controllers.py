@@ -94,30 +94,32 @@ def create_doctor_pre_assignment_controller(
     pre_assignment_data: DoctorPreAssignmentCreate,
 ) -> DoctorPreAssignmentModel:
     """Handles logic for creating a pre assignment for a doctor"""
-
-    # todo: test existing pre assignment by doctor id and assignment
-    existing_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_date(
-        session=session,
-        target_date=pre_assignment_data.date,
-        doctor_id=doctor_id
-    )
-    if existing_pre_assignment:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Pre assignment already exists"
-        )
-
     doctor = doctor_repository.get_doctor_by_id_for_department(
         session=session,
         doctor_id=doctor_id,
         department_id=department_id,
     )
-    shift = shift_repository.get_shift_by_id(
-        session, pre_assignment_data.shift_id)
-    if (not doctor) or (not shift):
+    shift = shift_repository.get_shift_by_id_for_department(
+        session=session,
+        shift_id=pre_assignment_data.shift_id,
+        department_id=department_id
+    )
+    if doctor is None or shift is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Doctor or shift does not exist"
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor or shift not found."
+        )
+
+    # todo: test existing pre assignment by doctor id and assignment
+    existing_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        target_date=pre_assignment_data.date,
+        doctor_id=doctor_id,
+    )
+    if existing_pre_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pre assignment already exists"
         )
 
     unavailability = doctor_repository.get_doctor_unavailability_by_date(
@@ -139,8 +141,23 @@ def create_doctor_pre_assignment_controller(
     )
 
 
-def list_doctor_pre_assignments_controller(session: Session, doctor_id: uuid.UUID) -> DoctorPreAssignmentModel:
+def list_doctor_pre_assignments_controller(
+    session: Session,
+    doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> list[DoctorPreAssignmentModel]:
     """List all doctor pre assignments"""
+    doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor not found."
+        )
+
     return doctor_repository.get_doctor_pre_assignments(session, doctor_id)
 
 
