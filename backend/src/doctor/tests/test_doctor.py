@@ -494,7 +494,7 @@ def test_create_doctor_pre_assignment_controller_nonexistent_doctor(session, dep
         )
 
     assert exc_info.type.__name__ == "HTTPException"
-    assert exc_info.value.status_code == 422
+    assert exc_info.value.status_code == 404
     assert "Doctor or shift does not exist" in exc_info.value.detail
 
 

@@ -65,7 +65,7 @@ def get_doctor_controller(
         department_id=department_id,
     )
 
-    if not doctor or doctor.is_deleted:
+    if doctor is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Doctor not found"
@@ -138,6 +138,16 @@ def create_doctor_unavailabilty_controller(
     unavailability_data: DoctorUnavailabilityCreate,
 ) -> DoctorUnavailabilityModel:
     """Handles the logic to create a new unavailability for a doctor"""
+    doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Doctor does not exist"
+        )
 
     existing_doc_unavailability = doctor_repository.get_doctor_unavailability_by_date(
         session=session,
@@ -149,17 +159,6 @@ def create_doctor_unavailabilty_controller(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unavailability already exists"
-        )
-
-    doctor = doctor_repository.get_doctor_by_id_for_department(
-        session=session,
-        doctor_id=doctor_id,
-        department_id=department_id,
-    )
-    if not doctor:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Doctor does not exist"
         )
 
     return doctor_repository.create_doctor_unavailability(
@@ -184,6 +183,17 @@ def create_doctor_position_controller(
     department_id: uuid.UUID,
 ) -> DoctorPositionModel:
     """Handles the logic for creating a new doctor-position assosiation"""
+    doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor does not exist"
+        )
+
     existing_doctor_pos = doctor_repository.get_doctor_position_by_id(
         session=session,
         doctor_id=doctor_id,
@@ -194,17 +204,6 @@ def create_doctor_position_controller(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The doctor is already assigned to this position"
-        )
-
-    doctor = doctor_repository.get_doctor_by_id_for_department(
-        session=session,
-        doctor_id=doctor_id,
-        department_id=department_id,
-    )
-    if not doctor:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Doctor does not exist"
         )
 
     position = position_repository.get_position_by_id_for_department(

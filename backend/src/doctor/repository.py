@@ -5,7 +5,12 @@ Doctor repository function for handling database operations.
 import uuid
 import datetime
 from sqlmodel import Session, not_, select
-from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate, DoctorPositionCreate
+from src.doctor.schemas import (
+    DoctorCreate,
+    DoctorPreAssignmentCreate,
+    DoctorUnavailabilityCreate,
+    DoctorPositionCreate,
+)
 from src.doctor.models import Doctor as DoctorModel
 from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
@@ -31,7 +36,7 @@ def get_doctor_by_id_for_department(
         not_(DoctorModel.is_deleted),
     )
 
-    return session.get(DoctorModel, doctor_id)
+    return session.exec(statememt).first()
 
 
 def get_active_doctors(session: Session) -> list[DoctorModel]:
