@@ -188,10 +188,16 @@ def create_doctor_position_controller(
         doctor_id=doctor_id,
         department_id=department_id,
     )
-    if doctor is None:
+    position = position_repository.get_position_by_id_for_department(
+        session=session,
+        position_id=doctor_pos_data.position_id,
+        department_id=department_id,
+    )
+
+    if doctor is None or position is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Doctor does not exist"
+            detail="Doctor or position not found."
         )
 
     existing_doctor_pos = doctor_repository.get_doctor_position_by_id(
@@ -206,16 +212,12 @@ def create_doctor_position_controller(
             detail="The doctor is already assigned to this position"
         )
 
-    position = position_repository.get_position_by_id_for_department(
-        session=session,
-        position_id=doctor_pos_data.position_id,
-        department_id=department_id,
-    )
     if doctor.department_id != position.department_id:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="Doctor's department needs to match position's department"
         )
+    print("here")
 
     return doctor_repository.create_doctor_position(
         session=session,
