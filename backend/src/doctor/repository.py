@@ -6,7 +6,6 @@ import uuid
 import datetime
 from sqlmodel import Session, not_, select
 from src.doctor.schemas import (
-    DoctorCreate,
     DoctorPreAssignmentCreate,
     DoctorUnavailabilityCreate,
     DoctorPositionCreate,
@@ -39,18 +38,29 @@ def get_doctor_by_id_for_department(
     return session.exec(statement).first()
 
 
-def get_active_doctors(session: Session) -> list[DoctorModel]:
+def get_active_doctors_for_department(session: Session, department_id: uuid.UUID) -> list[DoctorModel]:
     """Retrieves all active doctors"""
-    return list(session.exec(select(DoctorModel).where(not_(DoctorModel.is_deleted))).all())
+    statement = select(DoctorModel).where(
+        DoctorModel.department_id == department_id,
+        not_(DoctorModel.is_deleted)
+    )
+
+    return session.exec(statement).all()
 
 
-def create_doctor(session: Session, doctor_data: DoctorCreate) -> DoctorModel:
+def create_doctor(
+    session: Session,
+    email: str,
+    name: str,
+    team_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> DoctorModel:
     """Creates a new doctor in the database"""
     new_doctor = DoctorModel(
-        name=doctor_data.name,
-        email=doctor_data.email,
-        department_id=doctor_data.department_id,
-        team_id=doctor_data.team_id
+        name=name,
+        email=email,
+        department_id=department_id,
+        team_id=team_id,
     )
     session.add(new_doctor)
     session.commit()

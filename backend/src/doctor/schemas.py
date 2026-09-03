@@ -41,8 +41,9 @@ class DoctorCreate(BaseModel):
     """
     name: str
     email: str
-    department_id: uuid.UUID
     team_id: uuid.UUID
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class DoctorUpdate(BaseModel):
@@ -59,7 +60,7 @@ class DoctorUpdate(BaseModel):
 
 
 class DoctorRead(DoctorBase):
-    """Schema returned to clients for doctor resources.
+    """Schema returned to admins for doctor resources.
 
     Extends `DoctorBase` with read-only metadata populated by the
     persistence layer (IDs, timestamps, and sync flags).
@@ -76,6 +77,18 @@ class DoctorRead(DoctorBase):
 
     model_config = ConfigDict(from_attributes=True)
 
+
+class DoctorRosterRead(BaseModel):
+    """
+    Reduced Schema returned to department members for doctor resources.
+    """
+
+    id: uuid.UUID
+    name: str
+    department_id: uuid.UUID
+    team_id: uuid.UUID
+
+    model_config = ConfigDict(from_attributes=True)
 
 # ─── DoctorUnavailability ────────────────────────────────
 

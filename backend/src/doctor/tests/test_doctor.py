@@ -38,13 +38,13 @@ def create_new_doctor(
     team_id: uuid.UUID
 ) -> DoctorModel:
     """Helper that creates a new doctor in the db"""
-    doctor_data = DoctorCreate(
+    return doctor_repository.create_doctor(
+        session=session,
+        department_id=department_id,
         name=name,
         email=email,
-        department_id=department_id,
         team_id=team_id
     )
-    return doctor_repository.create_doctor(session, doctor_data)
 
 
 def create_test_pre_assignment(
@@ -325,19 +325,30 @@ def test_get_doctor_by_id_for_department_hides_deleted_doctor(
     assert retrieved_doctor is None
 
 
-def test_get_active_doctors(session, team, department, new_doctor):
-    """Test retrieving all active doctors"""
-    new_doctor2 = create_new_doctor(
+def test_get_active_doctors_for_department(
+    session,
+    team,
+    department,
+    new_doctor,
+    doctor_b,
+):
+    """Tests that active-doctor listing is scoped to a single department."""
+    deleted_doctor = create_new_doctor(
         session, "Dr Panagiotis", "drpanagiotis@gmail.com", department.id, team.id)
 
-    new_doctor2.is_deleted = True
-    session.add(new_doctor2)
+    deleted_doctor.is_deleted = True
+    session.add(deleted_doctor)
     session.commit()
 
-    active_doctors = doctor_repository.get_active_doctors(session)
+    active_doctors = doctor_repository.get_active_doctors_for_department(
+        session=session,
+        department_id=department.id,
+    )
 
-    assert new_doctor in active_doctors
-    assert new_doctor2 not in active_doctors
+    assert {doctor.id for doctor in active_doctors} == {new_doctor.id}
+    assert all(
+        doctor.department_id == department.id for doctor in active_doctors
+    )
 
 
 def test_create_doctor_pre_assignment(shift, new_doctor, pre_assignment):
@@ -466,12 +477,15 @@ def test_create_doctor_controller_duplicate_name(session, department, team, new_
     doctor_data = DoctorCreate(
         name=new_doctor.name,
         email=new_doctor.email,
-        department_id=department.id,
         team_id=team.id
     )
 
     with pytest.raises(Exception) as exc_info:
-        doctor_controllers.create_doctor_controller(doctor_data, session)
+        doctor_controllers.create_doctor_controller(
+            session=session,
+            department_id=department.id,
+            doctor_data=doctor_data,
+        )
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 400
@@ -510,22 +524,6 @@ def test_get_doctor_controller_deleted(session, new_doctor):
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
 
-
-def test_create_doctor_controller_invalid_team_or_department(session):
-    """Test that creating a doctor with invalid team or department returns error"""
-    doctor_data = DoctorCreate(
-        name="Dr Panos",
-        email="drpanos@gmail.com",
-        department_id=uuid.uuid4(),
-        team_id=uuid.uuid4()
-    )
-
-    with pytest.raises(Exception) as exc_info:
-        doctor_controllers.create_doctor_controller(doctor_data, session)
-
-    assert exc_info.type.__name__ == "HTTPException"
-    assert exc_info.value.status_code == 422
-    assert "does not exist" in exc_info.value.detail
 
 
 def test_create_doctor_pre_assignment_controller_duplicate_date(
@@ -807,16 +805,15 @@ def test_create_pre_assignment_unavailability_conflict(session, new_doctor, unav
 #######################
 
 
-def test_create_doctor_route(client, department, team, department_admin_headers):
-    """Test the POST /doctors/ route for creating a doctor"""
+def test_create_doctor_route(client, session, department, team, department_admin_headers):
+    """Test that POST /doctors/ derives department_id from the authenticated admin"""
 
     response = client.post(
         "api/v1/doctors",
         json={
             "name": "Dr Panos",
             "email": "drpanos@gmail.com",
-            "department_id": str(department.id),
-            "team_id": str(team.id)
+            "team_id": str(team.id),
         },
         headers=department_admin_headers,
     )
@@ -831,15 +828,22 @@ def test_create_doctor_route(client, department, team, department_admin_headers)
     assert "created_at" in data
     assert "updated_at" in data
 
+    persisted_doctor = doctor_repository.get_doctor_by_email(
+        session=session,
+        email="drpanos@gmail.com",
+    )
+    assert persisted_doctor is not None
+    assert persisted_doctor.department_id == department.id
+    assert persisted_doctor.team_id == team.id
 
-def test_create_doctor_route_invalid_payload(client, department, team, department_admin_headers):
-    """Test the POST /doctors/ route rejects invalid payload"""
+
+def test_create_doctor_route_missing_required_field(client, team, department_admin_headers):
+    """Test the POST /doctors/ route rejects a payload missing a required field"""
 
     response = client.post(
         "api/v1/doctors",
         json={
             "name": "Dr Panos",
-            "department_id": str(department.id),
             "team_id": str(team.id),
         },
         headers=department_admin_headers,
@@ -847,11 +851,108 @@ def test_create_doctor_route_invalid_payload(client, department, team, departmen
     assert response.status_code == 422
 
 
-def test_get_doctor_by_id_route(client, department, team, new_doctor, viewer_headers):
-    """Tests that the GET /doctors/{doctor_id} route returns a doctor"""
+def test_create_doctor_route_rejects_supplied_department_id(
+    client,
+    session,
+    department,
+    team,
+    department_admin_headers,
+):
+    """Tests that POST /doctors/ rejects a client-supplied department_id"""
+
+    response = client.post(
+        "api/v1/doctors",
+        json={
+            "name": "Dr Panos",
+            "email": "drpanos@gmail.com",
+            "team_id": str(team.id),
+            "department_id": str(department.id),
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 422
+    validation_errors = response.json()["detail"]
+    department_id_error = next(
+        (
+            error for error in validation_errors
+            if error["loc"] == ["body", "department_id"]
+        ),
+        None,
+    )
+
+    assert department_id_error is not None
+    assert department_id_error["type"] == "extra_forbidden"
+    assert doctor_repository.get_doctor_by_email(
+        session=session,
+        email="drpanos@gmail.com",
+    ) is None
+
+
+def test_create_doctor_route_hides_foreign_team(
+    client,
+    session,
+    team_b,
+    department_admin_headers,
+):
+    """Tests that a department admin cannot create a doctor using a foreign team"""
+
+    response = client.post(
+        "api/v1/doctors",
+        json={
+            "name": "Dr Panos",
+            "email": "drpanos@gmail.com",
+            "team_id": str(team_b.id),
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Team not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_by_email(
+        session=session,
+        email="drpanos@gmail.com",
+    ) is None
+
+
+def test_create_doctor_route_rejects_admin_without_department(
+    client,
+    session,
+    team,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that an unscoped department admin cannot create a doctor"""
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None,
+    )
+
+    response = client.post(
+        "api/v1/doctors",
+        json={
+            "name": "Dr Panos",
+            "email": "drpanos@gmail.com",
+            "team_id": str(team.id),
+        },
+        headers=auth_headers_factory(department_admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_by_email(
+        session=session,
+        email="drpanos@gmail.com",
+    ) is None
+
+
+def test_get_doctor_by_id_route(client, department, team, new_doctor, department_admin_headers):
+    """Tests that GET /doctors/{doctor_id} returns full doctor detail for a department admin"""
     response = client.get(
         f"/api/v1/doctors/{new_doctor.id}",
-        headers=viewer_headers,
+        headers=department_admin_headers,
     )
 
     assert response.status_code == 200
@@ -865,36 +966,201 @@ def test_get_doctor_by_id_route(client, department, team, new_doctor, viewer_hea
     assert "updated_at" in data
 
 
-def test_get_doctor_by_id_route_nonexistent(client, viewer_headers):
+def test_get_doctor_by_id_route_nonexistent(client, department_admin_headers):
     """Test the GET /doctors/{doctor_id} route returns error when given a nonexistent id"""
     response = client.get(
         f"/api/v1/doctors/{uuid.uuid4()}",
-        headers=viewer_headers,
+        headers=department_admin_headers,
     )
     assert response.status_code == 404
 
 
+def test_get_doctor_by_id_route_hides_foreign_doctor(
+    client,
+    doctor_b,
+    department_admin_headers,
+):
+    """Tests that a department admin cannot view another department's doctor"""
+    response = client.get(
+        f"/api/v1/doctors/{doctor_b.id}",
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Doctor not found"}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
 # new doctor is needed to add a doctor in the db
-def test_list_doctors_route(client, new_doctor, viewer_headers):
-    """Tests the GET /doctors/ route"""
+def test_list_doctors_route(client, new_doctor, doctor_b, department_admin_headers):
+    """Tests that GET /doctors/ returns the full, department-scoped doctor list"""
     response = client.get(
         "api/v1/doctors",
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+
+    returned_ids = {item["id"] for item in data}
+    assert str(new_doctor.id) in returned_ids
+    assert str(doctor_b.id) not in returned_ids
+
+    returned_doctor = next(
+        item for item in data if item["id"] == str(new_doctor.id)
+    )
+    assert returned_doctor["email"] == new_doctor.email
+
+
+@pytest.mark.parametrize(
+    "path_template",
+    [
+        pytest.param("/api/v1/doctors/", id="list-doctors"),
+        pytest.param("/api/v1/doctors/{doctor_id}", id="get-doctor"),
+    ],
+)
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+        UserRole.SUPER_ADMIN,
+    ]
+)
+def test_full_doctor_routes_reject_non_department_admin(
+    client,
+    role,
+    user_factory,
+    auth_headers_factory,
+    department,
+    new_doctor,
+    path_template,
+):
+    """Tests that only department admins may access full doctor list/detail"""
+    path = path_template.format(doctor_id=new_doctor.id)
+    user = user_factory(
+        role=role,
+        department_id=None if role == UserRole.SUPER_ADMIN else department.id,
+        doctor_id=new_doctor.id if role == UserRole.DOCTOR else None,
+    )
+
+    response = client.get(path, headers=auth_headers_factory(user))
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Insufficient permissions for this operation"}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+@pytest.mark.parametrize(
+    "path_template",
+    [
+        pytest.param("/api/v1/doctors/", id="list-doctors"),
+        pytest.param("/api/v1/doctors/{doctor_id}", id="get-doctor"),
+    ],
+)
+def test_full_doctor_routes_reject_admin_without_department(
+    client,
+    user_factory,
+    auth_headers_factory,
+    new_doctor,
+    path_template,
+):
+    """Tests that an unscoped department admin cannot access full doctor routes"""
+    path = path_template.format(doctor_id=new_doctor.id)
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None,
+    )
+
+    response = client.get(
+        path,
+        headers=auth_headers_factory(department_admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_list_doctors_roster_route(client, new_doctor, doctor_b, viewer_headers):
+    """Tests that GET /doctors/roster returns a reduced, department-scoped roster"""
+    response = client.get(
+        "/api/v1/doctors/roster",
         headers=viewer_headers,
     )
 
     assert response.status_code == 200
+    data = response.json()
 
-    returned_doctor = next(
-        (
-            item
-            for item in response.json()
-            if item["id"] == str(new_doctor.id)
-        ),
-        None
+    returned_ids = {item["id"] for item in data}
+    assert str(new_doctor.id) in returned_ids
+    assert str(doctor_b.id) not in returned_ids
+
+    roster_entry = next(
+        item for item in data if item["id"] == str(new_doctor.id)
+    )
+    assert set(roster_entry.keys()) == {
+        "id", "name", "department_id", "team_id"
+    }
+    assert roster_entry["department_id"] == str(new_doctor.department_id)
+    assert roster_entry["team_id"] == str(new_doctor.team_id)
+    assert "email" not in roster_entry
+    assert "sync_status" not in roster_entry
+    assert "created_at" not in roster_entry
+    assert "updated_at" not in roster_entry
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DEPARTMENT_ADMIN,
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+    ]
+)
+def test_doctor_roster_route_allows_department_members(
+    client,
+    role,
+    user_factory,
+    auth_headers_factory,
+    department,
+    new_doctor,
+):
+    """Tests that department admins, doctors, and viewers can access the roster"""
+    user = user_factory(
+        role=role,
+        department_id=department.id,
+        doctor_id=new_doctor.id if role == UserRole.DOCTOR else None,
     )
 
-    assert returned_doctor is not None
-    assert returned_doctor["id"] == str(new_doctor.id)
+    response = client.get(
+        "/api/v1/doctors/roster",
+        headers=auth_headers_factory(user),
+    )
+
+    assert response.status_code == 200
+
+
+def test_doctor_roster_route_rejects_admin_without_department(
+    client,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that GET /doctors/roster rejects an account with no department scope"""
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None,
+    )
+
+    response = client.get(
+        "/api/v1/doctors/roster",
+        headers=auth_headers_factory(department_admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
 
 
 def test_create_doctor_pre_assignments_route(client, shift, new_doctor, department_admin_headers):
@@ -1199,7 +1465,6 @@ def test_non_department_admin_cannot_create_doctor(
         json={
             "name": "Dr Panos",
             "email": "drpanos@gmail.com",
-            "department_id": str(department.id),
             "team_id": str(team.id),
         },
         headers=headers,
@@ -1222,7 +1487,6 @@ def test_create_doctor_requires_authentication(client, session, department, team
         json={
             "name": "Dr Panos",
             "email": "drpanos@gmail.com",
-            "department_id": str(department.id),
             "team_id": str(team.id),
         },
     )
@@ -1246,6 +1510,10 @@ def test_create_doctor_requires_authentication(client, session, department, team
         pytest.param(
             "/api/v1/doctors/{doctor_id}",
             id="get-doctor",
+        ),
+        pytest.param(
+            "/api/v1/doctors/roster",
+            id="doctor-roster",
         ),
     ],
 )

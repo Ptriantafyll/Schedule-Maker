@@ -19,37 +19,50 @@ from src.team import repository as team_repository
 from src.position import repository as position_repository
 
 
-def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> DoctorModel:
+def create_doctor_controller(
+    doctor_data: DoctorCreate,
+    session: Session,
+    department_id: uuid.UUID,
+) -> DoctorModel:
     """Handles the business logic for creating a new doctor"""
+    team = team_repository.get_team_by_id_for_department(
+        session=session,
+        team_id=doctor_data.team_id,
+        department_id=department_id,
+    )
+
+    if team is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Team not found."
+        )
+
     existing_doctor = doctor_repository.get_doctor_by_email(
         session, doctor_data.email
     )
     if existing_doctor:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"A doctor with the email '{doctor_data.name}' already exists."
+            detail="Doctor with this email already exists"
         )
 
-    team = team_repository.get_team_by_id_for_department(
+    return doctor_repository.create_doctor(
         session=session,
+        email=doctor_data.email,
+        name=doctor_data.name,
         team_id=doctor_data.team_id,
-        department_id=doctor_data.department_id,
+        department_id=department_id
     )
-    department = department_repository.get_department_by_id(
-        session, doctor_data.department_id)
-
-    if (not team) or (not department):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="The team or department entered does not exist."
-        )
-
-    return doctor_repository.create_doctor(session, doctor_data)
 
 
-def list_doctors_controller(session: Session) -> list[DoctorModel]:
+def list_doctors_controller(session: Session, department_id: uuid.UUID) -> list[DoctorModel]:
     """Handles logic of listing all active doctors"""
-    return doctor_repository.get_active_doctors(session)
+    return doctor_repository.get_active_doctors_for_department(session, department_id)
+
+
+def list_doctor_roster_controller(session: Session, department_id: uuid.UUID) -> list[DoctorModel]:
+    """Handles logic of listing all active doctors with their positions"""
+    return doctor_repository.get_active_doctors_for_department(session, department_id)
 
 
 def get_doctor_controller(

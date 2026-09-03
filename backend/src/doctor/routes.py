@@ -11,6 +11,7 @@ from src.db.connection import get_session
 from src.doctor.schemas import (
     DoctorCreate,
     DoctorRead,
+    DoctorRosterRead,
     DoctorPreAssignmentCreate,
     DoctorPreAssignmentRead,
     DoctorPositionCreate,
@@ -38,29 +39,53 @@ def create_doctor(
     doctor_data: DoctorCreate,
     session: Session = Depends(get_session),
     current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """
     Creates a new doctor
     """
-    return doctor_controllers.create_doctor_controller(doctor_data, session)
+    return doctor_controllers.create_doctor_controller(
+        department_id=department_id,
+        doctor_data=doctor_data,
+        session=session,
+    )
 
 
 @router.get("/", response_model=list[DoctorRead])
 def list_doctors(
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """
     Retrieves all active doctors
     """
-    return doctor_controllers.list_doctors_controller(session)
+    return doctor_controllers.list_doctors_controller(
+        session=session,
+        department_id=department_id,
+    )
+
+
+@router.get("/roster", response_model=list[DoctorRosterRead])
+def list_doctor_roster(
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """
+    Retrieves the roster of doctors for a department.
+    """
+    return doctor_controllers.list_doctor_roster_controller(
+        session=session,
+        department_id=department_id,
+    )
 
 
 @router.get("/{doctor_id}", response_model=DoctorRead)
 def get_doctor(
     doctor_id: uuid.UUID,
     session: Session = Depends(get_session),
-    _current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_admin),
     department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """

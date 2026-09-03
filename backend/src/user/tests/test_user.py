@@ -35,13 +35,13 @@ def create_new_doctor(
     team_id: uuid.UUID
 ) -> DoctorModel:
     """Helper that creates a new doctor in the db"""
-    doctor_data = DoctorCreate(
+    return doctor_repository.create_doctor(
+        session=session,
         name=name,
         email=email,
         department_id=department_id,
         team_id=team_id
     )
-    return doctor_repository.create_doctor(session, doctor_data)
 #####################
 # Fixtures
 #####################
