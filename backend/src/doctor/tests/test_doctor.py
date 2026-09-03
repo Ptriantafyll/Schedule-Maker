@@ -130,6 +130,46 @@ def position_fixture(session, department):
     )
 
 
+@pytest.fixture(name="department_b")
+def department_b_fixture(session):
+    """Creates a second department for tenant-isolation tests."""
+    dept_data = DepartmentCreate(name="Radiology", code="RAD")
+    return department_repository.create_department(session, dept_data)
+
+
+@pytest.fixture(name="team_b")
+def team_b_fixture(session, department_b):
+    """Creates a reusable team in Department B."""
+    return create_team(
+        session=session,
+        name="ER Team A",
+        department_id=department_b.id,
+    )
+
+
+@pytest.fixture(name="position_b")
+def position_b_fixture(session, department_b):
+    """Creates a reusable position in Department B."""
+    return position_repository.create_position(
+        session=session,
+        position_name="ER",
+        department_id=department_b.id,
+        duty_days=[1, 3, 5],
+    )
+
+
+@pytest.fixture(name="doctor_b")
+def doctor_b_fixture(session, department_b, team_b):
+    """Creates a reusable doctor in Department B."""
+    return create_new_doctor(
+        session=session,
+        name="Dr Radiology",
+        email="drradiology@gmail.com",
+        department_id=department_b.id,
+        team_id=team_b.id,
+    )
+
+
 @pytest.fixture(name="shift")
 def shift_fixture(session, position):
     """Creates a reusable shift for tests"""
@@ -238,14 +278,52 @@ def test_get_doctor_by_email(session, new_doctor):
     assert retrieved_doctor.id == new_doctor.id
 
 
-def test_get_doctor_by_id(session, new_doctor):
-    """Test retrieving a doctor by id"""
-
-    retrieved_doctor = doctor_repository.get_doctor_by_id(
-        session, new_doctor.id)
+def test_get_doctor_by_id_for_department_returns_own_active_doctor(
+    session,
+    new_doctor,
+):
+    """Tests retrieving an active doctor within department scope."""
+    retrieved_doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=new_doctor.id,
+        department_id=new_doctor.department_id,
+    )
 
     assert retrieved_doctor is not None
     assert retrieved_doctor.id == new_doctor.id
+
+
+def test_get_doctor_by_id_for_department_hides_foreign_doctor(
+    session,
+    department,
+    doctor_b,
+):
+    """Tests that scoped doctor lookup hides another department's doctor."""
+    retrieved_doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=doctor_b.id,
+        department_id=department.id,
+    )
+
+    assert retrieved_doctor is None
+
+
+def test_get_doctor_by_id_for_department_hides_deleted_doctor(
+    session,
+    new_doctor,
+):
+    """Tests that scoped doctor lookup hides deleted doctors."""
+    new_doctor.is_deleted = True
+    session.add(new_doctor)
+    session.commit()
+
+    retrieved_doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=new_doctor.id,
+        department_id=new_doctor.department_id,
+    )
+
+    assert retrieved_doctor is None
 
 
 def test_get_active_doctors(session, team, department, new_doctor):
@@ -541,7 +619,8 @@ def test_create_doctor_position_controller_duplicate_assignment(session, new_doc
 
 
 def test_create_doctor_position_controller_nonexistent_doctor(session, position):
-    """Tests that creating a doctor-position with a nonexistent doctor returns error"""
+    """Tests that a missing doctor is hidden behind the normal 404 response."""
+    missing_doctor_id = uuid.uuid4()
     doctor_position_data = DoctorPositionCreate(
         position_id=position.id
     )
@@ -549,30 +628,27 @@ def test_create_doctor_position_controller_nonexistent_doctor(session, position)
     with pytest.raises(Exception) as exc_info:
         doctor_controllers.create_doctor_position_controller(
             session=session,
-            doctor_id=uuid.uuid4(),
+            doctor_id=missing_doctor_id,
             doctor_pos_data=doctor_position_data,
             department_id=position.department_id,
         )
 
     assert exc_info.type.__name__ == "HTTPException"
-    assert exc_info.value.status_code == 422
-    assert "Doctor does not exist" in exc_info.value.detail
-
-
-def test_create_doctor_position_mismatched_department(session, team,  position):
-    """Tests that doctor's position belongs to their department"""
-    department_data = DepartmentCreate(name="dep2", code="T")
-    new_department = department_repository.create_department(
-        session, department_data)
-
-    new_doctor = create_new_doctor(
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found"
+    assert doctor_repository.get_doctor_position_by_id(
         session=session,
-        name="Dr Panos",
-        email="drpanos@gmail.com",
-        department_id=new_department.id,
-        team_id=team.id
-    )
+        doctor_id=missing_doctor_id,
+        position_id=position.id,
+    ) is None
 
+
+def test_create_doctor_position_controller_hides_foreign_doctor(
+    session,
+    doctor_b,
+    position,
+):
+    """Tests that an admin cannot assign a Position to a foreign doctor."""
     doctor_pos_data = DoctorPositionCreate(
         position_id=position.id
     )
@@ -580,14 +656,113 @@ def test_create_doctor_position_mismatched_department(session, team,  position):
     with pytest.raises(Exception) as exc_info:
         doctor_controllers.create_doctor_position_controller(
             session=session,
-            doctor_id=new_doctor.id,
+            doctor_id=doctor_b.id,
             doctor_pos_data=doctor_pos_data,
             department_id=position.department_id,
         )
 
     assert exc_info.type.__name__ == "HTTPException"
-    assert exc_info.value.status_code == 422
-    assert "needs to match" in exc_info.value.detail
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found"
+    assert doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=doctor_b.id,
+        position_id=position.id,
+    ) is None
+
+
+def test_create_doctor_position_controller_hides_foreign_position(
+    session,
+    new_doctor,
+    position_b,
+):
+    """Tests that an admin cannot assign a foreign Position to a doctor."""
+    doctor_pos_data = DoctorPositionCreate(
+        position_id=position_b.id
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_position_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            doctor_pos_data=doctor_pos_data,
+            department_id=new_doctor.department_id,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Position not found"
+    assert doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=new_doctor.id,
+        position_id=position_b.id,
+    ) is None
+
+
+def test_create_doctor_position_controller_handles_missing_position(
+    session,
+    new_doctor,
+):
+    """Tests that a missing Position returns 404 instead of raising AttributeError."""
+    missing_position_id = uuid.uuid4()
+    doctor_pos_data = DoctorPositionCreate(
+        position_id=missing_position_id
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_position_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            doctor_pos_data=doctor_pos_data,
+            department_id=new_doctor.department_id,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Position not found"
+    assert doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=new_doctor.id,
+        position_id=missing_position_id,
+    ) is None
+
+
+def test_create_doctor_position_checks_scope_before_duplicate(
+    session,
+    department,
+    doctor_b,
+    position_b,
+):
+    """Tests that foreign resources return 404 before duplicate business checks."""
+    existing_assignment = create_test_doctor_position(
+        session=session,
+        doctor=doctor_b,
+        position=position_b,
+    )
+
+    doctor_pos_data = DoctorPositionCreate(
+        position_id=position_b.id
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_position_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            doctor_pos_data=doctor_pos_data,
+            department_id=department.id,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found"
+
+    stored_assignment = doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=doctor_b.id,
+        position_id=position_b.id,
+    )
+    assert stored_assignment is not None
+    assert stored_assignment.id == existing_assignment.id
 
 
 def test_create_pre_assignment_unavailability_conflict(session, new_doctor, unavailability, shift):
@@ -855,6 +1030,84 @@ def test_create_doctor_position_route_invalid_payload(client, new_doctor, depart
     )
 
     assert response.status_code == 422
+
+
+def test_create_doctor_position_route_hides_foreign_doctor(
+    client,
+    session,
+    doctor_b,
+    position,
+    department_admin_headers,
+):
+    """Tests that an admin cannot assign a Position to a foreign doctor."""
+    response = client.post(
+        f"/api/v1/doctors/{doctor_b.id}/position",
+        json={"position_id": str(position.id)},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Doctor not found"}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=doctor_b.id,
+        position_id=position.id,
+    ) is None
+
+
+def test_create_doctor_position_route_hides_foreign_position(
+    client,
+    session,
+    new_doctor,
+    position_b,
+    department_admin_headers,
+):
+    """Tests that an admin cannot assign a foreign Position to a doctor."""
+    response = client.post(
+        f"/api/v1/doctors/{new_doctor.id}/position",
+        json={"position_id": str(position_b.id)},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Position not found"}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=new_doctor.id,
+        position_id=position_b.id,
+    ) is None
+
+
+def test_create_doctor_position_route_rejects_admin_without_department(
+    client,
+    session,
+    new_doctor,
+    position,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that an unscoped admin cannot create a doctor-position association."""
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None,
+    )
+
+    response = client.post(
+        f"/api/v1/doctors/{new_doctor.id}/position",
+        json={"position_id": str(position.id)},
+        headers=auth_headers_factory(department_admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=new_doctor.id,
+        position_id=position.id,
+    ) is None
 
 
 def test_get_doctor_position_route(client, session, new_doctor, position, viewer_headers):
