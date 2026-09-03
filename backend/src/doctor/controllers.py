@@ -41,7 +41,7 @@ def create_doctor_controller(doctor_data: DoctorCreate, session: Session) -> Doc
     if (not team) or (not department):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"The team or department entered does not exist."
+            detail="The team or department entered does not exist."
         )
 
     return doctor_repository.create_doctor(session, doctor_data)
@@ -52,10 +52,18 @@ def list_doctors_controller(session: Session) -> list[DoctorModel]:
     return doctor_repository.get_active_doctors(session)
 
 
-def get_doctor_controller(session: Session, doctor_id: uuid.UUID) -> DoctorModel:
+def get_doctor_controller(
+    session: Session,
+    doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> DoctorModel:
     """Handles logic for retrieving a specific doctor by their UUID"""
 
-    doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
+    doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
 
     if not doctor or doctor.is_deleted:
         raise HTTPException(
@@ -66,7 +74,12 @@ def get_doctor_controller(session: Session, doctor_id: uuid.UUID) -> DoctorModel
     return doctor
 
 
-def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UUID, pre_assignment_data: DoctorPreAssignmentCreate) -> DoctorPreAssignmentModel:
+def create_doctor_pre_assignment_controller(
+    session: Session,
+    doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+    pre_assignment_data: DoctorPreAssignmentCreate,
+) -> DoctorPreAssignmentModel:
     """Handles logic for creating a pre assignment for a doctor"""
 
     # todo: test existing pre assignment by doctor id and assignment
@@ -81,7 +94,11 @@ def create_doctor_pre_assignment_controller(session: Session, doctor_id: uuid.UU
             detail="Pre assignment already exists"
         )
 
-    doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
+    doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
     shift = shift_repository.get_shift_by_id(
         session, pre_assignment_data.shift_id)
     if (not doctor) or (not shift):
@@ -114,7 +131,12 @@ def list_doctor_pre_assignments_controller(session: Session, doctor_id: uuid.UUI
     return doctor_repository.get_doctor_pre_assignments(session, doctor_id)
 
 
-def create_doctor_unavailabilty_controller(session: Session, doctor_id: uuid.UUID, unavailability_data: DoctorUnavailabilityCreate) -> DoctorUnavailabilityModel:
+def create_doctor_unavailabilty_controller(
+    session: Session,
+    doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+    unavailability_data: DoctorUnavailabilityCreate,
+) -> DoctorUnavailabilityModel:
     """Handles the logic to create a new unavailability for a doctor"""
 
     existing_doc_unavailability = doctor_repository.get_doctor_unavailability_by_date(
@@ -129,7 +151,11 @@ def create_doctor_unavailabilty_controller(session: Session, doctor_id: uuid.UUI
             detail="Unavailability already exists"
         )
 
-    doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
+    doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
     if not doctor:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
@@ -158,7 +184,6 @@ def create_doctor_position_controller(
     department_id: uuid.UUID,
 ) -> DoctorPositionModel:
     """Handles the logic for creating a new doctor-position assosiation"""
-
     existing_doctor_pos = doctor_repository.get_doctor_position_by_id(
         session=session,
         doctor_id=doctor_id,
@@ -171,7 +196,11 @@ def create_doctor_position_controller(
             detail="The doctor is already assigned to this position"
         )
 
-    doctor = doctor_repository.get_doctor_by_id(session, doctor_id)
+    doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
     if not doctor:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,

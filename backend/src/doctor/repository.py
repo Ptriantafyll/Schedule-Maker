@@ -19,8 +19,18 @@ def get_doctor_by_email(session: Session, email: str) -> DoctorModel:
     ).first()
 
 
-def get_doctor_by_id(session: Session, doctor_id: str) -> DoctorModel:
+def get_doctor_by_id_for_department(
+    session: Session,
+    doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> DoctorModel:
     """Retrieves a doctor by their unique id"""
+    statememt = select(DoctorModel).where(
+        DoctorModel.id == doctor_id,
+        DoctorModel.department_id == department_id,
+        not_(DoctorModel.is_deleted),
+    )
+
     return session.get(DoctorModel, doctor_id)
 
 

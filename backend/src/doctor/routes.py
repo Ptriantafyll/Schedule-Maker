@@ -60,12 +60,17 @@ def list_doctors(
 def get_doctor(
     doctor_id: uuid.UUID,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """
     Retrieves a doctor by their UUID.
     """
-    return doctor_controllers.get_doctor_controller(session=session, doctor_id=doctor_id)
+    return doctor_controllers.get_doctor_controller(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
 
 
 @router.post("/{doctor_id}/pre-assignments", response_model=DoctorPreAssignmentRead, status_code=status.HTTP_201_CREATED)
@@ -73,12 +78,18 @@ def create_doctor_pre_assignments(
     doctor_id: uuid.UUID,
     pre_assignment_data: DoctorPreAssignmentCreate,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_admin),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """
     Creates pre assignments for a doctor.
     """
-    return doctor_controllers.create_doctor_pre_assignment_controller(session, doctor_id, pre_assignment_data)
+    return doctor_controllers.create_doctor_pre_assignment_controller(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+        pre_assignment_data=pre_assignment_data,
+    )
 
 # todo: add month to get pre assignments for
 
@@ -101,11 +112,17 @@ def create_doctor_unavailability(
     doctor_unavailability_data: DoctorUnavailabilityCreate,
     session: Session = Depends(get_session),
     current_user: UserModel = Depends(require_doctor_or_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """
     Creates unavailability for a doctor on a specific date
     """
-    return doctor_controllers.create_doctor_unavailabilty_controller(session, doctor_id, doctor_unavailability_data)
+    return doctor_controllers.create_doctor_unavailabilty_controller(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+        unavailability_data=doctor_unavailability_data,
+    )
 
 
 @router.get("/{doctor_id}/unavailability", response_model=list[DoctorUnavailabilityRead])
