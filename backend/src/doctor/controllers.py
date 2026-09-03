@@ -182,7 +182,7 @@ def create_doctor_position_controller(
     doctor_pos_data: DoctorPositionCreate,
     department_id: uuid.UUID,
 ) -> DoctorPositionModel:
-    """Handles the logic for creating a new doctor-position assosiation"""
+    """Handles the logic for creating a new doctor-position association"""
     doctor = doctor_repository.get_doctor_by_id_for_department(
         session=session,
         doctor_id=doctor_id,
@@ -211,13 +211,6 @@ def create_doctor_position_controller(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The doctor is already assigned to this position"
         )
-
-    if doctor.department_id != position.department_id:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Doctor's department needs to match position's department"
-        )
-    print("here")
 
     return doctor_repository.create_doctor_position(
         session=session,

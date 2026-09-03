@@ -28,15 +28,15 @@ def get_doctor_by_id_for_department(
     session: Session,
     doctor_id: uuid.UUID,
     department_id: uuid.UUID,
-) -> DoctorModel:
+) -> DoctorModel | None:
     """Retrieves a doctor by their unique id"""
-    statememt = select(DoctorModel).where(
+    statement = select(DoctorModel).where(
         DoctorModel.id == doctor_id,
         DoctorModel.department_id == department_id,
         not_(DoctorModel.is_deleted),
     )
 
-    return session.exec(statememt).first()
+    return session.exec(statement).first()
 
 
 def get_active_doctors(session: Session) -> list[DoctorModel]:
