@@ -201,6 +201,12 @@ def doctor_fixture(session, department, team):
     return create_new_doctor(session, "Dr Panos", "drpanos@gmail.com", department.id, team.id)
 
 
+@pytest.fixture(name="other_doctor")
+def other_doctor_fixture(session, department, team):
+    """Creates a second doctor in Department A for ownership-scope tests."""
+    return create_new_doctor(session, "Dr Other", "drother@gmail.com", department.id, team.id)
+
+
 @pytest.fixture(name="pre_assignment")
 def pre_assignment_fixture(session, new_doctor, shift):
     """Creates a reusable pre-assignment for tests"""
@@ -411,15 +417,30 @@ def test_create_doctor_unavailability(new_doctor, unavailability):
     assert unavailability.doctor_id == new_doctor.id
 
 
-def test_get_doctor_unavailability(session, new_doctor, unavailability):
-    """Test retrieving unavailability dates for a doctor"""
-    doctor_unavailabilities = doctor_repository.get_doctor_unavailability(
+def test_get_doctor_unavailability_returns_only_active_records(
+    session,
+    new_doctor,
+    unavailability,
+):
+    """Tests that only active doctor unavailability records are returned."""
+    unavailability_b = create_test_unavailability(
         session=session,
-        doctor_id=new_doctor.id
+        doctor=new_doctor,
+        date=datetime.date(2026, 8, 13),
     )
 
-    assert isinstance(doctor_unavailabilities, list)
-    assert unavailability in doctor_unavailabilities
+    unavailability.is_deleted = True
+    session.add(unavailability)
+    session.commit()
+
+    retrieved_unavailabilities = doctor_repository.get_doctor_unavailability(
+        session=session,
+        doctor_id=new_doctor.id,
+    )
+
+    assert isinstance(retrieved_unavailabilities, list)
+    assert unavailability_b in retrieved_unavailabilities
+    assert unavailability not in retrieved_unavailabilities
 
 
 def test_get_doctor_unavailability_by_date(session, new_doctor, unavailability):
@@ -447,9 +468,10 @@ def test_get_doctor_positions(session, new_doctor, position):
     """Tests getting all the positions of a doctor"""
     new_doctor_pos = create_test_doctor_position(session, new_doctor, position)
 
-    doctor_pos = doctor_repository.get_doctor_positions(
+    doctor_pos = doctor_repository.get_doctor_positions_for_department(
         session=session,
-        doctor_id=new_doctor.id
+        doctor_id=new_doctor.id,
+        department_id=new_doctor.department_id
     )
 
     assert isinstance(doctor_pos, list)
@@ -536,7 +558,6 @@ def test_get_doctor_controller_deleted(session, new_doctor):
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
-
 
 
 def test_create_doctor_pre_assignment_controller_duplicate_date(
@@ -736,17 +757,19 @@ def test_create_doctor_unavailability_controller_duplicate_date(
     session,
     new_doctor,
     unavailability,
+    department_admin_user,
 ):
-    """Test that creating a duplicate unavailability returns error"""
+    """Test that creating a duplicate unavailability returns error after authorization passes"""
     unavailability_data = DoctorUnavailabilityCreate(
         date=unavailability.date,
     )
 
     with pytest.raises(Exception) as exc_info:
-        doctor_controllers.create_doctor_unavailabilty_controller(
+        doctor_controllers.create_doctor_unavailability_controller(
             session=session,
             doctor_id=new_doctor.id,
             department_id=new_doctor.department_id,
+            current_user=department_admin_user,
             unavailability_data=unavailability_data
         )
 
@@ -755,23 +778,347 @@ def test_create_doctor_unavailability_controller_duplicate_date(
     assert "already exists" in exc_info.value.detail
 
 
-def test_create_doctor_unavailability_controller_nonexistent_doctor(session, department):
-    """Test that creating an unavailability for a non-existent doctor returns error"""
+def test_create_doctor_unavailability_controller_nonexistent_doctor(
+    session,
+    department,
+    department_admin_user,
+):
+    """Tests that creating an unavailability for a nonexistent doctor returns a scoped 404."""
+    missing_doctor_id = uuid.uuid4()
     unavailability_data = DoctorUnavailabilityCreate(
         date=datetime.date(2026, 8, 12),
     )
 
     with pytest.raises(Exception) as exc_info:
-        doctor_controllers.create_doctor_unavailabilty_controller(
+        doctor_controllers.create_doctor_unavailability_controller(
             session=session,
-            doctor_id=uuid.uuid4(),
+            doctor_id=missing_doctor_id,
             department_id=department.id,
+            current_user=department_admin_user,
             unavailability_data=unavailability_data,
         )
 
     assert exc_info.type.__name__ == "HTTPException"
-    assert exc_info.value.status_code == 422
-    assert "Doctor does not exist" in exc_info.value.detail
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found."
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=missing_doctor_id,
+        target_date=datetime.date(2026, 8, 12),
+    ) is None
+
+
+def test_create_doctor_unavailability_controller_hides_foreign_doctor(
+    session,
+    department,
+    department_admin_user,
+    doctor_b,
+):
+    """Tests that a department admin cannot create unavailability for a foreign doctor."""
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 9, 1))
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_unavailability_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            department_id=department.id,
+            current_user=department_admin_user,
+            unavailability_data=unavailability_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found."
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=doctor_b.id,
+        target_date=datetime.date(2026, 9, 1),
+    ) is None
+
+
+def test_create_doctor_unavailability_controller_rejects_doctor_targeting_other_doctor(
+    session,
+    department,
+    doctor_user,
+    other_doctor,
+):
+    """Tests that a doctor cannot create unavailability for another same-department doctor."""
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 9, 2))
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_unavailability_controller(
+            session=session,
+            doctor_id=other_doctor.id,
+            department_id=department.id,
+            current_user=doctor_user,
+            unavailability_data=unavailability_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Cannot access another doctor's unavailability."
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=other_doctor.id,
+        target_date=datetime.date(2026, 9, 2),
+    ) is None
+
+
+def test_create_doctor_unavailability_controller_rejects_doctor_targeting_foreign_doctor(
+    session,
+    department,
+    doctor_user,
+    doctor_b,
+):
+    """Tests that a doctor cannot create unavailability for a foreign-department doctor."""
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 9, 3))
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_unavailability_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            department_id=department.id,
+            current_user=doctor_user,
+            unavailability_data=unavailability_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Cannot access another doctor's unavailability."
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=doctor_b.id,
+        target_date=datetime.date(2026, 9, 3),
+    ) is None
+
+
+def test_create_doctor_unavailability_controller_rejects_doctor_without_doctor_id(
+    session,
+    department,
+    new_doctor,
+    user_factory,
+):
+    """Tests that a doctor account without a doctor_id fails closed."""
+    doctor_without_id = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=None,
+    )
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 9, 4))
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_unavailability_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            department_id=department.id,
+            current_user=doctor_without_id,
+            unavailability_data=unavailability_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Invalid account scope."
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 9, 4),
+    ) is None
+
+
+def test_create_doctor_unavailability_checks_ownership_before_duplicate(
+    session,
+    department,
+    doctor_user,
+    other_doctor,
+):
+    """Tests that doctor ownership is enforced before the duplicate-date check runs."""
+    existing_unavailability = create_test_unavailability(
+        session, other_doctor, datetime.date(2026, 9, 5)
+    )
+
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 9, 5))
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_unavailability_controller(
+            session=session,
+            doctor_id=other_doctor.id,
+            department_id=department.id,
+            current_user=doctor_user,
+            unavailability_data=unavailability_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Cannot access another doctor's unavailability."
+
+    stored_unavailabilities = doctor_repository.get_doctor_unavailability(
+        session=session,
+        doctor_id=other_doctor.id,
+    )
+    assert len(stored_unavailabilities) == 1
+    assert stored_unavailabilities[0].id == existing_unavailability.id
+
+
+def test_create_doctor_unavailability_checks_admin_scope_before_duplicate(
+    session,
+    department,
+    department_admin_user,
+    doctor_b,
+):
+    """Tests that admin department scope is enforced before the duplicate-date check runs."""
+    existing_unavailability = create_test_unavailability(
+        session, doctor_b, datetime.date(2026, 9, 6)
+    )
+
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=datetime.date(2026, 9, 6))
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.create_doctor_unavailability_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            department_id=department.id,
+            current_user=department_admin_user,
+            unavailability_data=unavailability_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found."
+
+    stored_unavailabilities = doctor_repository.get_doctor_unavailability(
+        session=session,
+        doctor_id=doctor_b.id,
+    )
+    assert len(stored_unavailabilities) == 1
+    assert stored_unavailabilities[0].id == existing_unavailability.id
+
+
+def test_list_doctor_unavailability_controller_admin_own_succeeds(
+    session,
+    department,
+    department_admin_user,
+    new_doctor,
+    unavailability,
+):
+    """Tests that a department admin can list unavailability for their own department's doctor."""
+    result = doctor_controllers.list_doctor_unavailability_controller(
+        session=session,
+        doctor_id=new_doctor.id,
+        department_id=department.id,
+        current_user=department_admin_user,
+    )
+
+    assert unavailability in result
+
+
+def test_list_doctor_unavailability_controller_hides_foreign_doctor(
+    session,
+    department,
+    department_admin_user,
+    doctor_b,
+):
+    """Tests that a department admin cannot list unavailability for a foreign doctor."""
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.list_doctor_unavailability_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            department_id=department.id,
+            current_user=department_admin_user,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found."
+
+
+def test_list_doctor_unavailability_controller_doctor_own_succeeds(
+    session,
+    department,
+    doctor_user,
+    new_doctor,
+    unavailability,
+):
+    """Tests that a doctor can list their own unavailability."""
+    result = doctor_controllers.list_doctor_unavailability_controller(
+        session=session,
+        doctor_id=new_doctor.id,
+        department_id=department.id,
+        current_user=doctor_user,
+    )
+
+    assert unavailability in result
+
+
+def test_list_doctor_unavailability_controller_rejects_doctor_targeting_other_doctor(
+    session,
+    department,
+    doctor_user,
+    other_doctor,
+):
+    """Tests that a doctor cannot list another same-department doctor's unavailability."""
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.list_doctor_unavailability_controller(
+            session=session,
+            doctor_id=other_doctor.id,
+            department_id=department.id,
+            current_user=doctor_user,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Cannot access another doctor's unavailability."
+
+
+def test_list_doctor_unavailability_controller_rejects_doctor_targeting_foreign_doctor(
+    session,
+    department,
+    doctor_user,
+    doctor_b,
+):
+    """Tests that a doctor cannot list a foreign-department doctor's unavailability."""
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.list_doctor_unavailability_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            department_id=department.id,
+            current_user=doctor_user,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Cannot access another doctor's unavailability."
+
+
+def test_list_doctor_unavailability_controller_rejects_doctor_without_doctor_id(
+    session,
+    department,
+    new_doctor,
+    user_factory,
+):
+    """Tests that a doctor account without a doctor_id fails closed when listing."""
+    doctor_without_id = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=None,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.list_doctor_unavailability_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            department_id=department.id,
+            current_user=doctor_without_id,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == "Invalid account scope."
 
 
 def test_create_doctor_position_controller_duplicate_assignment(session, new_doctor, position):
@@ -940,6 +1287,87 @@ def test_create_doctor_position_checks_scope_before_duplicate(
     )
     assert stored_assignment is not None
     assert stored_assignment.id == existing_assignment.id
+
+
+def test_list_doctor_positions_controller_returns_own_department(
+    session,
+    department,
+    new_doctor,
+    position,
+):
+    """Tests that a department member can list associations for a doctor in their own department."""
+    doctor_position = create_test_doctor_position(
+        session=session,
+        doctor=new_doctor,
+        position=position,
+    )
+
+    result = doctor_controllers.list_doctor_positions_controller(
+        session=session,
+        doctor_id=new_doctor.id,
+        department_id=department.id,
+    )
+
+    assert isinstance(result, list)
+    assert any(item.id == doctor_position.id for item in result)
+
+
+def test_list_doctor_positions_controller_hides_foreign_doctor(
+    session,
+    department,
+    doctor_b,
+    position_b,
+):
+    """Tests that the list controller returns 404 instead of an empty list for a foreign doctor."""
+    create_test_doctor_position(
+        session=session,
+        doctor=doctor_b,
+        position=position_b,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.list_doctor_positions_controller(
+            session=session,
+            doctor_id=doctor_b.id,
+            department_id=department.id,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found."
+    assert doctor_repository.get_doctor_position_by_id(
+        session=session,
+        doctor_id=doctor_b.id,
+        position_id=position_b.id,
+    ) is not None
+
+
+def test_list_doctor_positions_controller_hides_deleted_doctor(
+    session,
+    new_doctor,
+    position,
+):
+    """Tests that the list controller returns 404 for a soft-deleted doctor."""
+    create_test_doctor_position(
+        session=session,
+        doctor=new_doctor,
+        position=position,
+    )
+
+    new_doctor.is_deleted = True
+    session.add(new_doctor)
+    session.commit()
+
+    with pytest.raises(Exception) as exc_info:
+        doctor_controllers.list_doctor_positions_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            department_id=new_doctor.department_id,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Doctor not found."
 
 
 def test_create_pre_assignment_unavailability_conflict(session, new_doctor, unavailability, shift):
@@ -1148,7 +1576,7 @@ def test_get_doctor_by_id_route_hides_foreign_doctor(
     )
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Doctor not found"}
+    assert response.json() == {"detail": "Doctor not found."}
     assert response.headers.get("WWW-Authenticate") is None
 
 
@@ -1209,7 +1637,7 @@ def test_full_doctor_routes_reject_non_department_admin(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"}
+        "detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
 
 
@@ -1578,6 +2006,281 @@ def test_get_doctor_unavailability_route(client, new_doctor, unavailability, doc
     assert "updated_at" in returned_unavailability
 
 
+def test_get_doctor_unavailability_route_department_admin_own(
+    client,
+    new_doctor,
+    unavailability,
+    department_admin_headers,
+):
+    """Tests that a department admin can list unavailability for their own department's doctor."""
+    response = client.get(
+        f"/api/v1/doctors/{new_doctor.id}/unavailability",
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert isinstance(data, list)
+    assert any(item["id"] == str(unavailability.id) for item in data)
+
+
+def test_create_doctor_unavailability_route_hides_foreign_doctor(
+    client,
+    session,
+    doctor_b,
+    department_admin_headers,
+):
+    """Tests that a department admin cannot create unavailability for a foreign doctor."""
+    response = client.post(
+        f"/api/v1/doctors/{doctor_b.id}/unavailability",
+        json={"date": str(datetime.date(2026, 9, 10))},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Doctor not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=doctor_b.id,
+        target_date=datetime.date(2026, 9, 10),
+    ) is None
+
+
+def test_get_doctor_unavailability_route_hides_foreign_doctor(
+    client,
+    doctor_b,
+    department_admin_headers,
+):
+    """Tests that a department admin cannot list unavailability for a foreign doctor."""
+    response = client.get(
+        f"/api/v1/doctors/{doctor_b.id}/unavailability",
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Doctor not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_create_doctor_unavailability_route_rejects_doctor_targeting_other_doctor(
+    client,
+    session,
+    other_doctor,
+    doctor_headers,
+):
+    """Tests that a doctor cannot create unavailability for another same-department doctor."""
+    response = client.post(
+        f"/api/v1/doctors/{other_doctor.id}/unavailability",
+        json={"date": str(datetime.date(2026, 9, 11))},
+        headers=doctor_headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Cannot access another doctor's unavailability."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=other_doctor.id,
+        target_date=datetime.date(2026, 9, 11),
+    ) is None
+
+
+def test_get_doctor_unavailability_route_rejects_doctor_targeting_other_doctor(
+    client,
+    other_doctor,
+    doctor_headers,
+):
+    """Tests that a doctor cannot list another same-department doctor's unavailability."""
+    response = client.get(
+        f"/api/v1/doctors/{other_doctor.id}/unavailability",
+        headers=doctor_headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Cannot access another doctor's unavailability."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_create_doctor_unavailability_route_rejects_doctor_targeting_foreign_doctor(
+    client,
+    session,
+    doctor_b,
+    doctor_headers,
+):
+    """Tests that a doctor cannot create unavailability for a foreign-department doctor."""
+    response = client.post(
+        f"api/v1/doctors/{doctor_b.id}/unavailability",
+        json={"date": str(datetime.date(2026, 9, 12))},
+        headers=doctor_headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Cannot access another doctor's unavailability."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=doctor_b.id,
+        target_date=datetime.date(2026, 9, 12),
+    ) is None
+
+
+def test_get_doctor_unavailability_route_rejects_doctor_targeting_foreign_doctor(
+    client,
+    doctor_b,
+    doctor_headers,
+):
+    """Tests that a doctor cannot list a foreign-department doctor's unavailability."""
+    response = client.get(
+        f"api/v1/doctors/{doctor_b.id}/unavailability",
+        headers=doctor_headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Cannot access another doctor's unavailability."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_create_doctor_unavailability_route_rejects_doctor_without_doctor_id(
+    client,
+    session,
+    department,
+    new_doctor,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that a doctor account without a doctor_id cannot create unavailability."""
+    doctor_without_id = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=None,
+    )
+
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        json={"date": str(datetime.date(2026, 9, 13))},
+        headers=auth_headers_factory(doctor_without_id),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 9, 13),
+    ) is None
+
+
+def test_get_doctor_unavailability_route_rejects_doctor_without_doctor_id(
+    client,
+    department,
+    new_doctor,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that a doctor account without a doctor_id cannot list unavailability."""
+    doctor_without_id = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=None,
+    )
+
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        headers=auth_headers_factory(doctor_without_id),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_create_doctor_unavailability_route_rejects_admin_without_department(
+    client,
+    session,
+    new_doctor,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that an unscoped admin cannot create unavailability for a doctor."""
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None,
+    )
+
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        json={"date": str(datetime.date(2026, 9, 14))},
+        headers=auth_headers_factory(department_admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert doctor_repository.get_doctor_unavailability_by_date(
+        session=session,
+        doctor_id=new_doctor.id,
+        target_date=datetime.date(2026, 9, 14),
+    ) is None
+
+
+def test_get_doctor_unavailability_route_rejects_admin_without_department(
+    client,
+    new_doctor,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that an unscoped admin cannot list unavailability for a doctor."""
+    department_admin = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=None,
+    )
+
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        headers=auth_headers_factory(department_admin),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_create_doctor_unavailability_route_checks_ownership_before_duplicate(
+    client,
+    session,
+    other_doctor,
+    doctor_headers,
+):
+    """Tests that ownership is enforced before the duplicate-date check at the route level."""
+    existing_unavailability = create_test_unavailability(
+        session, other_doctor, datetime.date(2026, 9, 15)
+    )
+
+    response = client.post(
+        f"api/v1/doctors/{other_doctor.id}/unavailability",
+        json={"date": str(datetime.date(2026, 9, 15))},
+        headers=doctor_headers,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "detail": "Cannot access another doctor's unavailability."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+    stored_unavailabilities = doctor_repository.get_doctor_unavailability(
+        session=session,
+        doctor_id=other_doctor.id,
+    )
+    assert len(stored_unavailabilities) == 1
+    assert stored_unavailabilities[0].id == existing_unavailability.id
+
+
 def test_create_doctor_position_route(client, position, new_doctor, department_admin_headers):
     """Tests the POST /doctors/{doctor_id}/position route"""
     response = client.post(
@@ -1721,6 +2424,70 @@ def test_get_doctor_position_route(client, session, new_doctor, position, viewer
 @pytest.mark.parametrize(
     "role",
     [
+        UserRole.DEPARTMENT_ADMIN,
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+    ]
+)
+def test_list_doctor_positions_route_hides_foreign_doctor(
+    client,
+    session,
+    department,
+    new_doctor,
+    doctor_b,
+    position_b,
+    role,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that Department A members cannot list a Department B doctor's associations."""
+    create_test_doctor_position(
+        session=session,
+        doctor=doctor_b,
+        position=position_b,
+    )
+
+    user = user_factory(
+        role=role,
+        department_id=department.id,
+        doctor_id=new_doctor.id if role == UserRole.DOCTOR else None,
+    )
+
+    response = client.get(
+        f"api/v1/doctors/{doctor_b.id}/position",
+        headers=auth_headers_factory(user),
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Doctor not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_list_doctor_positions_route_rejects_viewer_without_department(
+    client,
+    new_doctor,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests that an unscoped viewer cannot list any doctor's associations."""
+    viewer = user_factory(
+        role=UserRole.VIEWER,
+        department_id=None,
+    )
+
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}/position",
+        headers=auth_headers_factory(viewer),
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Invalid account scope."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
         UserRole.VIEWER,
         UserRole.DOCTOR,
         UserRole.SUPER_ADMIN,
@@ -1758,7 +2525,7 @@ def test_non_department_admin_cannot_create_doctor(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"}
+        "detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
     assert doctor_repository.get_doctor_by_email(
         session=session,
@@ -1864,7 +2631,7 @@ def test_non_department_admin_cannot_create_pre_assignment(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"}
+        "detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
     retrieved_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_date(
         session=session,
@@ -1943,7 +2710,7 @@ def test_non_department_admin_cannot_list_pre_assignments(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"}
+        "detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
 
 
@@ -1996,7 +2763,7 @@ def test_non_doctor_or_department_admin_cannot_create_unavailability(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"}
+        "detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
     retrieved_unavailability = doctor_repository.get_doctor_unavailability_by_date(
         session=session,
@@ -2093,7 +2860,7 @@ def test_non_doctor_or_department_admin_cannot_list_unavailability(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"}
+        "detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
 
 
@@ -2151,7 +2918,7 @@ def test_non_department_admin_cannot_create_doctor_position(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"
+        "detail": "Insufficient permissions for this operation."
     }
     assert response.headers.get("WWW-Authenticate") is None
     assert doctor_repository.get_doctor_position_by_id(

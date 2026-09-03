@@ -27,7 +27,7 @@ router = APIRouter(
 def create_shift(
     shift_data: ShiftCreate,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_admin),
+    _current_user: UserModel = Depends(require_department_admin),
     department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Endpoint to create a new shift"""
@@ -41,29 +41,39 @@ def create_shift(
 @router.get("/", response_model=list[ShiftRead])
 def list_shifts(
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Endpoint to list all shifts"""
-    return shift_controllers.list_shifts_controller(session)
+    return shift_controllers.list_shifts_controller(session, department_id=department_id)
 
 
 @router.get("/assignments", response_model=list[ShiftAssignmentRead])
 def list_shift_assignments(
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
-    """Fetches a specific shift by its UUID."""
-    return shift_controllers.list_shift_assignments_controller(session)
+    """Retrieves all shift assignments of a department."""
+    return shift_controllers.list_shift_assignments_controller(
+        session=session,
+        department_id=department_id,
+    )
 
 
-@router.get("/{shift_name}", response_model=ShiftRead)
+@router.get("/{shift_id}", response_model=ShiftRead)
 def get_shift(
-    shift_name: str,
+    shift_id: uuid.UUID,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
-    """Fetches a specific shift by its name."""
-    return shift_controllers.get_shift_controller(shift_name, department_id=department_id, session=session)
+    """Fetches a specific shift by its ID."""
+    return shift_controllers.get_shift_controller(
+        shift_id=shift_id,
+        department_id=department_id,
+        session=session,
+    )
 
 
 @router.post("/{shift_id}/assignments", response_model=ShiftAssignmentRead, status_code=status.HTTP_201_CREATED)
@@ -71,7 +81,7 @@ def create_shift_assignment(
     shift_id: uuid.UUID,
     shift_assignment_data: ShiftAssignmentCreate,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_admin),
+    _current_user: UserModel = Depends(require_department_admin),
     department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """Endpoint to create a new shift"""

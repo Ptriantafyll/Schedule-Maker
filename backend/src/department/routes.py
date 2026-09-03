@@ -10,7 +10,7 @@ from src.db.connection import get_session
 from src.department.schemas import DepartmentRead
 from src.department.controllers import (
     get_department_controller,
-    list_departments_controller,
+    list_departments_controller_global,
 )
 
 from src.user.models import User as UserModel
@@ -32,7 +32,7 @@ def list_departments(
     current_user: UserModel = Depends(require_super_admin),
 ):
     """Retrieves all active, non-deleted hospital departments."""
-    return list_departments_controller(session)
+    return list_departments_controller_global(session)
 
 
 @router.get("/{department_id}", response_model=DepartmentRead)

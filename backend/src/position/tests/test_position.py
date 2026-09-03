@@ -671,7 +671,7 @@ def test_non_department_admin_cannot_create_position(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"}
+        "detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
     assert position_repository.get_position_by_name_for_department(
         session=session,

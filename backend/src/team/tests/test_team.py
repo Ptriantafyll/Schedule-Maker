@@ -568,7 +568,7 @@ def test_non_department_admin_cannot_create_team(
 
     assert response.status_code == 403
     data = response.json()
-    assert data == {"detail": "Insufficient permissions for this operation"}
+    assert data == {"detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
     assert team_repository.get_team_by_name_for_department(
         session=session,

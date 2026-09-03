@@ -123,6 +123,8 @@ class DoctorUnavailabilityRead(DoctorUnavailabilityBase):
 
     created_at: datetime.datetime
     updated_at: datetime.datetime
+    sync_status: bool = False
+    is_deleted: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 

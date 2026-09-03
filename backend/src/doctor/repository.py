@@ -14,6 +14,7 @@ from src.doctor.models import Doctor as DoctorModel
 from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 from src.doctor.models import DoctorPosition as DoctorPositionModel
+from src.position.models import Position as PositionModel
 
 
 def get_doctor_by_email(session: Session, email: str) -> DoctorModel:
@@ -139,7 +140,8 @@ def get_doctor_unavailability_by_date(session: Session, doctor_id: str, target_d
 def get_doctor_unavailability(session: Session, doctor_id: str) -> list[DoctorUnavailabilityModel]:
     """Retrieves the unavailability dates of a doctor"""
     statement = select(DoctorUnavailabilityModel).where(
-        DoctorUnavailabilityModel.doctor_id == doctor_id
+        DoctorUnavailabilityModel.doctor_id == doctor_id,
+        not_(DoctorUnavailabilityModel.is_deleted),
     )
 
     return session.exec(statement).all()
@@ -169,10 +171,24 @@ def get_doctor_position_by_id(session: Session, doctor_id: str, position_id: str
     return session.exec(statement).first()
 
 
-def get_doctor_positions(session: Session, doctor_id: str) -> list[DoctorPositionModel]:
-    """Retrieves the positions of a doctor"""
-    statement = select(DoctorPositionModel).where(
-        DoctorPositionModel.doctor_id == doctor_id
+def get_doctor_positions_for_department(
+    session: Session,
+    doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> list[DoctorPositionModel]:
+    """Retrieves the positions of a doctor within a department"""
+    statement = (
+        select(DoctorPositionModel)
+        .join(
+            DoctorModel,
+            DoctorPositionModel.doctor_id == DoctorModel.id
+        )
+        .where(
+            DoctorPositionModel.doctor_id == doctor_id,
+            DoctorModel.department_id == department_id,
+            not_(DoctorPositionModel.is_deleted),
+            not_(DoctorModel.is_deleted),
+        )
     )
 
     return session.exec(statement).all()

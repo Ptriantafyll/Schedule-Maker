@@ -78,9 +78,9 @@ def test_create_department(session):
     assert isinstance(new_dept.updated_at, datetime.datetime)
 
 
-def test_get_department_by_name(session, department):
+def test_get_department_by_name_global(session, department):
     """Test retrieving a department by its name."""
-    retrieved_dept = department_repository.get_department_by_name(
+    retrieved_dept = department_repository.get_department_by_name_global(
         session, department.name)
 
     assert retrieved_dept == department
@@ -98,7 +98,7 @@ def test_get_active_departments(session):
     session.add(dept2)
     session.commit()
 
-    active_departments = department_repository.get_active_departments(session)
+    active_departments = department_repository.get_active_departments_global(session)
     assert dept1 in active_departments
     assert dept2 not in active_departments
 
@@ -221,7 +221,7 @@ def test_get_department_controller_uses_member_scope(
     )
     monkeypatch.setattr(
         department_controllers.repository,
-        "get_department_by_id",
+        "get_department_by_id_global",
         global_repository_mock,
     )
 
@@ -328,7 +328,7 @@ def test_non_super_admin_cannot_list_departments(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"
+        "detail": "Insufficient permissions for this operation."
     }
     assert response.headers.get("WWW-Authenticate") is None
 

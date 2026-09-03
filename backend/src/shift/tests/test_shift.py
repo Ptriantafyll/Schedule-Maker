@@ -412,6 +412,7 @@ def test_get_shift_assignment_by_id(session, shift_assignment):
 def test_get_active_shift_assignments_for_department_excludes_foreign_and_deleted(
     session,
     department,
+    position,
     new_doctor,
     shift,
     shift_assignment,
@@ -436,6 +437,46 @@ def test_get_active_shift_assignments_for_department_excludes_foreign_and_delete
         date=datetime.date(2026, 8, 12),
     )
 
+    deleted_shift = create_new_shift(
+        session=session,
+        name="Deleted Shift",
+        position_id=position.id,
+        grants_day_off=False,
+        doctors_per_shift=1,
+    )
+    deleted_shift_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=deleted_shift.id,
+        date=datetime.date(2026, 8, 14),
+    )
+    deleted_shift.is_deleted = True
+    session.add(deleted_shift)
+    session.commit()
+
+    deleted_position = position_repository.create_position(
+        session=session,
+        position_name="Deleted Position",
+        department_id=department.id,
+        duty_days=[1, 3, 5],
+    )
+    deleted_position_shift = create_new_shift(
+        session=session,
+        name="Shift Under Deleted Position",
+        position_id=deleted_position.id,
+        grants_day_off=False,
+        doctors_per_shift=1,
+    )
+    deleted_position_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=deleted_position_shift.id,
+        date=datetime.date(2026, 8, 15),
+    )
+    deleted_position.is_deleted = True
+    session.add(deleted_position)
+    session.commit()
+
     retrieved_assignments = shift_repository.get_active_shift_assignments_for_department(
         session=session,
         department_id=department.id,
@@ -448,6 +489,8 @@ def test_get_active_shift_assignments_for_department_excludes_foreign_and_delete
     assert shift_assignment.id in returned_ids
     assert deleted_assignment.id not in returned_ids
     assert foreign_assignment.id not in returned_ids
+    assert deleted_shift_assignment.id not in returned_ids
+    assert deleted_position_assignment.id not in returned_ids
 
 
 def test_shift_name_can_repeat_across_positions(
@@ -680,6 +723,54 @@ def test_create_shift_assignment_controller_same_doctor_duplicate(session, shift
     assert exc_info.value.status_code == 400
     assert "Doctor is already assigned on this dat" in exc_info.value.detail
 
+def test_create_shift_assignment_controller_rejects_doctor_assigned_to_another_shift(
+    session,
+    department,
+    position,
+    shift,
+    new_doctor,
+):
+    """Tests that a Doctor cannot work two Shifts on the same date."""
+    target_date = datetime.date(2026, 8, 12)
+    second_shift = create_new_shift(
+        session=session,
+        name="ER 2",
+        position_id=position.id,
+        grants_day_off=False,
+        doctors_per_shift=2,
+    )
+    existing_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=target_date,
+    )
+
+    assignment_data = ShiftAssignmentCreate(
+        doctor_id=new_doctor.id,
+        date=target_date,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            shift_id=second_shift.id,
+            department_id=department.id,
+            session=session,
+            shift_assignment_data=assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == "Doctor is already assigned on this date."
+    assert shift_repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=second_shift.id,
+        target_date=target_date,
+    ) == []
+
+    session.refresh(existing_assignment)
+    assert existing_assignment.is_deleted is False
+
 
 def test_create_shift_assignment_controller_foreign_shift(session, department, shift_b, new_doctor):
     """Tests that creating an assignment against a Department B shift returns 404 and creates no assignment."""
@@ -698,7 +789,7 @@ def test_create_shift_assignment_controller_foreign_shift(session, department, s
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
-    assert "Shift not found" in exc_info.value.detail
+    assert "Shift or Doctor not found" in exc_info.value.detail
     assert shift_repository.get_shift_assignments_by_date(
         session=session,
         shift_id=shift_b.id,
@@ -731,6 +822,107 @@ def test_create_shift_assignment_controller_foreign_doctor(session, department, 
     ) == []
 
 
+def test_create_shift_assignment_controller_nonexistent_doctor(
+    session,
+    department,
+    shift,
+):
+    """Tests that a valid but nonexistent Doctor UUID returns 404."""
+    nonexistent_doctor_id = uuid.uuid4()
+    target_date = datetime.date(2026, 8, 12)
+    shift_assignment_data = ShiftAssignmentCreate(
+        doctor_id=nonexistent_doctor_id,
+        date=target_date,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            shift_id=shift.id,
+            department_id=department.id,
+            session=session,
+            shift_assignment_data=shift_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Shift or Doctor not found."
+    assert shift_repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=shift.id,
+        target_date=target_date,
+    ) == []
+
+
+def test_create_shift_assignment_controller_deleted_doctor(
+    session,
+    department,
+    shift,
+    new_doctor,
+):
+    """Tests that a soft-deleted Doctor cannot be assigned."""
+    new_doctor.is_deleted = True
+    session.add(new_doctor)
+    session.commit()
+
+    target_date = datetime.date(2026, 8, 12)
+    shift_assignment_data = ShiftAssignmentCreate(
+        doctor_id=new_doctor.id,
+        date=target_date,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            shift_id=shift.id,
+            department_id=department.id,
+            session=session,
+            shift_assignment_data=shift_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Shift or Doctor not found."
+    assert shift_repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=shift.id,
+        target_date=target_date,
+    ) == []
+
+
+def test_create_shift_assignment_controller_deleted_shift(
+    session,
+    department,
+    shift,
+    new_doctor,
+):
+    """Tests that a soft-deleted Shift cannot receive assignments."""
+    shift.is_deleted = True
+    session.add(shift)
+    session.commit()
+
+    target_date = datetime.date(2026, 8, 12)
+    shift_assignment_data = ShiftAssignmentCreate(
+        doctor_id=new_doctor.id,
+        date=target_date,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            shift_id=shift.id,
+            department_id=department.id,
+            session=session,
+            shift_assignment_data=shift_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert exc_info.value.detail == "Shift or Doctor not found."
+    assert shift_repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=shift.id,
+        target_date=target_date,
+    ) == []
+
+
 def test_create_shift_assignment_controller_scope_check_precedes_capacity_check(
     session,
     department,
@@ -760,7 +952,7 @@ def test_create_shift_assignment_controller_scope_check_precedes_capacity_check(
 
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
-    assert "Shift not found" in exc_info.value.detail
+    assert "Shift or Doctor not found" in exc_info.value.detail
 
 
 # def test_create_shift_assignment_controller_different_doctor_conflict(session, department, team, new_doctor, shift):
@@ -847,6 +1039,163 @@ def test_create_shift_assignment_capacity_limit(session, shift, new_doctor, depa
     assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 400
     assert "Shift already has max assignments" in exc_info.value.detail
+
+
+def test_create_shift_assignment_ignores_deleted_assignment_for_capacity(
+    session,
+    shift,
+    new_doctor,
+    department,
+    team,
+):
+    """Tests that a deleted assignment does not consume Shift capacity."""
+    target_date = datetime.date(2026, 8, 12)
+    shift.doctors_per_shift = 1
+    session.add(shift)
+    session.commit()
+
+    deleted_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=target_date,
+    )
+    deleted_assignment.is_deleted = True
+    session.add(deleted_assignment)
+    session.commit()
+
+    replacement_doctor = create_new_doctor(
+        session=session,
+        name="Replacement Doctor",
+        email="replacement@example.com",
+        department_id=department.id,
+        team_id=team.id,
+    )
+
+    created_assignment = shift_controllers.create_shift_assignment_controller(
+        session=session,
+        shift_id=shift.id,
+        department_id=department.id,
+        shift_assignment_data=ShiftAssignmentCreate(
+            doctor_id=replacement_doctor.id,
+            date=target_date,
+        ),
+    )
+
+    assert created_assignment.doctor_id == replacement_doctor.id
+    assert created_assignment.shift_id == shift.id
+    assert created_assignment.date == target_date
+
+    active_assignments = shift_repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=shift.id,
+        target_date=target_date,
+    )
+    assert [assignment.id for assignment in active_assignments] == [
+        created_assignment.id
+    ]
+
+    session.refresh(deleted_assignment)
+    assert deleted_assignment.is_deleted is True
+
+
+def test_create_shift_assignment_controller_nonexistent_shift(session, department, new_doctor):
+    """Tests that a valid but nonexistent Shift UUID returns 404 instead of raising an AttributeError."""
+    nonexistent_shift_id = uuid.uuid4()
+    shift_assignment_data = ShiftAssignmentCreate(
+        doctor_id=new_doctor.id,
+        date=datetime.date(2026, 8, 12),
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            shift_id=nonexistent_shift_id,
+            department_id=department.id,
+            session=session,
+            shift_assignment_data=shift_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert "Shift or Doctor not found." in exc_info.value.detail
+    assert session.exec(
+        select(ShiftAssignmentModel).where(
+            ShiftAssignmentModel.doctor_id == new_doctor.id
+        )
+    ).all() == []
+
+
+def test_create_shift_assignment_controller_scope_check_precedes_unavailability_check(
+    session,
+    department,
+    shift,
+    doctor_b,
+):
+    """Tests that the foreign-doctor scope check runs before the unavailability business rule."""
+    target_date = datetime.date(2026, 8, 20)
+    create_test_unavailability(session, doctor_b, target_date)
+
+    shift_assignment_data = ShiftAssignmentCreate(
+        doctor_id=doctor_b.id,
+        date=target_date,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            shift_id=shift.id,
+            department_id=department.id,
+            session=session,
+            shift_assignment_data=shift_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert "Shift or Doctor not found." in exc_info.value.detail
+    assert shift_repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=shift.id,
+        target_date=target_date,
+    ) == []
+
+
+def test_create_shift_assignment_controller_scope_check_precedes_duplicate_check(
+    session,
+    department,
+    shift,
+    doctor_b,
+):
+    """Tests that the foreign-doctor scope check runs before the duplicate-assignment business rule."""
+    target_date = datetime.date(2026, 8, 21)
+    # Seeds a Department B doctor directly onto a Department A shift, bypassing
+    # the controller, so the duplicate check would otherwise match on retry.
+    preexisting_assignment = create_new_shift_assignment(
+        session, doctor_b.id, shift.id, target_date
+    )
+
+    shift_assignment_data = ShiftAssignmentCreate(
+        doctor_id=doctor_b.id,
+        date=target_date,
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        shift_controllers.create_shift_assignment_controller(
+            shift_id=shift.id,
+            department_id=department.id,
+            session=session,
+            shift_assignment_data=shift_assignment_data,
+        )
+
+    assert exc_info.type.__name__ == "HTTPException"
+    assert exc_info.value.status_code == 404
+    assert "Shift or Doctor not found." in exc_info.value.detail
+    remaining_assignments = shift_repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=shift.id,
+        target_date=target_date,
+    )
+    assert [assignment.id for assignment in remaining_assignments] == [
+        preexisting_assignment.id
+    ]
 
 
 #####################
@@ -974,6 +1323,65 @@ def test_create_shift_route_rejects_admin_without_department(
     assert stored_shifts == []
 
 
+def test_create_shift_route_rejects_foreign_position(
+    client,
+    session,
+    position_b,
+    department_admin_headers,
+):
+    """Tests that a Department A admin cannot create a Shift under a Department B position."""
+    shift_name = "Foreign Position Route Shift"
+
+    response = client.post(
+        "api/v1/shifts",
+        json={
+            "name": shift_name,
+            "doctors_per_shift": 1,
+            "grants_day_off": False,
+            "position_id": str(position_b.id)
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Position not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+    stored_shifts = session.exec(
+        select(ShiftModel).where(ShiftModel.name == shift_name)
+    ).all()
+    assert stored_shifts == []
+
+
+def test_create_shift_route_duplicate_name_within_same_position(
+    client,
+    session,
+    shift,
+    department_admin_headers,
+):
+    """Tests that duplicating a Shift name under the same Position returns 400 and creates no extra row."""
+    response = client.post(
+        "api/v1/shifts",
+        json={
+            "name": shift.name,
+            "doctors_per_shift": 1,
+            "grants_day_off": False,
+            "position_id": str(shift.position_id)
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "Shift already exists"}
+    assert response.headers.get("WWW-Authenticate") is None
+
+    stored_shifts = session.exec(
+        select(ShiftModel).where(ShiftModel.position_id == shift.position_id)
+    ).all()
+    assert len(stored_shifts) == 1
+    assert stored_shifts[0].id == shift.id
+
+
 def test_get_shift_route(client, shift, viewer_headers):
     """Tests get /api/v1/shifts/{shift_id} route"""
     response = client.get(
@@ -1034,7 +1442,7 @@ def test_department_member_cannot_get_shift_from_another_department(
     )
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Shift not found"}
+    assert response.json() == {"detail": "Shift not found."}
     assert response.headers.get("WWW-Authenticate") is None
 
 
@@ -1125,11 +1533,68 @@ def test_create_shift_assignment_route_mixed_department_shift_and_doctor(
     )
 
     assert response.status_code == 404
+    assert response.json() == {"detail": "Shift or Doctor not found."}
+    assert response.headers.get("WWW-Authenticate") is None
     assert shift_repository.get_shift_assignments_by_date(
         session=session,
         shift_id=shift.id,
         target_date=datetime.date(2026, 8, 12),
     ) == []
+
+
+def test_create_shift_assignment_route_foreign_shift(
+    client,
+    session,
+    shift_b,
+    new_doctor,
+    department_admin_headers,
+):
+    """Tests that a Department B shift with a Department A doctor returns 404 and creates no assignment."""
+    response = client.post(
+        f"/api/v1/shifts/{shift_b.id}/assignments",
+        json={
+            "doctor_id": str(new_doctor.id),
+            "date": str(datetime.date(2026, 8, 12))
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Shift or Doctor not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert shift_repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=shift_b.id,
+        target_date=datetime.date(2026, 8, 12),
+    ) == []
+
+
+def test_create_shift_assignment_route_nonexistent_shift(
+    client,
+    session,
+    new_doctor,
+    department_admin_headers,
+):
+    """Tests that a valid but nonexistent Shift UUID returns 404 and creates no assignment."""
+    nonexistent_shift_id = uuid.uuid4()
+
+    response = client.post(
+        f"/api/v1/shifts/{nonexistent_shift_id}/assignments",
+        json={
+            "doctor_id": str(new_doctor.id),
+            "date": str(datetime.date(2026, 8, 12))
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Shift or Doctor not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+    assert session.exec(
+        select(ShiftAssignmentModel).where(
+            ShiftAssignmentModel.doctor_id == new_doctor.id
+        )
+    ).all() == []
 
 
 def test_create_shift_assignment_route_rejects_admin_without_department(
@@ -1168,7 +1633,7 @@ def test_create_shift_assignment_route_rejects_admin_without_department(
 def test_list_shift_assignments_route(client, shift_assignment, viewer_headers):
     """Tests get /api/v1/shifts/assignments"""
     response = client.get(
-        "api/v1/shifts/assignments",
+        "/api/v1/shifts/assignments",
         headers=viewer_headers
     )
 
@@ -1230,9 +1695,11 @@ def test_non_department_admin_cannot_create_shift(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"}
+        "detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
-    assert shift_repository.get_shift_by_name(session, "ER 1") is None
+    assert shift_repository.get_shift_by_name_for_position(
+        session=session, shift_name="ER 1", position_id=position.id
+    ) is None
 
 
 def test_create_shift_requires_authentication(client, session, position):
@@ -1250,7 +1717,8 @@ def test_create_shift_requires_authentication(client, session, position):
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
-    assert shift_repository.get_shift_by_name(session, "ER 1") is None
+    assert shift_repository.get_shift_by_name_for_position(
+        session=session, shift_name="ER 1", position_id=position.id) is None
 
 
 @pytest.mark.parametrize(
@@ -1293,7 +1761,7 @@ def test_non_department_admin_cannot_create_shift_assignment(
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for this operation"}
+        "detail": "Insufficient permissions for this operation."}
     assert response.headers.get("WWW-Authenticate") is None
     retrieved_shift_assignments = shift_repository.get_shift_assignments_by_date(
         session=session,

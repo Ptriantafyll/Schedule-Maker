@@ -12,7 +12,7 @@ from src.department import repository
 
 def create_department_controller(department_data: DepartmentCreate, session: Session) -> DepartmentModel:
     """Handles the business logic for creating a new department."""
-    existing_dept = repository.get_department_by_name(
+    existing_dept = repository.get_department_by_name_global(
         session, department_data.name)
     if existing_dept:
         raise HTTPException(
@@ -41,6 +41,6 @@ def get_department_controller(
     return department
 
 
-def list_departments_controller(session: Session) -> list[DepartmentModel]:
+def list_departments_controller_global(session: Session) -> list[DepartmentModel]:
     """Handles logic for listing active departments."""
-    return repository.get_active_departments(session)
+    return repository.get_active_departments_global(session)

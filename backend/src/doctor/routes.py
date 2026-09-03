@@ -147,11 +147,12 @@ def create_doctor_unavailability(
     """
     Creates unavailability for a doctor on a specific date
     """
-    return doctor_controllers.create_doctor_unavailabilty_controller(
+    return doctor_controllers.create_doctor_unavailability_controller(
         session=session,
         doctor_id=doctor_id,
         department_id=department_id,
         unavailability_data=doctor_unavailability_data,
+        current_user=current_user,
     )
 
 
@@ -160,11 +161,17 @@ def list_doctor_unavailabilities(
     doctor_id: uuid.UUID,
     session: Session = Depends(get_session),
     current_user: UserModel = Depends(require_doctor_or_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """
     Lists the unavailability dates of a doctor
     """
-    return doctor_controllers.list_doctor_unavailability_controller(session, doctor_id)
+    return doctor_controllers.list_doctor_unavailability_controller(
+        session=session,
+        doctor_id=doctor_id,
+        current_user=current_user,
+        department_id=department_id,
+    )
     # todo: make this give a month and return the unav for the month
 
 
@@ -191,9 +198,14 @@ def create_doctor_position(
 def list_doctor_positions(
     doctor_id: uuid.UUID,
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
 ):
     """
     Lists the positions of a doctor
     """
-    return doctor_controllers.list_doctor_positions_controller(session, doctor_id)
+    return doctor_controllers.list_doctor_positions_controller(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )

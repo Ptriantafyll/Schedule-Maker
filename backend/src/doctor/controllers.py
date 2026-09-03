@@ -6,6 +6,8 @@ Doctor controller functions for handling business logic related to doctor manage
 
 import uuid
 from fastapi import HTTPException, status
+from src.user.models import User as UserModel
+from src.user.models import UserRole
 from sqlmodel import Session
 from src.doctor import repository as doctor_repository
 from src.doctor.schemas import DoctorCreate, DoctorPreAssignmentCreate, DoctorUnavailabilityCreate, DoctorPositionCreate
@@ -17,6 +19,53 @@ from src.department import repository as department_repository
 from src.shift import repository as shift_repository
 from src.team import repository as team_repository
 from src.position import repository as position_repository
+
+######################
+# Helpers
+######################
+
+
+def _get_authorized_doctor_for_unavailability(
+    session: Session,
+    doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+    current_user: UserModel,
+) -> DoctorModel:
+    """Returns the Doctor the current user may access for unavailability."""
+    if current_user.role == UserRole.DOCTOR:
+        if current_user.doctor_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Invalid account scope.",
+            )
+
+        if current_user.doctor_id != doctor_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot access another doctor's unavailability.",
+            )
+    elif current_user.role != UserRole.DEPARTMENT_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions for this operation.",
+        )
+
+    doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor not found.",
+        )
+
+    return doctor
+
+######################
+# Controllers
+######################
 
 
 def create_doctor_controller(
@@ -81,7 +130,7 @@ def get_doctor_controller(
     if doctor is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Doctor not found"
+            detail="Doctor not found."
         )
 
     return doctor
@@ -161,27 +210,24 @@ def list_doctor_pre_assignments_controller(
     return doctor_repository.get_doctor_pre_assignments(session, doctor_id)
 
 
-def create_doctor_unavailabilty_controller(
+def create_doctor_unavailability_controller(
     session: Session,
     doctor_id: uuid.UUID,
     department_id: uuid.UUID,
     unavailability_data: DoctorUnavailabilityCreate,
+    current_user: UserModel,
 ) -> DoctorUnavailabilityModel:
     """Handles the logic to create a new unavailability for a doctor"""
-    doctor = doctor_repository.get_doctor_by_id_for_department(
+    authorized_doctor = _get_authorized_doctor_for_unavailability(
         session=session,
         doctor_id=doctor_id,
         department_id=department_id,
+        current_user=current_user
     )
-    if doctor is None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Doctor does not exist"
-        )
 
     existing_doc_unavailability = doctor_repository.get_doctor_unavailability_by_date(
         session=session,
-        doctor_id=doctor_id,
+        doctor_id=authorized_doctor.id,
         target_date=unavailability_data.date
     )
 
@@ -193,16 +239,28 @@ def create_doctor_unavailabilty_controller(
 
     return doctor_repository.create_doctor_unavailability(
         session=session,
-        doctor_id=doctor_id,
+        doctor_id=authorized_doctor.id,
         doctor_unavailability_data=unavailability_data
     )
 
 
-def list_doctor_unavailability_controller(session: Session, doctor_id: uuid.UUID) -> list[DoctorUnavailabilityModel]:
+def list_doctor_unavailability_controller(
+    session: Session,
+    doctor_id: uuid.UUID,
+    current_user: UserModel,
+    department_id: uuid.UUID,
+) -> list[DoctorUnavailabilityModel]:
     """Handles the logic for listing all the unavailabilities of a doctor"""
+    authorized_doctor = _get_authorized_doctor_for_unavailability(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+        current_user=current_user
+    )
+
     return doctor_repository.get_doctor_unavailability(
         session=session,
-        doctor_id=doctor_id
+        doctor_id=authorized_doctor.id
     )
 
 
@@ -249,9 +307,26 @@ def create_doctor_position_controller(
     )
 
 
-def list_doctor_positions_controller(session: Session, doctor_id: uuid.UUID):
+def list_doctor_positions_controller(
+    session: Session,
+    doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> list[DoctorPositionModel]:
     """Handles the logic for retrieving all positions of a doctor"""
-    return doctor_repository.get_doctor_positions(
+    authenticated_doctor = doctor_repository.get_doctor_by_id_for_department(
         session=session,
-        doctor_id=doctor_id
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
+
+    if authenticated_doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor not found."
+        )
+
+    return doctor_repository.get_doctor_positions_for_department(
+        session=session,
+        doctor_id=authenticated_doctor.id,
+        department_id=department_id,
     )

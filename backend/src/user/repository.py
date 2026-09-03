@@ -43,7 +43,7 @@ def get_user_by_email(session: Session, user_email: str) -> UserModel:
     return session.exec(statement).first()
 
 
-def get_active_users(session: Session) -> list[UserModel]:
+def get_active_users_global(session: Session) -> list[UserModel]:
     """Retrieves all active (non deleted) users"""
     statement = select(UserModel).where(
         not_(UserModel.is_deleted)

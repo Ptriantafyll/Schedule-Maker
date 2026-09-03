@@ -9,19 +9,19 @@ from src.department.schemas import DepartmentCreate
 from src.department.models import Department as DepartmentModel
 
 
-def get_department_by_name(session: Session, name: str) -> Optional[DepartmentModel]:
+def get_department_by_name_global(session: Session, name: str) -> Optional[DepartmentModel]:
     """Retrieves a department by its unique name."""
     return session.exec(
         select(DepartmentModel).where(DepartmentModel.name == name)
     ).first()
 
 
-def get_department_by_id(session: Session, department_id: uuid.UUID) -> Optional[DepartmentModel]:
+def get_department_by_id_global(session: Session, department_id: uuid.UUID) -> Optional[DepartmentModel]:
     """Retrieves a specific department by its UUID."""
     return session.get(DepartmentModel, department_id)
 
 
-def get_active_departments(session: Session) -> list[DepartmentModel]:
+def get_active_departments_global(session: Session) -> list[DepartmentModel]:
     """Retrieves all active (non-deleted) departments."""
     return list(session.exec(
         select(DepartmentModel).where(not_(DepartmentModel.is_deleted))

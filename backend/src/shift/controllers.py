@@ -30,10 +30,10 @@ def create_shift_controller(
             detail="Position not found."
         )
 
-    existing_shift = repository.get_shift_by_name_for_department(
+    existing_shift = repository.get_shift_by_name_for_position(
         session=session,
         shift_name=shift_data.name,
-        department_id=department_id
+        position_id=shift_data.position_id
     )
     if existing_shift:
         raise HTTPException(
@@ -41,30 +41,36 @@ def create_shift_controller(
             detail="Shift already exists"
         )
 
-    return repository.create_shift_for_department(
+    return repository.create_shift(
         session=session,
-        shift_data=shift_data,
-        department_id=department_id
+        shift_data=shift_data
     )
 
 
-def list_shifts_controller(session: Session) -> list[ShiftModel]:
+def list_shifts_controller(session: Session, department_id: uuid.UUID) -> list[ShiftModel]:
     """Handles logic for listing all active shifts"""
-    return repository.get_active_shifts(session)
-
-
-def get_shift_controller(shift_name: str, department_id: uuid.UUID, session: Session) -> ShiftModel:
-    """Handles logic for retrieving a shift"""
-    shift = repository.get_shift_by_name_for_department(
+    return repository.get_active_shifts_for_department(
         session=session,
-        shift_name=shift_name,
         department_id=department_id
     )
 
-    if not shift or shift.is_deleted:
+
+def get_shift_controller(
+    shift_id: uuid.UUID,
+    department_id: uuid.UUID,
+    session: Session,
+) -> ShiftModel:
+    """Handles logic for retrieving a shift"""
+    shift = repository.get_shift_by_id_for_department(
+        session=session,
+        shift_id=shift_id,
+        department_id=department_id,
+    )
+
+    if shift is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Shift not found"
+            detail="Shift not found."
         )
 
     return shift
@@ -77,36 +83,55 @@ def create_shift_assignment_controller(
     session: Session,
 ) -> ShiftAssignmentModel:
     """Handles logic for creating a shift assignment"""
-    existing_shift_assignments = repository.get_shift_assignments_by_date(
-        session=session,
-        shift_id=shift_id,
-        target_date=shift_assignment_data.date
-    )
-
     shift = repository.get_shift_by_id_for_department(
         session=session,
         shift_id=shift_id,
         department_id=department_id
     )
 
-    if len(existing_shift_assignments) == shift.doctors_per_shift:
+    if shift is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shift or Doctor not found."
+        )
+
+    doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=shift_assignment_data.doctor_id,
+        department_id=department_id
+    )
+
+    if doctor is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shift or Doctor not found."
+        )
+
+    existing_shift_assignments = repository.get_shift_assignments_by_date(
+        session=session,
+        shift_id=shift_id,
+        target_date=shift_assignment_data.date
+    )
+
+    if len(existing_shift_assignments) >= shift.doctors_per_shift:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Shift already has max assignments"
         )
 
-    for existing_shift_assignment in existing_shift_assignments:
-        if existing_shift_assignment and existing_shift_assignment.doctor_id == shift_assignment_data.doctor_id:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Doctor is already assigned on this date"
-            )
+    existing_doctor_assignment = (
+        repository.get_active_shift_assignment_for_doctor_on_date(
+            session=session,
+            doctor_id=shift_assignment_data.doctor_id,
+            target_date=shift_assignment_data.date,
+        )
+    )
 
-        # if existing_shift_assignment and existing_shift_assignment.doctor_id != shift_assignment_data.doctor_id and existing_shift_assignment.shift_id == shift_id:
-        #     raise HTTPException(
-        #         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-        #         detail="Another doctor is assigned on this shift"
-        #     )
+    if existing_doctor_assignment is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Doctor is already assigned on this date."
+        )
 
     # todo use the month, or get by id
     doctor_unavailabilities = doctor_repository.get_doctor_unavailability(
@@ -124,6 +149,13 @@ def create_shift_assignment_controller(
     return repository.create_shift_assignment(session, shift_id, shift_assignment_data)
 
 
-def list_shift_assignments_controller(session: Session) -> ShiftAssignmentModel:
+def list_shift_assignments_controller(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[ShiftAssignmentModel]:
     """Handles logic for retrieving the active shift assignments"""
-    return repository.get_active_shift_assignments(session)
+
+    return repository.get_active_shift_assignments_for_department(
+        session=session,
+        department_id=department_id,
+    )

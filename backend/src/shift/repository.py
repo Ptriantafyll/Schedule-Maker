@@ -12,7 +12,7 @@ from src.shift.models import Shift as ShiftModel
 from src.shift.models import ShiftAssignment as ShiftAssignmentModel
 
 
-def create_shift(session: Session, shift_data=ShiftCreate) -> ShiftModel:
+def create_shift(session: Session, shift_data: ShiftCreate) -> ShiftModel:
     """Create a new shift in the database"""
     new_shift = ShiftModel(
         name=shift_data.name,
@@ -48,19 +48,36 @@ def get_shift_by_id_for_department(
     return session.exec(statement).first()
 
 
-def get_shift_by_name(session: Session, shift_name: str) -> ShiftModel:
+def get_shift_by_name_for_position(
+    session: Session,
+    shift_name: str,
+    position_id: uuid.UUID,
+) -> ShiftModel | None:
     """Retrieves a shift by its name"""
     statement = select(ShiftModel).where(
-        ShiftModel.name == shift_name
+        ShiftModel.name == shift_name,
+        ShiftModel.position_id == position_id,
     )
 
     return session.exec(statement).first()
 
 
-def get_active_shifts(session: Session) -> list[ShiftModel]:
+def get_active_shifts_for_department(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[ShiftModel]:
     """Retrieves all active shifts"""
-    statement = select(ShiftModel).where(
-        not_(ShiftModel.is_deleted)
+    statement = (
+        select(ShiftModel)
+        .join(
+            PositionModel,
+            ShiftModel.position_id == PositionModel.id
+        )
+        .where(
+            PositionModel.department_id == department_id,
+            not_(ShiftModel.is_deleted),
+            not_(PositionModel.is_deleted),
+        )
     )
 
     return list(session.exec(statement).all())
@@ -89,20 +106,57 @@ def get_shift_assignment_by_id(session: Session, shift_assignment_id: uuid.UUID)
     return session.exec(statement).first()
 
 
-def get_shift_assignments_by_date(session: Session, shift_id: uuid.UUID, target_date: datetime.date) -> list[ShiftAssignmentModel]:
-    """Retrieves a shift assignment by its date"""
+def get_shift_assignments_by_date(
+    session: Session,
+    shift_id: uuid.UUID,
+    target_date: datetime.date
+) -> list[ShiftAssignmentModel]:
+    """Retrieves a shift assignments for a shift on a date"""
     statement = select(ShiftAssignmentModel).where(
         ShiftAssignmentModel.date == target_date,
-        ShiftAssignmentModel.shift_id == shift_id
+        ShiftAssignmentModel.shift_id == shift_id,
+        not_(ShiftAssignmentModel.is_deleted),
     )
 
     return session.exec(statement).all()
 
 
-def get_active_shift_assignments(session: Session) -> list[ShiftAssignmentModel]:
-    """Retrieves all active shift assignments"""
+def get_active_shift_assignment_for_doctor_on_date(
+    session: Session,
+    doctor_id: uuid.UUID,
+    target_date: datetime.date,
+) -> ShiftAssignmentModel | None:
+    """Retrieves a shift_assignment for a doctor on a specific date"""
     statement = select(ShiftAssignmentModel).where(
-        not_(ShiftAssignmentModel.is_deleted)
+        ShiftAssignmentModel.doctor_id == doctor_id,
+        ShiftAssignmentModel.date == target_date,
+        not_(ShiftAssignmentModel.is_deleted),
+    )
+
+    return session.exec(statement).first()
+
+
+def get_active_shift_assignments_for_department(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[ShiftAssignmentModel]:
+    """Retrieves all active shift assignments of a department through its shifts and positions."""
+    statement = (
+        select(ShiftAssignmentModel)
+        .join(
+            ShiftModel,
+            ShiftAssignmentModel.shift_id == ShiftModel.id
+        )
+        .join(
+            PositionModel,
+            ShiftModel.position_id == PositionModel.id
+        )
+        .where(
+            PositionModel.department_id == department_id,
+            not_(ShiftAssignmentModel.is_deleted),
+            not_(ShiftModel.is_deleted),
+            not_(PositionModel.is_deleted),
+        )
     )
 
     return list(session.exec(statement).all())
