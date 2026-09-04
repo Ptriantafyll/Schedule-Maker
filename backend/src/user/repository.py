@@ -6,8 +6,9 @@ Authentication repository function for handling database operations.
 import uuid
 from sqlmodel import Session, not_, select
 
-from src.user.schemas import UserCreate
+from src.user.schemas import UserCreate, UserPersistenceCreate
 from src.user.models import User as UserModel
+from src.utils.email import normalize_email
 
 
 def create_user(session: Session, user_data: UserCreate) -> UserModel:
@@ -36,7 +37,9 @@ def get_user_by_id(session: Session, user_id: uuid.UUID) -> UserModel:
 
 
 def get_user_by_email(session: Session, user_email: str) -> UserModel:
-    """Retrieves a user by their email"""
+    """Retrieves a user by their normalized email address"""
+    user_email = normalize_email(user_email)
+
     statement = select(UserModel).where(
         UserModel.email == user_email
     )
@@ -63,3 +66,22 @@ def get_active_users_by_department(
     )
 
     return session.exec(statement).all()
+
+
+def add_user(
+    session: Session,
+    user_data: UserPersistenceCreate,
+) -> UserModel:
+    """Adds a new user to the database"""
+    new_user = UserModel(
+        email=user_data.email,
+        full_name=user_data.full_name,
+        role=user_data.role,
+        hashed_password=user_data.hashed_password,
+        doctor_id=user_data.doctor_id,
+        department_id=user_data.department_id
+    )
+
+    session.add(new_user)
+    session.flush()
+    return new_user

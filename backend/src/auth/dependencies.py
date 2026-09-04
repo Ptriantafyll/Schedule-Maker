@@ -44,7 +44,7 @@ def get_current_user(
     if not user or user.is_deleted:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User account no longer active",
+            detail="User account no longer active.",
             headers={"WWW-Authenticate": "Bearer"}
         )
 
@@ -68,7 +68,7 @@ def require_role(*allowed_roles: UserRole):
         if current_user.role not in allowed_roles:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions for this operation"
+                detail="Insufficient permissions for this operation."
             )
 
         return current_user

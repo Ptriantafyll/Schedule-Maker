@@ -2,6 +2,8 @@
 Tests for the bootstrap service
 """
 import pytest
+from sqlmodel import select
+
 from src.auth import bootstrap
 from src.auth.security import verify_password
 from src.user import repository as user_repository
@@ -49,6 +51,25 @@ def test_create_super_admin_creates_valid_account(session):
     assert persisted_user.id == created_user.id
 
 
+def test_bootstrap_stores_canonical_email(session):
+    """Tests that bootstrap stores the canonical login email."""
+    entered_email = " Mixed.Admin@Example.COM "
+    expected_email = "mixed.admin@example.com"
+
+    created_user = bootstrap.create_super_admin(
+        session=session,
+        email=entered_email,
+        full_name="Mixed Case Admin",
+        password=PLAIN_SUPER_ADMIN_PASSWORD,
+    )
+
+    assert created_user.email == expected_email
+
+    persisted_user = session.get(UserModel, created_user.id)
+    assert persisted_user is not None
+    assert persisted_user.email == expected_email
+
+
 def test_create_super_admin_rejects_duplicate_email(session, existing_super_admin):
     """Tests creating a super admin with an email that already exists"""
     with pytest.raises(bootstrap.SuperAdminAlreadyExistsError):
@@ -66,6 +87,31 @@ def test_create_super_admin_rejects_duplicate_email(session, existing_super_admi
 
     assert retrieved_user is not None
     assert str(retrieved_user.id) == str(existing_super_admin.id)
+
+
+def test_bootstrap_rejects_case_variant_duplicate_email(
+    session,
+    existing_super_admin,
+):
+    """Tests that bootstrap treats email case variants as one identity."""
+    original_full_name = existing_super_admin.full_name
+    original_password_hash = existing_super_admin.hashed_password
+
+    with pytest.raises(bootstrap.SuperAdminAlreadyExistsError):
+        bootstrap.create_super_admin(
+            session=session,
+            email=f" {SUPER_ADMIN_EMAIL.upper()} ",
+            full_name="Duplicate Case Variant",
+            password=PLAIN_SUPER_ADMIN_PASSWORD,
+        )
+
+    stored_users = session.exec(select(UserModel)).all()
+
+    assert len(stored_users) == 1
+    assert stored_users[0].id == existing_super_admin.id
+    assert stored_users[0].email == SUPER_ADMIN_EMAIL
+    assert stored_users[0].full_name == original_full_name
+    assert stored_users[0].hashed_password == original_password_hash
 
 
 def test_create_super_admin_rolls_back_database_duplicate(session, existing_super_admin, monkeypatch):

@@ -131,7 +131,7 @@ def test_role_guard_rejects_disallowed_roles(guard, role):
         guard(current_user=user,)
 
     assert exc_info.value.status_code == 403
-    assert exc_info.value.detail == "Insufficient permissions for this operation"
+    assert exc_info.value.detail == "Insufficient permissions for this operation."
     assert exc_info.value.headers is None
 
 

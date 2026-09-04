@@ -8,6 +8,8 @@ from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
 
+from src.department.schemas import DepartmentCreate
+from src.department import repository as department_repository
 from src.db.connection import get_session
 from src.main import app
 from src.user.models import UserRole
@@ -44,6 +46,26 @@ def client_fixture(session, monkeypatch):
             yield test_client
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture(name="department_factory")
+def department_factory_fixture(session):
+    def create_department(
+        *,
+        name: str | None = None,
+        code: str | None = None,
+    ):
+        suffix = uuid.uuid4().hex[:8]
+
+        return department_repository.create_department(
+            session=session,
+            department_data=DepartmentCreate(
+                name=name or f"Department {suffix}",
+                code=code or suffix.upper(),
+            ),
+        )
+
+    return create_department
 
 
 @pytest.fixture(name="user_factory")
