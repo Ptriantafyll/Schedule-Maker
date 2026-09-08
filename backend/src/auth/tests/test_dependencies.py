@@ -8,8 +8,13 @@ import pytest
 from fastapi import HTTPException
 
 from src.auth import dependencies
+from src.auth.security import create_access_token
 from src.user.models import UserRole
 from src.user.models import User as UserModel
+from src.department.schemas import DepartmentCreate
+from src.department import repository as department_repository
+from src.doctor import repository as doctor_repository
+from src.team import repository as team_repository
 
 EXPECTED_USER_ROLES = {
     UserRole.SUPER_ADMIN,
@@ -72,6 +77,39 @@ DENIED_ROLE_CASES = [
     for role in UserRole
     if role not in allowed_roles
 ]
+
+#####################
+# Fixtures
+#####################
+
+
+@pytest.fixture(name="department")
+def department_fixture(session):
+    """Creates a reusable department for tests"""
+    dept_data = DepartmentCreate(name="Cardiology", code="CARD")
+    return department_repository.create_department(session, dept_data)
+
+
+@pytest.fixture(name="team")
+def team_fixture(session, department):
+    """Creates a reusable team for tests"""
+    return team_repository.create_team(
+        session=session,
+        name="Test team",
+        department_id=department.id
+    )
+
+
+@pytest.fixture(name="doctor")
+def doctor_fixture(session, department, team):
+    """Creates a reusable doctor for tests"""
+    return doctor_repository.create_doctor(
+        session=session,
+        department_id=department.id,
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        team_id=team.id
+    )
 
 
 ############################
@@ -159,3 +197,167 @@ def test_require_department_scope_rejects_user_without_department():
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Invalid account scope."
     assert exc_info.value.headers is None
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DEPARTMENT_ADMIN,
+        UserRole.VIEWER,
+        UserRole.DOCTOR,
+    ]
+)
+def test_get_current_user_rejects_deleted_required_repartment(
+    session,
+    department,
+    role,
+    user_factory,
+    doctor,
+):
+    """Tests that when deleting a department the user can no longer authenticate"""
+    user = user_factory(
+        role=role,
+        department_id=department.id,
+        doctor_id=doctor.id if role == UserRole.DOCTOR else None,
+    )
+    user.department_id = department.id
+    token = create_access_token({"sub": str(user.id)})
+
+    authenticated_user = dependencies.get_current_user(
+        token=token, session=session
+    )
+    assert authenticated_user.id == user.id
+
+    department.is_deleted = True
+    session.add(department)
+    session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependencies.get_current_user(token=token, session=session)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "User account no longer active."
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+def test_get_current_user_rejects_deleted_required_doctor(
+    session,
+    department,
+    user_factory,
+    doctor,
+):
+    """Tests that when deleting a doctor the user with doctor role can no longer authenticate"""
+    user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=doctor.id,
+    )
+    token = create_access_token({"sub": str(user.id)})
+
+    authenticated_user = dependencies.get_current_user(
+        token=token, session=session
+    )
+    assert authenticated_user.id == user.id
+
+    doctor.is_deleted = True
+    session.add(doctor)
+    session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependencies.get_current_user(token=token, session=session)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "User account no longer active."
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+def test_get_current_user_rejects_mismatched_doctor_department(
+    session,
+    department,
+    doctor,
+    user_factory,
+):
+    """Tests that a user cannot authenticate if the doctor's department and the user's department don't match"""
+    user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=doctor.id,
+    )
+    token = create_access_token({"sub": str(user.id)})
+
+    authenticated_user = dependencies.get_current_user(
+        token=token, session=session
+    )
+    assert authenticated_user.id == user.id
+
+    doctor.department_id == uuid.uuid4()
+    session.add(doctor)
+    session.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependencies.get_current_user(token=token, session=session)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "User account no longer active."
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+def test_get_current_user_rejects_corrupt_user_missing_required_link(
+    session,
+    monkeypatch,
+):
+    """Tests that get_current_user rejects a corrupt user missing a required link with 401."""
+    # Corrupt doctor user: has DOCTOR role but doctor_id is None!
+    corrupt_user = UserModel(
+        id=uuid.uuid4(),
+        email="corrupt@example.com",
+        full_name="Corrupt Doctor",
+        hashed_password="hash",
+        role=UserRole.DOCTOR,
+        department_id=uuid.uuid4(),
+        doctor_id=None,
+    )
+
+    # Simulate get_user_by_id returning this corrupt user from the DB
+    monkeypatch.setattr(
+        "src.auth.dependencies.user_repository.get_user_by_id",
+        lambda _s, _id: corrupt_user,
+    )
+
+    token = create_access_token({"sub": str(corrupt_user.id)})
+
+    with pytest.raises(HTTPException) as exc_info:
+        dependencies.get_current_user(token=token, session=session)
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "User account no longer active."
+    assert exc_info.value.headers == {"WWW-Authenticate": "Bearer"}
+
+
+def test_get_current_user_accepts_deleted_doctor_for_department_admin(
+    session,
+    department,
+    user_factory,
+    doctor,
+):
+    """Tests that when deleting a doctor the user with doctor role can no longer authenticate"""
+    user = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department.id,
+        doctor_id=doctor.id,
+    )
+    token = create_access_token({"sub": str(user.id)})
+
+    authenticated_user = dependencies.get_current_user(
+        token=token, session=session
+    )
+    assert authenticated_user.id == user.id
+
+    doctor.is_deleted = True
+    session.add(doctor)
+    session.commit()
+
+    authenticated_user = dependencies.get_current_user(
+        token=token, session=session
+    )
+    assert authenticated_user.id == user.id

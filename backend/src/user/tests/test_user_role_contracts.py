@@ -187,7 +187,6 @@ def test_database_rejects_invalid_user_role_shape(
 
 def test_user_account_creation_rejects_nonexistent_department(
     session,
-    doctor,
 ):
     """Tests that account creation rejects a nonexistent Department."""
     account_data = UserAccountCreate(
@@ -196,7 +195,7 @@ def test_user_account_creation_rejects_nonexistent_department(
         full_name="Test User",
         password="test-password",
         department_id=uuid.uuid4(),
-        doctor_id=doctor.id,
+        doctor_id=None,
     )
 
     with pytest.raises(InvalidUserAccountRelationshipError) as exc_info:
@@ -214,7 +213,6 @@ def test_user_account_creation_rejects_nonexistent_department(
 
 def test_user_account_creation_rejects_soft_deleted_department(
     session,
-    doctor,
     department,
 ):
     """Tests that account creation rejects a soft-deleted Department."""
@@ -228,7 +226,7 @@ def test_user_account_creation_rejects_soft_deleted_department(
         full_name="Test User",
         password="test-password",
         department_id=department.id,
-        doctor_id=doctor.id,
+        doctor_id=None,
     )
 
     with pytest.raises(InvalidUserAccountRelationshipError) as exc_info:
@@ -266,14 +264,22 @@ def test_user_account_creation_rejects_malformed_department(
     ) is None
 
 
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.DEPARTMENT_ADMIN,
+    ]
+)
 def test_user_account_creation_rejects_nonexistent_doctor(
     session,
     department,
+    role,
 ):
     """Tests that account creation rejects a nonexistent Doctor."""
     account_data = UserAccountCreate(
         email="testuser@gmail.com",
-        role=UserRole.DEPARTMENT_ADMIN,
+        role=role,
         full_name="Test User",
         password="test-password",
         department_id=department.id,
@@ -293,10 +299,18 @@ def test_user_account_creation_rejects_nonexistent_doctor(
     ) is None
 
 
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.DEPARTMENT_ADMIN,
+    ]
+)
 def test_user_account_creation_rejects_soft_deleted_doctor(
     session,
     doctor,
     department,
+    role,
 ):
     """Tests that account creation rejects a soft-deleted Doctor."""
     doctor.is_deleted = True
@@ -305,7 +319,7 @@ def test_user_account_creation_rejects_soft_deleted_doctor(
 
     account_data = UserAccountCreate(
         email="testuser@gmail.com",
-        role=UserRole.DEPARTMENT_ADMIN,
+        role=role,
         full_name="Test User",
         password="test-password",
         department_id=department.id,
@@ -325,15 +339,23 @@ def test_user_account_creation_rejects_soft_deleted_doctor(
     ) is None
 
 
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.DEPARTMENT_ADMIN,
+    ]
+)
 def test_user_account_creation_rejects_malformed_doctor(
     session,
     department,
+    role,
 ):
     """Tests that account input rejects a malformed Doctor ID."""
     with pytest.raises(ValueError) as exc_info:
         UserAccountCreate(
             email="testuser@gmail.com",
-            role=UserRole.DEPARTMENT_ADMIN,
+            role=role,
             full_name="Test User",
             password="test-password",
             department_id=department.id,
@@ -347,16 +369,24 @@ def test_user_account_creation_rejects_malformed_doctor(
     ) is None
 
 
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.DEPARTMENT_ADMIN,
+    ]
+)
 def test_user_account_creation_rejects_doctor_from_foreign_department(
     session,
     doctor,
     department_factory,
+    role,
 ):
     """Tests that account creation rejects a Doctor from another Department."""
     foreign_department = department_factory()
     account_data = UserAccountCreate(
         email="testuser@gmail.com",
-        role=UserRole.DEPARTMENT_ADMIN,
+        role=role,
         full_name="Test User",
         password="test-password",
         department_id=foreign_department.id,
