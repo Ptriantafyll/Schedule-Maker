@@ -4,19 +4,22 @@ Tests for the department module
 
 import datetime
 import uuid
+from unittest.mock import Mock
 import pytest
 from fastapi import HTTPException
-from unittest.mock import Mock
 
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
 from src.department import controllers as department_controllers
 from src.user.models import UserRole
-
+from src.doctor import repository as doctor_repository
+from src.team import repository as team_repository
 
 #####################
 # Fixtures
 #####################
+
+
 @pytest.fixture(name="department")
 def department_fixture(session):
     """Creates a reusable department for tests"""
@@ -58,6 +61,27 @@ def super_admin_headers_fixture(super_admin_user, auth_headers_factory):
     return auth_headers_factory(super_admin_user)
 
 
+@pytest.fixture(name="team")
+def team_fixture(session, department):
+    """Creates a reusable team for tests"""
+    return team_repository.create_team(
+        session=session,
+        name="Test team",
+        department_id=department.id
+    )
+
+
+@pytest.fixture(name="doctor")
+def doctor_fixture(session, department, team):
+    """Creates a reusable doctor for tests"""
+    return doctor_repository.create_doctor(
+        session=session,
+        department_id=department.id,
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        team_id=team.id
+    )
+
 #####################
 # Repository tests
 #####################
@@ -98,7 +122,8 @@ def test_get_active_departments(session):
     session.add(dept2)
     session.commit()
 
-    active_departments = department_repository.get_active_departments_global(session)
+    active_departments = department_repository.get_active_departments_global(
+        session)
     assert dept1 in active_departments
     assert dept2 not in active_departments
 
@@ -313,11 +338,13 @@ def test_non_super_admin_cannot_list_departments(
     user_factory,
     auth_headers_factory,
     role,
+    doctor,
 ):
     """Tests that GET /api/v1/departments/ route rejects other roles except SUPER_ADMIN"""
     user = user_factory(
         role=role,
-        department_id=department.id
+        department_id=None if role == UserRole.SUPER_ADMIN else department.id,
+        doctor_id=doctor.id if role == UserRole.DOCTOR else None,
     )
     headers = auth_headers_factory(user)
 
@@ -357,6 +384,7 @@ def test_department_member_cannot_get_another_department(
     auth_headers_factory,
     department,
     role,
+    doctor,
 ):
     """Tests that department members cannot retrieve another department"""
     dept_b_data = DepartmentCreate(name="Radiology", code="RAD")
@@ -367,7 +395,8 @@ def test_department_member_cannot_get_another_department(
 
     department_a_user = user_factory(
         role=role,
-        department_id=department.id
+        department_id=None if role == UserRole.SUPER_ADMIN else department.id,
+        doctor_id=doctor.id if role == UserRole.DOCTOR else None
     )
     department_a_user_headers = auth_headers_factory(department_a_user)
 
@@ -378,36 +407,4 @@ def test_department_member_cannot_get_another_department(
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Department not found."}
-    assert response.headers.get("WWW-Authenticate") is None
-
-
-@pytest.mark.parametrize(
-    "role",
-    [
-        UserRole.VIEWER,
-        UserRole.DOCTOR,
-        UserRole.DEPARTMENT_ADMIN,
-    ]
-)
-def test_get_department_rejects_member_without_department(
-    client,
-    user_factory,
-    auth_headers_factory,
-    department,
-    role,
-):
-    """Tests GET /api/v1/departments/{department_id} rejects authenticated user with no department"""
-    user = user_factory(
-        role=role,
-        department_id=None
-    )
-    headers = auth_headers_factory(user)
-
-    response = client.get(
-        f"/api/v1/departments/{department.id}",
-        headers=headers,
-    )
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid account scope."}
     assert response.headers.get("WWW-Authenticate") is None

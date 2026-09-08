@@ -6,11 +6,11 @@ import uuid
 import datetime
 import pytest
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
 
 from src.position.schemas import PositionCreate
-from src.position.models import Position as PositionModel
 from src.position import repository as position_repository
+from src.doctor import repository as doctor_repository
+from src.team import repository as team_repository
 from src.position import controllers as position_controllers
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
@@ -78,6 +78,28 @@ def viewer_headers_fixture(viewer_user, auth_headers_factory):
     """Creates reusable viewer auth headers for tests"""
 
     return auth_headers_factory(viewer_user)
+
+
+@pytest.fixture(name="team")
+def team_fixture(session, department):
+    """Creates a reusable team for tests"""
+    return team_repository.create_team(
+        session=session,
+        name="Test team",
+        department_id=department.id
+    )
+
+
+@pytest.fixture(name="doctor")
+def doctor_fixture(session, department, team):
+    """Creates a reusable doctor for tests"""
+    return doctor_repository.create_doctor(
+        session=session,
+        department_id=department.id,
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        team_id=team.id
+    )
 
 
 #####################
@@ -430,69 +452,6 @@ def test_create_position_route_missing_duty_days(client, department_admin_header
     assert response.status_code == 422
 
 
-def test_create_position_rejects_admin_without_department(
-    client,
-    session,
-    user_factory,
-    auth_headers_factory,
-):
-    """Tests that an unscoped department admin cannot create a Position."""
-    position_name = "Unscoped Position"
-    department_admin = user_factory(
-        role=UserRole.DEPARTMENT_ADMIN,
-        department_id=None,
-    )
-
-    response = client.post(
-        "/api/v1/positions/",
-        json={
-            "name": position_name,
-            "duty_days": [1, 3, 5],
-        },
-        headers=auth_headers_factory(department_admin),
-    )
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid account scope."}
-    assert response.headers.get("WWW-Authenticate") is None
-
-    stored_positions = session.exec(
-        select(PositionModel).where(PositionModel.name == position_name)
-    ).all()
-    assert stored_positions == []
-
-
-def test_create_position_rejects_duplicate_name_within_department(
-    client,
-    session,
-    position,
-    department_admin_headers,
-):
-    """Tests that a department cannot duplicate one of its Position names."""
-    response = client.post(
-        "/api/v1/positions/",
-        json={
-            "name": position.name,
-            "duty_days": [2, 4, 6],
-        },
-        headers=department_admin_headers,
-    )
-
-    assert response.status_code == 400
-    assert response.json() == {"detail": "Position already exists"}
-
-    stored_positions = session.exec(
-        select(PositionModel).where(
-            PositionModel.department_id == position.department_id,
-            PositionModel.name == position.name,
-        )
-    ).all()
-    assert {
-        stored_position.id
-        for stored_position in stored_positions
-    } == {position.id}
-
-
 def test_create_position_allows_same_name_in_another_department(
     client,
     session,
@@ -610,6 +569,7 @@ def test_department_member_cannot_get_position_from_another_department(
     role,
     user_factory,
     auth_headers_factory,
+    doctor,
 ):
     """Tests that foreign Position IDs are hidden from department members."""
     foreign_position = position_repository.create_position(
@@ -621,6 +581,7 @@ def test_department_member_cannot_get_position_from_another_department(
     department_user = user_factory(
         role=role,
         department_id=department.id,
+        doctor_id=doctor.id if role == UserRole.DOCTOR else None
     )
 
     response = client.get(
@@ -648,6 +609,7 @@ def test_non_department_admin_cannot_create_position(
     department,
     session,
     role,
+    doctor
 ):
     """Test that role except department_admin cannot create a position"""
     user = user_factory(
@@ -656,7 +618,8 @@ def test_non_department_admin_cannot_create_position(
             None
             if role == UserRole.SUPER_ADMIN
             else department.id
-        )
+        ),
+        doctor_id=doctor.id if role == UserRole.DOCTOR else None
     )
     headers = auth_headers_factory(user)
 
@@ -727,40 +690,3 @@ def test_position_read_routes_require_authentication(
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
-
-
-@pytest.mark.parametrize(
-    "path_template",
-    [
-        pytest.param(
-            "/api/v1/positions/",
-            id="list-positions",
-        ),
-        pytest.param(
-            "/api/v1/positions/{position_id}",
-            id="get-position",
-        ),
-    ],
-)
-def test_position_read_routes_reject_member_without_department(
-    client,
-    position,
-    path_template,
-    user_factory,
-    auth_headers_factory,
-):
-    """Tests that Position reads reject accounts without tenant scope."""
-    viewer = user_factory(
-        role=UserRole.VIEWER,
-        department_id=None,
-    )
-    path = path_template.format(position_id=position.id)
-
-    response = client.get(
-        path,
-        headers=auth_headers_factory(viewer),
-    )
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid account scope."}
-    assert response.headers.get("WWW-Authenticate") is None

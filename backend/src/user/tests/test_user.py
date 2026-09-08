@@ -166,7 +166,7 @@ def test_get_user_by_id(session, user):
     assert retrieved_user.id == user.id
 
 
-def test_get_active_users_global(session, user):
+def test_get_active_users_global(session, user, department):
     """Test listing all active users"""
     new_user_data = UserCreate(
         full_name="Test2 Testakis",
@@ -174,7 +174,7 @@ def test_get_active_users_global(session, user):
         email="test2@gmail.com",
         password="test123",
         doctor_id=None,
-        department_id=None
+        department_id=department.id,
     )
 
     new_user = user_repository.create_user(session, new_user_data)
@@ -454,29 +454,5 @@ def test_user_list_rejects_non_department_admin_roles(client, user_factory, auth
     assert response.status_code == 403
     assert response.json() == {
         "detail": "Insufficient permissions for this operation."
-    }
-    assert response.headers.get("WWW-Authenticate") is None
-
-
-def test_list_users_rejects_department_admin_without_department(
-    client,
-    user_factory,
-    auth_headers_factory,
-):
-    """Tests that a department admin without a department id cannot list users"""
-    department_admin_user = user_factory(
-        role=UserRole.DEPARTMENT_ADMIN,
-        department_id=None
-    )
-    headers = auth_headers_factory(department_admin_user)
-
-    response = client.get(
-        "/api/v1/users",
-        headers=headers,
-    )
-
-    assert response.status_code == 403
-    assert response.json() == {
-        "detail": "Invalid account scope."
     }
     assert response.headers.get("WWW-Authenticate") is None

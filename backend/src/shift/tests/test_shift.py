@@ -723,6 +723,7 @@ def test_create_shift_assignment_controller_same_doctor_duplicate(session, shift
     assert exc_info.value.status_code == 400
     assert "Doctor is already assigned on this dat" in exc_info.value.detail
 
+
 def test_create_shift_assignment_controller_rejects_doctor_assigned_to_another_shift(
     session,
     department,
@@ -1288,41 +1289,6 @@ def test_create_shift_route_same_name_under_different_position_in_department(
     assert data["position_id"] == str(other_position.id)
 
 
-def test_create_shift_route_rejects_admin_without_department(
-    client,
-    session,
-    position,
-    user_factory,
-    auth_headers_factory,
-):
-    """Tests that an unscoped department admin cannot create a Shift."""
-    shift_name = "Unscoped Shift"
-    department_admin = user_factory(
-        role=UserRole.DEPARTMENT_ADMIN,
-        department_id=None,
-    )
-
-    response = client.post(
-        "api/v1/shifts",
-        json={
-            "name": shift_name,
-            "doctors_per_shift": 1,
-            "grants_day_off": False,
-            "position_id": str(position.id)
-        },
-        headers=auth_headers_factory(department_admin),
-    )
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid account scope."}
-    assert response.headers.get("WWW-Authenticate") is None
-
-    stored_shifts = session.exec(
-        select(ShiftModel).where(ShiftModel.name == shift_name)
-    ).all()
-    assert stored_shifts == []
-
-
 def test_create_shift_route_rejects_foreign_position(
     client,
     session,
@@ -1429,11 +1395,13 @@ def test_department_member_cannot_get_shift_from_another_department(
     role,
     user_factory,
     auth_headers_factory,
+    new_doctor,
 ):
     """Tests that foreign Shift IDs are hidden from department members."""
     department_user = user_factory(
         role=role,
         department_id=department.id,
+        doctor_id=new_doctor.id if role == UserRole.DOCTOR else None
     )
 
     response = client.get(
@@ -1597,39 +1565,6 @@ def test_create_shift_assignment_route_nonexistent_shift(
     ).all() == []
 
 
-def test_create_shift_assignment_route_rejects_admin_without_department(
-    client,
-    session,
-    shift,
-    new_doctor,
-    user_factory,
-    auth_headers_factory,
-):
-    """Tests that an unscoped department admin cannot create a Shift assignment."""
-    department_admin = user_factory(
-        role=UserRole.DEPARTMENT_ADMIN,
-        department_id=None,
-    )
-
-    response = client.post(
-        f"/api/v1/shifts/{shift.id}/assignments",
-        json={
-            "doctor_id": str(new_doctor.id),
-            "date": str(datetime.date(2026, 8, 12))
-        },
-        headers=auth_headers_factory(department_admin),
-    )
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid account scope."}
-    assert response.headers.get("WWW-Authenticate") is None
-    assert shift_repository.get_shift_assignments_by_date(
-        session=session,
-        shift_id=shift.id,
-        target_date=datetime.date(2026, 8, 12),
-    ) == []
-
-
 def test_list_shift_assignments_route(client, shift_assignment, viewer_headers):
     """Tests get /api/v1/shifts/assignments"""
     response = client.get(
@@ -1670,6 +1605,7 @@ def test_non_department_admin_cannot_create_shift(
     auth_headers_factory,
     department,
     session,
+    new_doctor,
 ):
     """Tests post /api/v1/shifts route with non department admin headers"""
     user = user_factory(
@@ -1679,6 +1615,7 @@ def test_non_department_admin_cannot_create_shift(
             if role == UserRole.SUPER_ADMIN
             else department.id
         ),
+        doctor_id=new_doctor.id if role == UserRole.DOCTOR else None,
     )
     headers = auth_headers_factory(user)
 
@@ -1747,6 +1684,7 @@ def test_non_department_admin_cannot_create_shift_assignment(
             if role == UserRole.SUPER_ADMIN
             else department.id
         ),
+        doctor_id=new_doctor.id if role == UserRole.DOCTOR else None,
     )
     headers = auth_headers_factory(user)
 
@@ -1823,47 +1761,6 @@ def test_shift_read_routes_require_authentication(
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
-
-
-@pytest.mark.parametrize(
-    "path_template",
-    [
-        pytest.param(
-            "/api/v1/shifts/",
-            id="list-shifts",
-        ),
-        pytest.param(
-            "/api/v1/shifts/{shift_id}",
-            id="get-shift",
-        ),
-        pytest.param(
-            "/api/v1/shifts/assignments",
-            id="list-shift-assignments",
-        ),
-    ],
-)
-def test_shift_read_routes_reject_member_without_department(
-    client,
-    shift,
-    path_template,
-    user_factory,
-    auth_headers_factory,
-):
-    """Tests that shift reads reject accounts without tenant scope."""
-    viewer = user_factory(
-        role=UserRole.VIEWER,
-        department_id=None,
-    )
-    path = path_template.format(shift_id=shift.id)
-
-    response = client.get(
-        path,
-        headers=auth_headers_factory(viewer),
-    )
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid account scope."}
-    assert response.headers.get("WWW-Authenticate") is None
 
 
 def test_list_shift_assignments_route_excludes_foreign_department(

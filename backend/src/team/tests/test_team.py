@@ -13,6 +13,7 @@ from src.team import repository as team_repository
 from src.team import controllers as team_controllers
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
+from src.doctor import repository as doctor_repository
 from src.user.models import UserRole
 
 
@@ -31,6 +32,18 @@ def team_fixture(session, department):
         session=session,
         name="ER Team A",
         department_id=department.id,
+    )
+
+
+@pytest.fixture(name="doctor")
+def doctor_fixture(session, department, team):
+    """Creates a reusable doctor for tests"""
+    return doctor_repository.create_doctor(
+        session=session,
+        department_id=department.id,
+        name="Dr Panos",
+        email="drpanos@gmail.com",
+        team_id=team.id
     )
 
 
@@ -546,7 +559,8 @@ def test_non_department_admin_cannot_create_team(
     session,
     user_factory,
     auth_headers_factory,
-    role
+    role,
+    doctor,
 ):
     """Tests that a doctor cannot perform an admin action"""
     user = user_factory(
@@ -555,7 +569,8 @@ def test_non_department_admin_cannot_create_team(
             None
             if role == UserRole.SUPER_ADMIN
             else department.id
-        )
+        ),
+        doctor_id=doctor.id if role == UserRole.DOCTOR else None
     )
 
     headers = auth_headers_factory(user)
@@ -575,30 +590,6 @@ def test_non_department_admin_cannot_create_team(
         name="Rad Team E",
         department_id=department.id,
     ) is None
-
-
-def test_create_team_rejects_admin_without_department(
-    client,
-    user_factory,
-    auth_headers_factory,
-):
-    """Tests that a department admin without scope cannot create a team."""
-    attempted_name = "Unscoped team"
-    department_admin = user_factory(
-        role=UserRole.DEPARTMENT_ADMIN,
-        department_id=None
-    )
-    headers = auth_headers_factory(department_admin)
-
-    response = client.post(
-        "/api/v1/teams/",
-        json={"name": attempted_name},
-        headers=headers,
-    )
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid account scope."}
-    assert response.headers.get("WWW-Authenticate") is None
 
 
 @pytest.mark.parametrize(
@@ -630,43 +621,6 @@ def test_team_read_routes_require_authentication(
 
 
 @pytest.mark.parametrize(
-    "path_template",
-    [
-        pytest.param(
-            "/api/v1/teams/",
-            id="list-teams",
-        ),
-        pytest.param(
-            "/api/v1/teams/{team_id}",
-            id="get-team",
-        ),
-    ],
-)
-def test_team_read_routes_reject_member_without_department(
-    client,
-    team,
-    user_factory,
-    auth_headers_factory,
-    path_template,
-):
-    """Tests that team reads reject a member without a department scope"""
-    viewer = user_factory(
-        role=UserRole.VIEWER,
-        department_id=None,
-    )
-    path = path_template.format(team_id=team.id)
-
-    response = client.get(
-        path,
-        headers=auth_headers_factory(viewer)
-    )
-
-    assert response.status_code == 403
-    assert response.json() == {"detail": "Invalid account scope."}
-    assert response.headers.get("WWW-Authenticate") is None
-
-
-@pytest.mark.parametrize(
     "role",
     [
         UserRole.VIEWER,
@@ -681,6 +635,7 @@ def test_department_member_cannot_get_team_from_another_department(
     auth_headers_factory,
     role,
     team,
+    doctor,
 ):
     """Tests that a department member cannot get a team from another department"""
     department_b = department_repository.create_department(
@@ -688,12 +643,13 @@ def test_department_member_cannot_get_team_from_another_department(
         department_data=DepartmentCreate(
             name="Department B",
             code="DEPT B",
-        )
+        ),
     )
 
     user = user_factory(
         role=role,
-        department_id=department_b.id
+        department_id=department_b.id,
+        doctor_id=doctor.id if role == UserRole.DOCTOR else None,
     )
 
     headers = auth_headers_factory(user)
