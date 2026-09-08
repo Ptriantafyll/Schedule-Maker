@@ -7,7 +7,7 @@ from sqlmodel import Session
 
 from src.auth.security import hash_password
 from src.user import repository
-from src.user.models import User as UserModel
+from src.user.models import User as UserModel, UserRole
 from src.user.schemas import UserAccountCreate, UserPersistenceCreate
 from src.utils.email import normalize_email
 
@@ -16,11 +16,41 @@ class UserEmailAlreadyExistsError(Exception):
     """Raised when a canonical email is already reserved."""
 
 
+class InvalidUserAccountRelationshipError(Exception):
+    """Raised when a User role has invalid Department or Doctor links."""
+
+
+def validate_user_role_shape(
+    account_data: UserAccountCreate,
+) -> None:
+    """Validate required and forbidden links for a User role."""
+    department_id = account_data.department_id
+    doctor_id = account_data.doctor_id
+
+    if account_data.role == UserRole.SUPER_ADMIN:
+        is_valid = department_id is None and doctor_id is None
+    elif account_data.role == UserRole.DEPARTMENT_ADMIN:
+        is_valid = department_id is not None
+    elif account_data.role == UserRole.DOCTOR:
+        is_valid = department_id is not None and doctor_id is not None
+    elif account_data.role == UserRole.VIEWER:
+        is_valid = department_id is not None and doctor_id is None
+    else:
+        is_valid = False
+
+    if not is_valid:
+        raise InvalidUserAccountRelationshipError(
+            "Invalid relationship between role and account links."
+        )
+
+
 def stage_user_account(
     session: Session,
     account_data: UserAccountCreate,
 ) -> UserModel:
     """Stages a prepared User without committing the transaction"""
+    validate_user_role_shape(account_data)
+
     existing_user = repository.get_user_by_email(
         session=session,
         user_email=account_data.email
