@@ -898,11 +898,11 @@ from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate
 
 from src.team.repository import create_team
 
-from src.user.controllers import create_user_controller
+from src.user import services as user_services
 
 from src.user.models import UserRole
 
-from src.user.schemas import UserCreate
+from src.user.schemas import UserAccountCreate
 
  
 
@@ -1096,9 +1096,11 @@ with Session(engine) as session:
 
     )
 
-    department_admin_a = create_user_controller(
+    department_admin_a = user_services.create_user_account(
 
-        UserCreate(
+        session=session,
+
+        account_data=UserAccountCreate(
 
             email="auth-smoke-admin-a@example.com",
 
@@ -1114,13 +1116,13 @@ with Session(engine) as session:
 
         ),
 
-        session,
-
     )
 
-    department_admin_b = create_user_controller(
+    department_admin_b = user_services.create_user_account(
 
-        UserCreate(
+        session=session,
+
+        account_data=UserAccountCreate(
 
             email="auth-smoke-admin-b@example.com",
 
@@ -1136,13 +1138,13 @@ with Session(engine) as session:
 
         ),
 
-        session,
-
     )
 
-    doctor_user_a = create_user_controller(
+    doctor_user_a = user_services.create_user_account(
 
-        UserCreate(
+        session=session,
+
+        account_data=UserAccountCreate(
 
             email="auth-smoke-doctor-a@example.com",
 
@@ -1158,13 +1160,13 @@ with Session(engine) as session:
 
         ),
 
-        session,
-
     )
 
-    viewer_a = create_user_controller(
+    viewer_a = user_services.create_user_account(
 
-        UserCreate(
+        session=session,
+
+        account_data=UserAccountCreate(
 
             email="auth-smoke-viewer-a@example.com",
 
@@ -1179,8 +1181,6 @@ with Session(engine) as session:
             doctor_id=None,
 
         ),
-
-        session,
 
     )
 
