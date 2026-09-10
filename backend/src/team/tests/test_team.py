@@ -635,7 +635,6 @@ def test_department_member_cannot_get_team_from_another_department(
     auth_headers_factory,
     role,
     team,
-    doctor,
 ):
     """Tests that a department member cannot get a team from another department"""
     department_b = department_repository.create_department(
@@ -645,11 +644,26 @@ def test_department_member_cannot_get_team_from_another_department(
             code="DEPT B",
         ),
     )
+    doctor_b = None
+    team_b = team_repository.create_team(
+        session=session,
+        name="Team B",
+        department_id=department_b.id
+    )
+
+    if role == UserRole.DOCTOR:
+        doctor_b = doctor_repository.create_doctor(
+            session=session,
+            name="Dr Dept B",
+            email="drdeptb@gmail.com",
+            team_id=team_b.id,
+            department_id=department_b.id,
+        )
 
     user = user_factory(
         role=role,
         department_id=department_b.id,
-        doctor_id=doctor.id if role == UserRole.DOCTOR else None,
+        doctor_id=doctor_b.id if role == UserRole.DOCTOR else None,
     )
 
     headers = auth_headers_factory(user)

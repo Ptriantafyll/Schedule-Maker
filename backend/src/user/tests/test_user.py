@@ -9,7 +9,7 @@ import pytest
 from sqlmodel import Session
 from unittest.mock import Mock
 
-from src.user.schemas import UserCreate
+from src.user.schemas import UserCreate, UserPersistenceCreate
 from src.user.models import UserRole
 from src.user import repository as user_repository
 from src.user import controllers as user_controllers
@@ -20,7 +20,7 @@ from src.doctor import repository as doctor_repository
 from src.doctor.schemas import DoctorCreate
 from src.doctor.models import Doctor as DoctorModel
 from src.team import repository as team_repository
-from src.auth.security import verify_password
+from src.auth.security import hash_password, verify_password
 
 #####################
 # Helpers
@@ -74,16 +74,15 @@ def department_admin_user_fixture(user_factory, department):
 
 
 @pytest.fixture(name="department_b_user")
-def department_b_user(session, department_b):
+def department_b_user(user_factory, department_b):
     """Creates a user for the department B"""
-    user_data = UserCreate(
+    return user_factory(
+        role=UserRole.VIEWER,
+        department_id=department_b.id,
         email="user@gmail.com",
         full_name="test test",
         password="password123",
-        role=UserRole.VIEWER,
-        department_id=department_b.id
     )
-    return user_controllers.create_user_controller(user_data, session)
 
 
 @pytest.fixture(name="department_admin_headers")
@@ -111,15 +110,18 @@ def doctor_fixture(session, department, team):
 @pytest.fixture(name="user")
 def user_fixture(session, doctor, department):
     """Creates a reusable user for tests"""
-    user_data = UserCreate(
+    user_data = UserPersistenceCreate(
         email="test@gmail.com",
-        password="test123",
+        hashed_password=hash_password("test123"),
         role=UserRole.DOCTOR,
         full_name="Test testakis",
         doctor_id=doctor.id,
-        department_id=department.id
+        department_id=department.id,
     )
-    return user_repository.create_user(session, user_data)
+    user = user_repository.add_user(session, user_data)
+    session.commit()
+    session.refresh(user)
+    return user
 
 
 @pytest.fixture(name="doctor_headers")
@@ -168,16 +170,18 @@ def test_get_user_by_id(session, user):
 
 def test_get_active_users_global(session, user, department):
     """Test listing all active users"""
-    new_user_data = UserCreate(
+    new_user_data = UserPersistenceCreate(
         full_name="Test2 Testakis",
         role=UserRole.VIEWER,
         email="test2@gmail.com",
-        password="test123",
+        hashed_password=hash_password("test123"),
         doctor_id=None,
         department_id=department.id,
     )
 
-    new_user = user_repository.create_user(session, new_user_data)
+    new_user = user_repository.add_user(session, new_user_data)
+    session.commit()
+    session.refresh(new_user)
 
     new_user.is_deleted = True
     session.add(new_user)

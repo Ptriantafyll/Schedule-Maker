@@ -6,7 +6,7 @@ import enum
 import uuid
 from typing import Optional
 from sqlmodel import Field
-from sqlalchemy import CheckConstraint
+from sqlalchemy import CheckConstraint, Index, text
 from src.db.schemas import SyncBase
 
 
@@ -37,6 +37,17 @@ class User(SyncBase, table=True):
             "AND doctor_id IS NULL)"
             ")",
             name="ck_user_role_shape",
+        ),
+        Index(
+            "uq_user_active_doctor",
+            "doctor_id",
+            unique=True,
+            sqlite_where=text(
+                "doctor_id IS NOT NULL AND is_deleted = 0"
+            ),
+            postgresql_where=text(
+                "doctor_id IS NOT NULL AND is_deleted = false"
+            ),
         ),
     )
 

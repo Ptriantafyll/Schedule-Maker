@@ -116,10 +116,10 @@ def test_bootstrap_rejects_case_variant_duplicate_email(
 
 def test_create_super_admin_rolls_back_database_duplicate(session, existing_super_admin, monkeypatch):
     """Tests an existing user trying to be created in the db"""
+    mock_get = iter([None, existing_super_admin])
     monkeypatch.setattr(
-        bootstrap.user_repository,
-        "get_user_by_email",
-        lambda *args, **kwargs: None,
+        "src.user.services.repository.get_user_by_email",
+        lambda *args, **kwargs: next(mock_get, existing_super_admin),
     )
 
     with pytest.raises(bootstrap.SuperAdminAlreadyExistsError):

@@ -2,10 +2,12 @@
 Tests for User role and relationship contracts.
 """
 
+from src.auth.security import hash_password
 import uuid
 
 import pytest
 from sqlalchemy.exc import IntegrityError
+from sqlmodel import select
 
 from src.team import repository as team_repository
 from src.doctor import repository as doctor_repository
@@ -13,9 +15,9 @@ from src.user.models import User as UserModel
 from src.user.models import UserRole
 from src.user.schemas import UserAccountCreate
 from src.user import services as user_services
-from src.user.services import InvalidUserAccountRelationshipError
+from src.user.services import InvalidUserAccountRelationshipError, DoctorAlreadyLinkedError
 from src.user import repository as user_repository
-
+from src.doctor.models import Doctor as DoctorModel
 
 ######################
 # Fixtures
@@ -264,22 +266,14 @@ def test_user_account_creation_rejects_malformed_department(
     ) is None
 
 
-@pytest.mark.parametrize(
-    "role",
-    [
-        UserRole.DOCTOR,
-        UserRole.DEPARTMENT_ADMIN,
-    ]
-)
 def test_user_account_creation_rejects_nonexistent_doctor(
     session,
     department,
-    role,
 ):
     """Tests that account creation rejects a nonexistent Doctor."""
     account_data = UserAccountCreate(
         email="testuser@gmail.com",
-        role=role,
+        role=UserRole.DOCTOR,
         full_name="Test User",
         password="test-password",
         department_id=department.id,
@@ -299,18 +293,10 @@ def test_user_account_creation_rejects_nonexistent_doctor(
     ) is None
 
 
-@pytest.mark.parametrize(
-    "role",
-    [
-        UserRole.DOCTOR,
-        UserRole.DEPARTMENT_ADMIN,
-    ]
-)
 def test_user_account_creation_rejects_soft_deleted_doctor(
     session,
     doctor,
     department,
-    role,
 ):
     """Tests that account creation rejects a soft-deleted Doctor."""
     doctor.is_deleted = True
@@ -319,7 +305,7 @@ def test_user_account_creation_rejects_soft_deleted_doctor(
 
     account_data = UserAccountCreate(
         email="testuser@gmail.com",
-        role=role,
+        role=UserRole.DOCTOR,
         full_name="Test User",
         password="test-password",
         department_id=department.id,
@@ -404,3 +390,316 @@ def test_user_account_creation_rejects_doctor_from_foreign_department(
         session=session,
         user_email=account_data.email,
     ) is None
+
+
+def test_doctor_can_exist_without_user_account(
+    session,
+    doctor_factory
+):
+    """Tests that a doctor can exist in the DB without a user"""
+    doctor = doctor_factory()
+
+    retrieved_doctor = session.get(
+        DoctorModel, doctor.id
+    )
+
+    assert retrieved_doctor is not None
+    assert retrieved_doctor.id == doctor.id
+
+    linked_users = session.exec(
+        select(UserModel).where(
+            UserModel.doctor_id == doctor.id
+        )
+    ).all()
+    assert linked_users == []
+
+
+def test_doctor_can_have_one_active_user_account(
+    session,
+    doctor_factory,
+    user_factory,
+):
+    """Tests that a doctor can be linked to a user"""
+    doctor = doctor_factory()
+    user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=doctor.department_id,
+        doctor_id=doctor.id
+    )
+
+    retrieved_doctor = session.get(
+        DoctorModel, doctor.id
+    )
+
+    retrieved_user = session.get(
+        UserModel, user.id
+    )
+
+    assert retrieved_doctor is not None and retrieved_user is not None
+    assert retrieved_doctor.id == retrieved_user.doctor_id
+
+
+def test_second_active_user_for_doctor_is_rejected(
+    session,
+    user_factory,
+    doctor_factory,
+):
+    """Tests that a doctor cannot have more than 1 user linked to them"""
+    doctor = doctor_factory()
+    user_a = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=doctor.department_id,
+        doctor_id=doctor.id,
+        email="doctor_a@example.com",
+    )
+
+    with pytest.raises(DoctorAlreadyLinkedError) as exc_info:
+        user_factory(
+            role=UserRole.DOCTOR,
+            department_id=doctor.department_id,
+            doctor_id=doctor.id,
+            email="doctor_b@example.com",
+        )
+
+    assert "Doctor is already linked" in str(exc_info.value)
+
+    stored_users = session.exec(
+        select(UserModel).where(UserModel.doctor_id == doctor.id)
+    ).all()
+    assert len(stored_users) == 1
+    assert stored_users[0].id == user_a.id
+    assert stored_users[0].email == "doctor_a@example.com"
+
+    rejected_user = user_repository.get_user_by_email(
+        session, "doctor_b@example.com")
+    assert rejected_user is None
+
+
+def test_department_admin_can_link_same_department_doctor(
+    session,
+    department_factory,
+    doctor_factory,
+    user_factory
+):
+    """Tests that a DEPARTMENT_ADMIN can link to a doctor in their own department."""
+    department = department_factory()
+    doctor = doctor_factory(department_id=department.id)
+
+    user = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department.id,
+        doctor_id=doctor.id
+    )
+
+    retrieved_doctor = session.get(
+        DoctorModel, doctor.id
+    )
+
+    retrieved_user = session.get(
+        UserModel, user.id
+    )
+
+    assert retrieved_doctor is not None and retrieved_user is not None
+    assert retrieved_doctor.id == retrieved_user.doctor_id
+
+
+def test_department_admin_doctor_link_blocks_second_doctor_user(
+    session,
+    department_factory,
+    doctor_factory,
+    user_factory,
+):
+    """Tests that linking a user to an already linked doctor fails"""
+    department = department_factory()
+    doctor = doctor_factory(department_id=department.id)
+
+    user = user_factory(
+        role=UserRole.DEPARTMENT_ADMIN,
+        department_id=department.id,
+        doctor_id=doctor.id,
+        email="doctor_a@example.com",
+    )
+
+    with pytest.raises(DoctorAlreadyLinkedError) as exc_info:
+        user_factory(
+            role=UserRole.DOCTOR,
+            department_id=department.id,
+            doctor_id=doctor.id,
+            email="doctor_b@example.com",
+        )
+
+    assert "Doctor is already linked" in str(exc_info.value)
+
+    stored_users = session.exec(
+        select(UserModel).where(UserModel.doctor_id == doctor.id)
+    ).all()
+    assert len(stored_users) == 1
+    assert stored_users[0].id == user.id
+    assert stored_users[0].email == "doctor_a@example.com"
+
+    rejected_user = user_repository.get_user_by_email(
+        session, "doctor_b@example.com")
+    assert rejected_user is None
+
+
+def test_different_doctors_can_have_active_accounts(
+    session,
+    department_factory,
+    doctor_factory,
+    user_factory,
+):
+    """Tests that creating multiple doctors linked to different users works"""
+    dept = department_factory()
+    doctor_a = doctor_factory(department_id=dept.id)
+    doctor_b = doctor_factory(department_id=dept.id)
+
+    user_a = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=dept.id,
+        doctor_id=doctor_a.id
+    )
+
+    user_b = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=dept.id,
+        doctor_id=doctor_b.id
+    )
+
+    # Assert persistence
+    retrieved_1 = session.get(UserModel, user_a.id)
+    retrieved_2 = session.get(UserModel, user_b.id)
+    assert retrieved_1 is not None
+    assert retrieved_2 is not None
+
+    # Assert correct ownership
+    assert retrieved_1.doctor_id == doctor_a.id
+    assert retrieved_2.doctor_id == doctor_b.id
+    assert retrieved_1.doctor_id != retrieved_2.doctor_id
+
+
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.VIEWER,
+        UserRole.DEPARTMENT_ADMIN,
+    ]
+)
+def test_non_doctor_users_do_not_conflict_on_null_doctor_id(
+    session,
+    user_factory,
+    department_factory,
+    role,
+):
+    """Tests that creating a non-doctor user with no doctor link works"""
+    department = department_factory()
+    user = user_factory(
+        role=role,
+        department_id=department.id,
+        doctor_id=None,
+    )
+
+    retrieved_user = session.get(UserModel, user.id)
+
+    assert retrieved_user is not None
+    assert retrieved_user.department_id == department.id
+
+
+def test_soft_deleted_doctor_user_allows_replacement_account(
+    session,
+    user_factory,
+    doctor_factory,
+):
+    """Tests that deleting a user removes the doctor link and allows doctor to be linked to another user"""
+    doctor_a = doctor_factory()
+    user_a = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=doctor_a.department_id,
+        doctor_id=doctor_a.id,
+        email="user1@test.com",
+    )
+
+    user_a.is_deleted = True
+    session.add(user_a)
+    session.commit()
+
+    user_b = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=doctor_a.department_id,
+        doctor_id=doctor_a.id,
+        email="user2@test.com",
+    )
+
+    retrieved_user = session.get(UserModel, user_b.id)
+    assert retrieved_user is not None
+    assert retrieved_user.doctor_id == doctor_a.id
+
+
+def test_database_rejects_concurrent_active_doctor_link(
+    session,
+    department_factory,
+    doctor_factory,
+):
+    """Tests that the database-level partial unique index rejects duplicate active doctor links."""
+    dept = department_factory()
+    doctor = doctor_factory(department_id=dept.id)
+
+    user_1 = UserModel(
+        email="user1@test.com",
+        full_name="User 1",
+        hashed_password=hash_password("pwd"),
+        role=UserRole.DOCTOR,
+        department_id=dept.id,
+        doctor_id=doctor.id,
+        is_deleted=False,
+    )
+    session.add(user_1)
+    session.commit()
+
+    # Directly bypass user_services and add a second user with the same doctor_id to test raw DB index
+    user_2 = UserModel(
+        email="user2@test.com",
+        full_name="User 2",
+        hashed_password=hash_password("pwd"),
+        role=UserRole.DOCTOR,
+        department_id=dept.id,
+        doctor_id=doctor.id,
+        is_deleted=False,
+    )
+    session.add(user_2)
+    with pytest.raises(IntegrityError):
+        session.commit()
+
+    session.rollback()
+
+
+def test_department_admin_rejects_foreign_or_deleted_doctor_link(
+    session,
+    department_factory,
+    doctor_factory,
+    user_factory,
+):
+    """Tests that a department admin cannot link to a deleted or foreign doctor."""
+    dept_a = department_factory()
+    dept_b = department_factory()
+    foreign_doc = doctor_factory(department_id=dept_b.id)
+
+    # Rejects foreign doctor
+    with pytest.raises(InvalidUserAccountRelationshipError):
+        user_factory(
+            role=UserRole.DEPARTMENT_ADMIN,
+            department_id=dept_a.id,
+            doctor_id=foreign_doc.id,
+        )
+
+    # Rejects deleted doctor
+    local_doc = doctor_factory(department_id=dept_a.id)
+    local_doc.is_deleted = True
+    session.add(local_doc)
+    session.commit()
+
+    with pytest.raises(InvalidUserAccountRelationshipError):
+        user_factory(
+            role=UserRole.DEPARTMENT_ADMIN,
+            department_id=dept_a.id,
+            doctor_id=local_doc.id,
+        )

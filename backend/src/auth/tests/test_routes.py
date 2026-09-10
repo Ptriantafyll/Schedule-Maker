@@ -6,9 +6,7 @@ import pytest
 import datetime
 
 from src.auth import security
-from src.user.schemas import UserCreate
 from src.user.models import UserRole
-from src.user import controllers as user_controllers
 from src.main import app
 
 LOGIN_EMAIL = "test@test.com"
@@ -20,18 +18,14 @@ LOGIN_PASSWORD = "password123"
 #####################
 
 @pytest.fixture(name="login_user")
-def login_user_fixture(session):
+def login_user_fixture(user_factory):
     """Creates a reusable login user for tests"""
-    user_data = UserCreate(
+    return user_factory(
+        role=UserRole.SUPER_ADMIN,
         email=LOGIN_EMAIL,
         password=LOGIN_PASSWORD,
         full_name="Test super admin",
-        role=UserRole.SUPER_ADMIN,
-        doctor_id=None,
-        department_id=None
     )
-
-    return user_controllers.create_user_controller(user_data, session)
 
 
 @pytest.fixture(name="login_user_headers")

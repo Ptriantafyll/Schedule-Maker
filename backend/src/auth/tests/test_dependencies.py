@@ -290,7 +290,7 @@ def test_get_current_user_rejects_mismatched_doctor_department(
     )
     assert authenticated_user.id == user.id
 
-    doctor.department_id == uuid.uuid4()
+    doctor.department_id = uuid.uuid4()
     session.add(doctor)
     session.commit()
 

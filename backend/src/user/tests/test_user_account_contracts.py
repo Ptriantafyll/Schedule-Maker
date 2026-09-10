@@ -19,6 +19,8 @@ from src.user.models import User as UserModel
 from src.user.models import UserRole
 from src.auth.security import hash_password, verify_password, decode_access_token
 from src.auth import controllers as auth_controllers
+from src.department.models import Department as DepartmentModel
+from src.user.services import UserEmailAlreadyExistsError
 
 
 ######################
@@ -524,3 +526,140 @@ def test_soft_deleted_user_email_remains_reserved(
     assert stored_users[0].id == original_user.id
     assert stored_users[0].email == "reserved@example.com"
     assert stored_users[0].is_deleted is True
+
+
+def test_stage_user_account_flushes_without_committing(
+    session,
+    department_factory,
+):
+    """Tests that stage user accoutn flushes the session without commiting"""
+    plaintext_password = "test-password"
+    department = department_factory()
+    account_input = UserAccountCreate(
+        **build_account_create_data(
+            department_id=department.id,
+            password=plaintext_password,
+        )
+    )
+
+    staged_user = user_services.stage_user_account(
+        session=session,
+        account_data=account_input,
+    )
+
+    retrieved_staged_user = session.get(UserModel, staged_user.id)
+    assert retrieved_staged_user is not None
+    session.rollback()
+    retrieved_staged_user = session.get(UserModel, staged_user.id)
+    assert retrieved_staged_user is None
+
+
+def test_outer_rollback_removes_staged_user_and_related_work(
+    session,
+    department_factory,
+):
+    """Tests that outer rollback removes staged user and related work"""
+    plaintext_password = "test-password"
+    department = department_factory()
+    account_input = UserAccountCreate(
+        **build_account_create_data(
+            department_id=department.id,
+            password=plaintext_password,
+        )
+    )
+
+    staged_user = user_services.stage_user_account(
+        session=session,
+        account_data=account_input,
+    )
+
+    department_b = DepartmentModel(name="Test", code="TEST")
+    session.add(department_b)
+    session.flush()
+    session.rollback()
+
+    retrieved_user = session.get(UserModel, staged_user.id)
+    retrieved_dept = session.get(DepartmentModel, department_b.id)
+
+    assert retrieved_user is None
+    assert retrieved_dept is None
+
+
+def test_create_user_account_commits_standalone_transaction(
+    session,
+    department_factory,
+):
+    """Tests that create_user_account commits a normal user"""
+    department = department_factory(name="Test Department", code="TEST")
+    plaintext_password = "test-password"
+    account_input = UserAccountCreate(
+        **build_account_create_data(
+            department_id=department.id,
+            password=plaintext_password,
+        )
+    )
+
+    created_user = user_services.create_user_account(
+        session=session,
+        account_data=account_input,
+    )
+
+    retrieved_user = session.get(UserModel, created_user.id)
+    assert retrieved_user is not None
+
+    session.rollback()
+    retrieved_user = session.get(UserModel, created_user.id)
+    assert retrieved_user is not None
+
+
+def test_create_user_account_rolls_back_cleanly_on_constraint_failure(
+    session,
+    department_factory,
+):
+    """Tests that create_user_account rolls back on constraint failure"""
+    department = department_factory(name="Test Department", code="TEST")
+    plaintext_password = "test-password"
+    account_input = UserAccountCreate(
+        **build_account_create_data(
+            department_id=department.id,
+            password=plaintext_password,
+        )
+    )
+
+    user_services.create_user_account(
+        session=session,
+        account_data=account_input,
+    )
+
+    with pytest.raises(UserEmailAlreadyExistsError):
+        user_services.create_user_account(
+            session=session,
+            account_data=account_input,
+        )
+
+    assert session.is_active
+
+
+def test_repository_add_user_never_commits(
+    session,
+    department_factory,
+):
+    """Tests that user_repository.add_user flushes to the session but does not commit."""
+    department = department_factory()
+    persistence_data = UserPersistenceCreate(
+        email="repo_user@example.com",
+        full_name="Repo User",
+        role=UserRole.VIEWER,
+        hashed_password=hash_password("test-password"),
+        department_id=department.id,
+        doctor_id=None,
+    )
+
+    staged_user = user_repository.add_user(
+        session=session,
+        user_data=persistence_data,
+    )
+
+    assert session.get(UserModel, staged_user.id) is not None
+    session.rollback()
+    assert session.get(UserModel, staged_user.id) is None

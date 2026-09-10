@@ -85,3 +85,16 @@ def add_user(
     session.add(new_user)
     session.flush()
     return new_user
+
+
+def get_user_by_doctor_id(
+    session,
+    doctor_id: uuid.UUID,
+) -> UserModel:
+    """Retrieved a user by their doctor id"""
+    statement = select(UserModel).where(
+        UserModel.doctor_id == doctor_id,
+        not_(UserModel.is_deleted),
+    )
+
+    return session.exec(statement).first()

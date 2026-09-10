@@ -12,6 +12,8 @@ from src.db.connection import get_session
 from src.user.models import User as UserModel
 from src.user.models import UserRole
 from src.user import repository as user_repository
+from src.department.models import Department as DepartmentModel
+from src.doctor.models import Doctor as DoctorModel
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/v1/auth/login", auto_error=False
@@ -47,6 +49,24 @@ def get_current_user(
             detail="User account no longer active.",
             headers={"WWW-Authenticate": "Bearer"}
         )
+
+    if user.role != UserRole.SUPER_ADMIN:
+        dept = session.get(DepartmentModel, user.department_id)
+        if not dept or dept.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User account no longer active.",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+
+    if user.role == UserRole.DOCTOR:
+        doctor = session.get(DoctorModel, user.doctor_id)
+        if not doctor or doctor.is_deleted or (doctor.department_id != dept.id):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User account no longer active.",
+                headers={"WWW-Authenticate": "Bearer"}
+            )
 
     return user
 

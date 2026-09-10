@@ -10,12 +10,17 @@ from fastapi.testclient import TestClient
 
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
+from src.doctor import repository as doctor_repository
+from src.team import repository as team_repository
 from src.db.connection import get_session
 from src.main import app
 from src.user.models import UserRole
 from src.user.models import User as UserModel
-from src.user.schemas import UserCreate
-from src.user import controllers as user_controllers
+from src.department.models import Department as DepartmentModel
+from src.doctor.models import Doctor as DoctorModel
+from src.team.models import Team as TeamModel
+from src.user.schemas import UserAccountCreate
+from src.user import services as user_services
 from src.auth.security import create_access_token
 
 
@@ -50,11 +55,12 @@ def client_fixture(session, monkeypatch):
 
 @pytest.fixture(name="department_factory")
 def department_factory_fixture(session):
+    """Create persisted department with customizable name and code"""
     def create_department(
         *,
         name: str | None = None,
         code: str | None = None,
-    ):
+    ) -> DepartmentModel:
         suffix = uuid.uuid4().hex[:8]
 
         return department_repository.create_department(
@@ -66,6 +72,71 @@ def department_factory_fixture(session):
         )
 
     return create_department
+
+
+@pytest.fixture(name="team_factory")
+def team_factory_fixture(
+    session,
+    department_factory
+):
+    """Create persisted team with customizable department field"""
+    department = department_factory(
+        name="Test Department",
+        code="TEST",
+    )
+
+    def create_team(
+        *,
+        department_id: uuid.UUID = department.id,
+        name: str | None = None,
+    ) -> TeamModel:
+        suffix = uuid.uuid4().hex[:8]
+
+        return team_repository.create_team(
+            session=session,
+            name=name or f"Test team {suffix}",
+            department_id=department_id,
+        )
+
+    return create_team
+
+
+@pytest.fixture(name="doctor_factory")
+def doctor_factory_fixture(
+    session,
+    team_factory
+):
+    """Create persisted doctor with customizable fields"""
+    def create_doctor(
+        *,
+        team_id: uuid.UUID | None = None,
+        department_id: uuid.UUID | None = None,
+        full_name: str | None = None,
+        email: str | None = None,
+    ) -> DoctorModel:
+        if department_id is None and team_id is None:
+            team = team_factory()
+            team_id = team.id
+            department_id = team.department_id
+        elif department_id is None and team_id is not None:
+            team = session.get(TeamModel, team_id)
+            department_id = team.department_id
+        elif department_id is not None and team_id is None:
+            team = team_factory(department_id=department_id)
+            team_id = team.id
+
+        doctor_email = email or f"doctor-{uuid.uuid4().hex}@test.com"
+        suffix = uuid.uuid4().hex[:8]
+
+        return doctor_repository.create_doctor(
+            session=session,
+            email=doctor_email,
+            name=full_name or f"Doctor {suffix}",
+            team_id=team_id,
+            department_id=department_id,
+        )
+
+    return create_doctor
 
 
 @pytest.fixture(name="user_factory")
@@ -83,7 +154,7 @@ def user_factory_fixture(session):
     ) -> UserModel:
         user_email = email or f"user-{uuid.uuid4().hex}@test.com"
 
-        user_data = UserCreate(
+        account_data = UserAccountCreate(
             email=user_email,
             full_name=full_name,
             password=password,
@@ -92,9 +163,9 @@ def user_factory_fixture(session):
             doctor_id=doctor_id,
         )
 
-        return user_controllers.create_user_controller(
-            user_data=user_data,
+        return user_services.create_user_account(
             session=session,
+            account_data=account_data,
         )
 
     return create_user
