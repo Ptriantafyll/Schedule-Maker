@@ -7,15 +7,15 @@ from fastapi import HTTPException, status
 from sqlmodel import Session
 
 from src.user import repository, services
-from src.user.schemas import UserCreate, UserAccountCreate
+from src.user.schemas import UserAccountCreate
 from src.user.models import User as UserModel
 
 
-def create_user_controller(user_data: UserCreate, session: Session) -> UserModel:
+def create_user_controller(account_data: UserAccountCreate, session: Session) -> UserModel:
     """Handles the logic for creating a new user"""
     existing_user = repository.get_user_by_email(
         session=session,
-        user_email=user_data.email
+        user_email=account_data.email
     )
 
     if existing_user:
@@ -23,20 +23,17 @@ def create_user_controller(user_data: UserCreate, session: Session) -> UserModel
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="User already exists"
         )
+    try:
+        return services.create_user_account(
+            session=session,
+            account_data=account_data,
+        )
+    except services.UserEmailAlreadyExistsError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User already exists",
+        ) from exc
 
-    account_data = UserAccountCreate(
-        email=user_data.email,
-        full_name=user_data.full_name,
-        role=user_data.role,
-        password=user_data.password,
-        doctor_id=user_data.doctor_id,
-        department_id=user_data.department_id
-    )
-
-    return services.create_user_account(
-        session=session,
-        account_data=account_data
-    )
 
 
 def list_users_controller(session: Session, department_id: uuid.UUID) -> list[UserModel]:
@@ -45,7 +42,6 @@ def list_users_controller(session: Session, department_id: uuid.UUID) -> list[Us
         session=session,
         department_id=department_id,
     )
-
 
 
 # def get_user_controller_global(user_email: str, session: Session) -> UserModel:

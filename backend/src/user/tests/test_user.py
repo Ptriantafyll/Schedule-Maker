@@ -5,11 +5,11 @@ Tests for the user module
 
 import uuid
 import datetime
+from unittest.mock import Mock
 import pytest
 from sqlmodel import Session
-from unittest.mock import Mock
 
-from src.user.schemas import UserCreate, UserPersistenceCreate
+from src.user.schemas import UserPersistenceCreate, UserAccountCreate
 from src.user.models import UserRole
 from src.user import repository as user_repository
 from src.user import controllers as user_controllers
@@ -17,7 +17,6 @@ from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
 from src.auth.security import create_access_token
 from src.doctor import repository as doctor_repository
-from src.doctor.schemas import DoctorCreate
 from src.doctor.models import Doctor as DoctorModel
 from src.team import repository as team_repository
 from src.auth.security import hash_password, verify_password
@@ -250,7 +249,7 @@ def test_get_active_users_by_department(
 
 def test_create_user_controller_duplicate_email(session, user):
     """Tests that creating a user with a duplicate email returns error"""
-    new_user_data = UserCreate(
+    new_user_data = UserAccountCreate(
         full_name="Test2 Testakis",
         role=UserRole.DOCTOR,
         email=user.email,
@@ -284,7 +283,7 @@ def test_create_user_controller_duplicate_email(session, user):
 def test_create_user_controller_hashes_password(session, department):
     """Tests that a password gets hashed"""
     plain_password = "test123"
-    new_user_data = UserCreate(
+    new_user_data = UserAccountCreate(
         full_name="Test2 Testakis",
         role=UserRole.VIEWER,
         email="test@test.com",
