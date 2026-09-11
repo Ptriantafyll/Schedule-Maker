@@ -125,12 +125,10 @@ def doctor_factory_fixture(
             team = team_factory(department_id=department_id)
             team_id = team.id
 
-        doctor_email = email or f"doctor-{uuid.uuid4().hex}@test.com"
         suffix = uuid.uuid4().hex[:8]
 
         return doctor_repository.create_doctor(
             session=session,
-            email=doctor_email,
             name=full_name or f"Doctor {suffix}",
             team_id=team_id,
             department_id=department_id,

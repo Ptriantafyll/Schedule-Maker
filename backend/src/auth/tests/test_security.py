@@ -6,6 +6,7 @@ import uuid
 import datetime
 import jwt
 import pytest
+import re
 
 from src.auth import security
 
@@ -143,3 +144,4 @@ def test_create_access_token_honors_zero_expiry():
 
     with pytest.raises(jwt.ExpiredSignatureError):
         security.decode_access_token(access_token)
+

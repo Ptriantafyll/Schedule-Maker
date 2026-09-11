@@ -77,3 +77,13 @@ def decode_access_token(token: str) -> dict:
         raise jwt.InvalidTokenError("Invalid token type")
 
     return payload
+
+
+def generate_invitation_token():
+    """"""
+    pass
+
+
+def hash_invitation_token(raw_token: str):
+    """"""
+    pass

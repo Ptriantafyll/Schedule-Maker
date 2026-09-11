@@ -29,17 +29,17 @@ from src.auth.security import hash_password, verify_password
 def create_new_doctor(
     session: Session,
     name: str,
-    email: str,
-    department_id: uuid.UUID,
-    team_id: uuid.UUID
+    email: str = "",
+    department_id: uuid.UUID = None,
+    team_id: uuid.UUID = None,
+    **kwargs,
 ) -> DoctorModel:
     """Helper that creates a new doctor in the db"""
     return doctor_repository.create_doctor(
         session=session,
         name=name,
-        email=email,
         department_id=department_id,
-        team_id=team_id
+        team_id=team_id,
     )
 #####################
 # Fixtures

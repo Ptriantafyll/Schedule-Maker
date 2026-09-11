@@ -107,8 +107,7 @@ def doctor_fixture(session, department, team):
         session=session,
         department_id=department.id,
         name="Dr Panos",
-        email="drpanos@gmail.com",
-        team_id=team.id
+        team_id=team.id,
     )
 
 

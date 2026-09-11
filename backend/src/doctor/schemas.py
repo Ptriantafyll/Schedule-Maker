@@ -22,15 +22,13 @@ class DoctorBase(BaseModel):
 
     Fields:
     - `name`: doctor's name
-    - `email`: doctor's email (unique)
     - `department_id`: uuid of the department that the doctor belongs to
-    - `team_id`: uuid of the team that the doctor belongs to (required)
+    - `team_id`: uuid of the team that the doctor belongs to (optional)
     """
 
     name: str
-    email: str
     department_id: uuid.UUID
-    team_id: uuid.UUID
+    team_id: Optional[uuid.UUID] = None
 
 
 class DoctorCreate(BaseModel):
@@ -39,8 +37,7 @@ class DoctorCreate(BaseModel):
     Use this DTO as the request body for POST /doctors.
     """
     name: str
-    email: str
-    team_id: uuid.UUID
+    team_id: Optional[uuid.UUID] = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -53,7 +50,6 @@ class DoctorUpdate(BaseModel):
     """
 
     name: Optional[str] = None
-    email: Optional[str] = None
     department_id: Optional[uuid.UUID] = None
     team_id: Optional[uuid.UUID] = None
 
@@ -85,7 +81,7 @@ class DoctorRosterRead(BaseModel):
     id: uuid.UUID
     name: str
     department_id: uuid.UUID
-    team_id: uuid.UUID
+    team_id: Optional[uuid.UUID] = None
 
     model_config = ConfigDict(from_attributes=True)
 

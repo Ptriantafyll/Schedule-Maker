@@ -2,6 +2,7 @@
 Tests for the doctor module
 """
 
+from typing import Optional
 import uuid
 import datetime
 import pytest
@@ -33,17 +34,17 @@ from src.user.models import UserRole
 def create_new_doctor(
     session: Session,
     name: str,
-    email: str,
-    department_id: uuid.UUID,
-    team_id: uuid.UUID
+    email: Optional[str] = None,
+    department_id: Optional[uuid.UUID] = None,
+    team_id: Optional[uuid.UUID] = None,
+    **kwargs,
 ) -> DoctorModel:
     """Helper that creates a new doctor in the db"""
     return doctor_repository.create_doctor(
         session=session,
         department_id=department_id,
         name=name,
-        email=email,
-        team_id=team_id
+        team_id=team_id,
     )
 
 
@@ -278,7 +279,6 @@ def test_create_doctor(department, team, new_doctor):
     """Test creating a doctor and verifying their fields"""
     assert isinstance(new_doctor.id, uuid.UUID)
     assert new_doctor.name == "Dr Panos"
-    assert new_doctor.email == "drpanos@gmail.com"
     assert new_doctor.department_id == department.id
     assert new_doctor.team_id == team.id
     assert new_doctor.is_deleted is False
@@ -288,7 +288,25 @@ def test_create_doctor(department, team, new_doctor):
 
 
 def test_get_doctor_by_email(session, new_doctor):
-    """Test retrieving a doctor by email"""
+    """Test retrieving a doctor by linked user email"""
+    from src.user.models import User as UserModel
+    from src.auth.security import hash_password
+
+    # Before linking user
+    assert doctor_repository.get_doctor_by_email(session, "drpanos@gmail.com") is None
+
+    # Link user to doctor
+    user = UserModel(
+        email="drpanos@gmail.com",
+        hashed_password=hash_password("Pass123!"),
+        full_name="Dr Panos",
+        role=UserRole.DOCTOR,
+        department_id=new_doctor.department_id,
+        doctor_id=new_doctor.id,
+    )
+    session.add(user)
+    session.commit()
+
     retrieved_doctor = doctor_repository.get_doctor_by_email(
         session, "drpanos@gmail.com")
 
@@ -507,24 +525,20 @@ def test_doctor_has_department_foreign_key(new_doctor, department, team):
 #######################
 
 
-def test_create_doctor_controller_duplicate_name(session, department, team, new_doctor):
-    """Test that creating a doctor with a duplicate email raises an error."""
+def test_create_doctor_controller_optional_team(session, department):
+    """Test that creating a doctor with team_id=None succeeds."""
     doctor_data = DoctorCreate(
-        name=new_doctor.name,
-        email=new_doctor.email,
-        team_id=team.id
+        name="Dr Teamless",
+        team_id=None,
     )
-
-    with pytest.raises(Exception) as exc_info:
-        doctor_controllers.create_doctor_controller(
-            session=session,
-            department_id=department.id,
-            doctor_data=doctor_data,
-        )
-
-    assert exc_info.type.__name__ == "HTTPException"
-    assert exc_info.value.status_code == 400
-    assert "already exists" in exc_info.value.detail
+    doctor = doctor_controllers.create_doctor_controller(
+        session=session,
+        department_id=department.id,
+        doctor_data=doctor_data,
+    )
+    assert doctor.name == "Dr Teamless"
+    assert doctor.team_id is None
+    assert doctor.department_id == department.id
 
 
 def test_get_doctor_controller_nonexistent(session, department):
@@ -1341,7 +1355,6 @@ def test_create_doctor_route(client, session, department, team, department_admin
         "api/v1/doctors",
         json={
             "name": "Dr Panos",
-            "email": "drpanos@gmail.com",
             "team_id": str(team.id),
         },
         headers=department_admin_headers,
@@ -1350,16 +1363,16 @@ def test_create_doctor_route(client, session, department, team, department_admin
     assert response.status_code == 201
     data = response.json()
     assert data["name"] == "Dr Panos"
-    assert data["email"] == "drpanos@gmail.com"
     assert data["department_id"] == str(department.id)
     assert data["team_id"] == str(team.id)
     assert "id" in data
     assert "created_at" in data
     assert "updated_at" in data
 
-    persisted_doctor = doctor_repository.get_doctor_by_email(
+    persisted_doctor = doctor_repository.get_doctor_by_id_for_department(
         session=session,
-        email="drpanos@gmail.com",
+        doctor_id=uuid.UUID(data["id"]),
+        department_id=department.id,
     )
     assert persisted_doctor is not None
     assert persisted_doctor.department_id == department.id
@@ -1372,7 +1385,6 @@ def test_create_doctor_route_missing_required_field(client, team, department_adm
     response = client.post(
         "api/v1/doctors",
         json={
-            "name": "Dr Panos",
             "team_id": str(team.id),
         },
         headers=department_admin_headers,
@@ -1393,7 +1405,6 @@ def test_create_doctor_route_rejects_supplied_department_id(
         "api/v1/doctors",
         json={
             "name": "Dr Panos",
-            "email": "drpanos@gmail.com",
             "team_id": str(team.id),
             "department_id": str(department.id),
         },
@@ -1412,10 +1423,6 @@ def test_create_doctor_route_rejects_supplied_department_id(
 
     assert department_id_error is not None
     assert department_id_error["type"] == "extra_forbidden"
-    assert doctor_repository.get_doctor_by_email(
-        session=session,
-        email="drpanos@gmail.com",
-    ) is None
 
 
 def test_create_doctor_route_hides_foreign_team(
@@ -1430,7 +1437,6 @@ def test_create_doctor_route_hides_foreign_team(
         "api/v1/doctors",
         json={
             "name": "Dr Panos",
-            "email": "drpanos@gmail.com",
             "team_id": str(team_b.id),
         },
         headers=department_admin_headers,
@@ -1439,10 +1445,6 @@ def test_create_doctor_route_hides_foreign_team(
     assert response.status_code == 404
     assert response.json() == {"detail": "Team not found."}
     assert response.headers.get("WWW-Authenticate") is None
-    assert doctor_repository.get_doctor_by_email(
-        session=session,
-        email="drpanos@gmail.com",
-    ) is None
 
 
 def test_get_doctor_by_id_route(client, department, team, new_doctor, department_admin_headers):
@@ -1455,7 +1457,6 @@ def test_get_doctor_by_id_route(client, department, team, new_doctor, department
     assert response.status_code == 200
     data = response.json()
     assert data["name"] == "Dr Panos"
-    assert data["email"] == "drpanos@gmail.com"
     assert data["department_id"] == str(department.id)
     assert data["team_id"] == str(team.id)
     assert "id" in data
@@ -1506,7 +1507,7 @@ def test_list_doctors_route(client, new_doctor, doctor_b, department_admin_heade
     returned_doctor = next(
         item for item in data if item["id"] == str(new_doctor.id)
     )
-    assert returned_doctor["email"] == new_doctor.email
+    assert returned_doctor["name"] == new_doctor.name
 
 
 @pytest.mark.parametrize(
@@ -2162,7 +2163,6 @@ def test_non_department_admin_cannot_create_doctor(
         "/api/v1/doctors",
         json={
             "name": "Test Doctor",
-            "email": "test@example.com",
             "team_id": str(team.id),
         },
         headers=headers,
@@ -2184,7 +2184,6 @@ def test_create_doctor_requires_authentication(client, session, department, team
         "/api/v1/doctors",
         json={
             "name": "Dr Panos",
-            "email": "drpanos@gmail.com",
             "team_id": str(team.id),
         },
     )

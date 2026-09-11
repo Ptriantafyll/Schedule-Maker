@@ -74,33 +74,24 @@ def create_doctor_controller(
     department_id: uuid.UUID,
 ) -> DoctorModel:
     """Handles the business logic for creating a new doctor"""
-    team = team_repository.get_team_by_id_for_department(
-        session=session,
-        team_id=doctor_data.team_id,
-        department_id=department_id,
-    )
-
-    if team is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Team not found."
+    if doctor_data.team_id is not None:
+        team = team_repository.get_team_by_id_for_department(
+            session=session,
+            team_id=doctor_data.team_id,
+            department_id=department_id,
         )
 
-    existing_doctor = doctor_repository.get_doctor_by_email(
-        session, doctor_data.email
-    )
-    if existing_doctor:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Doctor with this email already exists"
-        )
+        if team is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Team not found."
+            )
 
     return doctor_repository.create_doctor(
         session=session,
-        email=doctor_data.email,
         name=doctor_data.name,
         team_id=doctor_data.team_id,
-        department_id=department_id
+        department_id=department_id,
     )
 
 

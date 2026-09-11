@@ -46,7 +46,6 @@ def doctor_fixture(session, department, team):
     return doctor_repository.create_doctor(
         session=session,
         name="Dr Test",
-        email="drtest@gmail.com",
         team_id=team.id,
         department_id=department.id,
     )

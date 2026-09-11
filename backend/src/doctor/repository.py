@@ -2,9 +2,11 @@
 Doctor repository function for handling database operations.
 """
 
+from typing import Optional
 import uuid
 import datetime
 from sqlmodel import Session, not_, select
+from src.user.models import User as UserModel
 from src.doctor.schemas import (
     DoctorPreAssignmentCreate,
     DoctorUnavailabilityCreate,
@@ -17,11 +19,18 @@ from src.doctor.models import DoctorPosition as DoctorPositionModel
 from src.position.models import Position as PositionModel
 
 
-def get_doctor_by_email(session: Session, email: str) -> DoctorModel:
-    """Retrieves a doctor by their unique email"""
-    return session.exec(
-        select(DoctorModel).where(DoctorModel.email == email)
-    ).first()
+def get_doctor_by_email(session: Session, email: str) -> DoctorModel | None:
+    """Retrieves a doctor by their linked user email"""
+    statement = (
+        select(DoctorModel)
+        .join(UserModel, UserModel.doctor_id == DoctorModel.id)
+        .where(
+            UserModel.email == email,
+            not_(DoctorModel.is_deleted),
+            not_(UserModel.is_deleted),
+        )
+    )
+    return session.exec(statement).first()
 
 
 def get_doctor_by_id_for_department(
@@ -51,15 +60,13 @@ def get_active_doctors_for_department(session: Session, department_id: uuid.UUID
 
 def create_doctor(
     session: Session,
-    email: str,
     name: str,
-    team_id: uuid.UUID,
     department_id: uuid.UUID,
+    team_id: Optional[uuid.UUID] = None,
 ) -> DoctorModel:
     """Creates a new doctor in the database"""
     new_doctor = DoctorModel(
         name=name,
-        email=email,
         department_id=department_id,
         team_id=team_id,
     )

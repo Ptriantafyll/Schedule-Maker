@@ -42,8 +42,7 @@ def doctor_fixture(session, department, team):
         session=session,
         department_id=department.id,
         name="Dr Panos",
-        email="drpanos@gmail.com",
-        team_id=team.id
+        team_id=team.id,
     )
 
 
@@ -655,7 +654,6 @@ def test_department_member_cannot_get_team_from_another_department(
         doctor_b = doctor_repository.create_doctor(
             session=session,
             name="Dr Dept B",
-            email="drdeptb@gmail.com",
             team_id=team_b.id,
             department_id=department_b.id,
         )

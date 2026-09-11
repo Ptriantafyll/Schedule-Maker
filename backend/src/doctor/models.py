@@ -9,6 +9,7 @@ extraction). Keep migrations in sync manually if you change this schema.
 
 from __future__ import annotations
 
+from typing import Optional
 import uuid
 import datetime
 from sqlmodel import Field
@@ -22,15 +23,15 @@ class Doctor(SyncBase, table=True):
 
     Fields mirror the DB-level needs used by the application:
     - `name` 
-    - `email` is indexed and unique
     - `department_id` references a Department row
-    - `team_id` references a Team row
+    - `team_id` references a Team row (optional)
     """
 
     name: str = Field(index=True)
-    email: str = Field(index=True, unique=True)
     department_id: uuid.UUID = Field(foreign_key="department.id")
-    team_id: uuid.UUID = Field(foreign_key="team.id")
+    team_id: Optional[uuid.UUID] = Field(
+        default=None, foreign_key="team.id", nullable=True
+    )
 
 
 class DoctorUnavailability(SyncBase, table=True):
