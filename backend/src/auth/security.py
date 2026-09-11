@@ -5,9 +5,11 @@ Security utils for authentication
 import os
 import datetime
 from typing import Optional
+import uuid
+import hashlib
+import secrets
 import jwt
 import bcrypt
-import uuid
 
 SECRET_KEY = os.getenv(
     "SECRET_KEY", "dev-secret-key-change-in-production-123456")
@@ -79,11 +81,18 @@ def decode_access_token(token: str) -> dict:
     return payload
 
 
-def generate_invitation_token():
-    """"""
-    pass
+def generate_invitation_token(nbytes: int = 32) -> str:
+    """Generates an invitation token"""
+    return secrets.token_urlsafe(nbytes=nbytes)
 
 
-def hash_invitation_token(raw_token: str):
-    """"""
-    pass
+def hash_invitation_token(raw_token: str) -> str:
+    """Hashes a generated invitation token"""
+    clean_token = raw_token.strip()
+
+    if len(clean_token) < 1:
+        raise ValueError(
+            "Invitation token cannot be empty."
+        )
+
+    return hashlib.sha256(clean_token.encode("utf-8")).hexdigest()

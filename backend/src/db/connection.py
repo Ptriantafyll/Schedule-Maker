@@ -35,6 +35,7 @@ def init_db() -> None:
     from src.shift.models import Shift, ShiftAssignment
     from src.position.models import Position
     from src.user.models import User  # pylint: disable=unused-import
+    from src.auth.models import Invitation  # pylint: disable=unused-import
 
     SQLModel.metadata.create_all(engine)
     logger.info("Database initialized")

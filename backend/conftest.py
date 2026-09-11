@@ -3,6 +3,7 @@ Configuration for tests
 """
 
 import uuid
+import datetime
 import pytest
 from sqlmodel import SQLModel, create_engine, Session
 from sqlalchemy.pool import StaticPool
@@ -19,6 +20,7 @@ from src.user.models import User as UserModel
 from src.department.models import Department as DepartmentModel
 from src.doctor.models import Doctor as DoctorModel
 from src.team.models import Team as TeamModel
+from src.auth.models import Invitation as InvitationModel
 from src.user.schemas import UserAccountCreate
 from src.user import services as user_services
 from src.auth.security import create_access_token
@@ -167,6 +169,55 @@ def user_factory_fixture(session):
         )
 
     return create_user
+
+
+@pytest.fixture(name="invitation_factory")
+def invitation_factory_fixture(session, department_factory, user_factory):
+    """Create persisted invitations with customizable fields and defaults"""
+
+    def create_invitation(
+        *,
+        role: UserRole = UserRole.DOCTOR,
+        department_id: uuid.UUID | None = None,
+        created_by_user_id: uuid.UUID | None = None,
+        doctor_id: uuid.UUID | None = None,
+        token_hash: str | None = None,
+        expires_at: datetime.datetime | None = None,
+        used_at: datetime.datetime | None = None,
+        revoked_at: datetime.datetime | None = None,
+        is_deleted: bool = False,
+    ) -> InvitationModel:
+        if department_id is None:
+            department_id = department_factory().id
+        if created_by_user_id is None:
+            admin = user_factory(
+                role=UserRole.DEPARTMENT_ADMIN,
+                department_id=department_id,
+            )
+            created_by_user_id = admin.id
+        if expires_at is None:
+            expires_at = datetime.datetime.now(
+                datetime.timezone.utc) + datetime.timedelta(days=7)
+        if token_hash is None:
+            token_hash = uuid.uuid4().hex * 2  # 64 hex characters
+
+        invitation = InvitationModel(
+            token_hash=token_hash,
+            role=role,
+            department_id=department_id,
+            doctor_id=doctor_id,
+            created_by_user_id=created_by_user_id,
+            expires_at=expires_at,
+            used_at=used_at,
+            revoked_at=revoked_at,
+            is_deleted=is_deleted,
+        )
+        session.add(invitation)
+        session.commit()
+        session.refresh(invitation)
+        return invitation
+
+    return create_invitation
 
 
 @pytest.fixture(name="auth_headers_factory")
