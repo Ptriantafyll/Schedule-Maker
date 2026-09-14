@@ -380,7 +380,7 @@ function Show-ManualSession {
     Write-Host "6. As Doctor A, access Doctor A unavailability and expect success."
     Write-Host "7. As Doctor A, access Doctor B unavailability and expect 403."
     Write-Host "8. Confirm /doctors/roster omits email."
-    Write-Host "9. Confirm Department A admin Doctor detail includes email."
+    Write-Host "9. Confirm Department A admin Doctor detail includes name."
     Write-Host "10. Confirm super-admin routine tenant writes return 403."
     Write-Host ""
 }
@@ -512,14 +512,12 @@ with Session(engine) as session:
     doctor_a = create_doctor(
         session=session,
         name="Shared Doctor Name",
-        email="auth-smoke-doctor-a-contact@example.com",
         team_id=team_a.id,
         department_id=department_a.id,
     )
     doctor_b = create_doctor(
         session=session,
         name="Shared Doctor Name",
-        email="auth-smoke-doctor-b-contact@example.com",
         team_id=team_b.id,
         department_id=department_b.id,
     )
@@ -606,8 +604,6 @@ with Session(engine) as session:
                 "shift_b_id": str(shift_b.id),
                 "doctor_a_id": str(doctor_a.id),
                 "doctor_b_id": str(doctor_b.id),
-                "doctor_a_contact_email": doctor_a.email,
-                "doctor_b_contact_email": doctor_b.email,
                 "assignment_a_id": str(assignment_a.id),
                 "assignment_b_id": str(assignment_b.id),
                 "super_admin_email": super_admin.email,
@@ -845,7 +841,6 @@ with Session(engine) as session:
             Path = "/api/v1/doctors/"
             Body = @{
                 name = "Anonymous Denied Doctor"
-                email = "anonymous-denied-doctor@example.com"
                 team_id = $seedData.team_a_id
             }
         },
@@ -1087,7 +1082,6 @@ with Session(engine) as session:
         -Headers $departmentAdminAHeaders `
         -Body @{
             name = "Supplied Department Doctor"
-            email = "supplied-department-doctor@example.com"
             team_id = $seedData.team_a_id
             department_id = $seedData.department_b_id
         }
@@ -1139,7 +1133,6 @@ with Session(engine) as session:
         -Headers $departmentAdminAHeaders `
         -Body @{
             name = "Derived Department Doctor"
-            email = "derived-department-doctor@example.com"
             team_id = [string]$derivedTeam.id
         }
     Assert-Response `
@@ -1196,7 +1189,6 @@ with Session(engine) as session:
         -Headers $departmentAdminAHeaders `
         -Body @{
             name = "Cross Tenant Denied Doctor"
-            email = "cross-tenant-denied-doctor@example.com"
             team_id = $seedData.team_b_id
         }
     Assert-Response `
@@ -1431,9 +1423,9 @@ with Session(engine) as session:
         -Headers $departmentAdminAHeaders
     Assert-JsonProperty `
         -Response $doctorDetailAResponse `
-        -PropertyName "email" `
-        -ExpectedValue ([string]$seedData.doctor_a_contact_email) `
-        -Name "department-admin full doctor response includes email"
+        -PropertyName "name" `
+        -ExpectedValue "Shared Doctor Name" `
+        -Name "department-admin full doctor response includes name"
  
     $foreignDetailChecks = @(
         @{
@@ -1602,7 +1594,194 @@ with Session(engine) as session:
         -Response $departmentCreateResponse `
         -ExpectedStatus 405 `
         -Name "removed public department creation"
- 
+
+    # ==========================================================================
+    # Phase 7: Scoped Invitations, Department Provisioning & Public Signup Flow
+    # ==========================================================================
+
+    # 1. Super Admin provisions a new department and receives the admin invitation
+    $provisionResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/invitations/provision" `
+        -Headers $superAdminHeaders `
+        -Body @{
+            department_name = "Phase 7 Neurology Department"
+            department_code = "P7-NEURO"
+        }
+    Assert-Response `
+        -Response $provisionResponse `
+        -ExpectedStatus 201 `
+        -Name "super-admin provision department and admin invitation"
+    $provisionData = $provisionResponse.Content | ConvertFrom-Json
+    $p7DeptId = [string]$provisionData.department.id
+    $p7AdminToken = [string]$provisionData.invitation.raw_token
+
+    if ([string]::IsNullOrWhiteSpace($p7AdminToken)) {
+        throw "Department provisioning did not return a raw invitation token."
+    }
+
+    # 2. Department Admin registers using the invitation token
+    $p7AdminEmail = "phase7-admin-neuro@example.com"
+    $adminSignupResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/signup" `
+        -Body @{
+            invitation_token = $p7AdminToken
+            first_name = "Gregory"
+            last_name = "House"
+            email = $p7AdminEmail
+            password = $script:smokePassword
+        }
+    Assert-Response `
+        -Response $adminSignupResponse `
+        -ExpectedStatus 201 `
+        -Name "department-admin public signup via invitation"
+    Assert-JsonProperty `
+        -Response $adminSignupResponse `
+        -PropertyName "role" `
+        -ExpectedValue "department_admin" `
+        -Name "invited admin has department_admin role"
+    Assert-JsonProperty `
+        -Response $adminSignupResponse `
+        -PropertyName "department_id" `
+        -ExpectedValue $p7DeptId `
+        -Name "invited admin assigned to provisioned department"
+
+    # 3. Newly registered Department Admin logs in
+    $p7AdminAccessToken = Get-SmokeAccessToken `
+        -Email $p7AdminEmail `
+        -RoleName "newly registered department-admin"
+    $p7AdminHeaders = New-BearerHeaders $p7AdminAccessToken
+
+    # 4. Department Admin issues a staff Doctor invitation (open, auto-provisioning)
+    $doctorInviteResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/invitations/staff" `
+        -Headers $p7AdminHeaders `
+        -Body @{
+            role = "doctor"
+            doctor_id = $null
+        }
+    Assert-Response `
+        -Response $doctorInviteResponse `
+        -ExpectedStatus 201 `
+        -Name "department-admin creates doctor staff invitation"
+    $doctorInviteData = $doctorInviteResponse.Content | ConvertFrom-Json
+    $p7DoctorToken = [string]$doctorInviteData.raw_token
+
+    # 5. Doctor registers using the invitation token (auto-provisions doctor)
+    $p7DoctorEmail = "phase7-doctor-cameron@example.com"
+    $doctorSignupResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/signup" `
+        -Body @{
+            invitation_token = $p7DoctorToken
+            first_name = "Allison"
+            last_name = "Cameron"
+            email = $p7DoctorEmail
+            password = $script:smokePassword
+        }
+    Assert-Response `
+        -Response $doctorSignupResponse `
+        -ExpectedStatus 201 `
+        -Name "doctor public signup auto-provisions doctor record"
+    Assert-JsonProperty `
+        -Response $doctorSignupResponse `
+        -PropertyName "role" `
+        -ExpectedValue "doctor" `
+        -Name "invited doctor has doctor role"
+    Assert-JsonProperty `
+        -Response $doctorSignupResponse `
+        -PropertyName "department_id" `
+        -ExpectedValue $p7DeptId `
+        -Name "invited doctor assigned to correct department"
+
+    $doctorUserData = $doctorSignupResponse.Content | ConvertFrom-Json
+    if ([string]::IsNullOrWhiteSpace([string]$doctorUserData.doctor_id)) {
+        throw "Doctor signup did not auto-provision and attach doctor_id."
+    }
+
+    # 6. Newly registered Doctor logs in and verifies profile
+    $p7DoctorAccessToken = Get-SmokeAccessToken `
+        -Email $p7DoctorEmail `
+        -RoleName "newly registered doctor"
+    $p7DoctorHeaders = New-BearerHeaders $p7DoctorAccessToken
+
+    $p7DoctorProfile = Invoke-ApiRequest `
+        -Method "GET" `
+        -Path "/api/v1/auth/me" `
+        -Headers $p7DoctorHeaders
+    Assert-Response `
+        -Response $p7DoctorProfile `
+        -ExpectedStatus 200 `
+        -Name "newly registered doctor profile check"
+
+    # 7. Negative test: Consumed doctor invitation token cannot be reused
+    $reusedSignupResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/signup" `
+        -Body @{
+            invitation_token = $p7DoctorToken
+            first_name = "Imposter"
+            last_name = "Doctor"
+            email = "imposter@example.com"
+            password = $script:smokePassword
+        }
+    Assert-Response `
+        -Response $reusedSignupResponse `
+        -ExpectedStatus 400 `
+        -Name "signup rejects already consumed invitation token"
+
+    # 8. Negative test: Revoked invitation cannot be consumed
+    $revokableInviteResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/invitations/staff" `
+        -Headers $p7AdminHeaders `
+        -Body @{
+            role = "viewer"
+        }
+    Assert-Response `
+        -Response $revokableInviteResponse `
+        -ExpectedStatus 201 `
+        -Name "department-admin creates revokable viewer invitation"
+    $revokableData = $revokableInviteResponse.Content | ConvertFrom-Json
+    $revokableId = [string]$revokableData.id
+    $revokableToken = [string]$revokableData.raw_token
+
+    $revokeResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/invitations/$revokableId/revoke" `
+        -Headers $p7AdminHeaders
+    Assert-Response `
+        -Response $revokeResponse `
+        -ExpectedStatus 200 `
+        -Name "department-admin revokes invitation"
+
+    $revokedSignupResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/signup" `
+        -Body @{
+            invitation_token = $revokableToken
+            first_name = "Revoked"
+            last_name = "User"
+            email = "revoked@example.com"
+            password = $script:smokePassword
+        }
+    Assert-Response `
+        -Response $revokedSignupResponse `
+        -ExpectedStatus 400 `
+        -Name "signup rejects revoked invitation token"
+
+    # 9. Scoped listing check: Department admin sees invitations
+    $invitationsListResponse = Invoke-ApiRequest `
+        -Method "GET" `
+        -Path "/api/v1/auth/invitations" `
+        -Headers $p7AdminHeaders
+    Assert-Response `
+        -Response $invitationsListResponse `
+        -ExpectedStatus 200 `
+        -Name "department-admin lists department invitations"
+
     Write-Host ""
     Write-Host (
         "Authentication smoke test passed: $passedChecks checks."

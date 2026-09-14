@@ -342,3 +342,79 @@ def test_revoke_invitation_unauthenticated(client, invitation_factory):
     invitation = invitation_factory()
     response = client.post(f"/api/v1/auth/invitations/{invitation.id}/revoke")
     assert response.status_code == 401
+
+
+# ==============================================================================
+# Authorization Matrix & Role Boundary Enforcement (Step 11)
+# ==============================================================================
+
+def test_create_staff_invitation_rejects_cross_department_doctor(
+    client, department_factory, user_factory, doctor_factory, auth_headers_factory
+):
+    """Department admin cannot issue an invitation referencing a doctor from another department."""
+    dept_a = department_factory()
+    dept_b = department_factory()
+
+    admin_a = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept_a.id)
+    doctor_b = doctor_factory(department_id=dept_b.id)
+    headers = auth_headers_factory(admin_a)
+
+    payload = {
+        "role": "doctor",
+        "doctor_id": str(doctor_b.id),
+    }
+
+    response = client.post("/api/v1/auth/invitations/staff", json=payload, headers=headers)
+    assert response.status_code == 400
+    assert "Doctor not found" in response.json()["detail"]
+
+
+@pytest.mark.parametrize("forbidden_role", ["department_admin", "super_admin", "invalid_role"])
+def test_create_staff_invitation_disallows_admin_or_invalid_roles(
+    client, department_factory, user_factory, auth_headers_factory, forbidden_role
+):
+    """Department admins cannot issue invitations for admin or super_admin roles."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    payload = {
+        "role": forbidden_role,
+        "doctor_id": None,
+    }
+
+    response = client.post("/api/v1/auth/invitations/staff", json=payload, headers=headers)
+    assert response.status_code == 422
+
+
+def test_department_admin_cannot_issue_department_admin_invitation(
+    client, department_factory, user_factory, auth_headers_factory
+):
+    """Department admin cannot invoke the super-admin admin invitation endpoint."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    payload = {"department_id": str(dept.id)}
+    response = client.post("/api/v1/auth/invitations/admin", json=payload, headers=headers)
+    assert response.status_code == 403
+
+
+def test_signup_payload_rejects_privilege_escalation_role_injection(
+    client, invitation_factory
+):
+    """Clients cannot inject a role field during public signup (extra='forbid')."""
+    invitation = invitation_factory(role=UserRole.DOCTOR)
+
+    payload = {
+        "invitation_token": "dummy_token_123",
+        "first_name": "Attacker",
+        "last_name": "User",
+        "email": "attacker@hospital.org",
+        "password": "SecurePassword123!",
+        "role": "super_admin",  # Illegal extra field
+    }
+
+    response = client.post("/api/v1/auth/signup", json=payload)
+    assert response.status_code == 422
+

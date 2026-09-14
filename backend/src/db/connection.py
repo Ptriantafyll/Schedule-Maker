@@ -32,8 +32,8 @@ def init_db() -> None:
     from src.department.models import Department  # pylint: disable=unused-import
     from src.team.models import Team  # pylint: disable=unused-import
     from src.doctor.models import Doctor, DoctorPosition, DoctorPreAssignment, DoctorUnavailability  # pylint: disable=unused-import
-    from src.shift.models import Shift, ShiftAssignment
-    from src.position.models import Position
+    from src.shift.models import Shift, ShiftAssignment  # pylint: disable=unused-import
+    from src.position.models import Position  # pylint: disable=unused-import
     from src.user.models import User  # pylint: disable=unused-import
     from src.auth.models import Invitation  # pylint: disable=unused-import
 
