@@ -104,3 +104,4 @@ require_department_member = require_role(
     UserRole.DOCTOR,
     UserRole.VIEWER,
 )
+require_admin = require_role(UserRole.SUPER_ADMIN, UserRole.DEPARTMENT_ADMIN)

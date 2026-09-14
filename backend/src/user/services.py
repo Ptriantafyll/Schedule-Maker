@@ -3,7 +3,7 @@ User service module for handling user-related operations, including account crea
 """
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
-from sqlmodel import Session, select, not_
+from sqlmodel import Session
 
 from src.auth.security import hash_password
 from src.user import repository
@@ -24,6 +24,8 @@ class InvalidUserAccountRelationshipError(Exception):
 
 class DoctorAlreadyLinkedError(Exception):
     """Raised when a user is created with a link to a doctor that is already linked"""
+
+
 
 
 def validate_user_role_shape(

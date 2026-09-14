@@ -16,7 +16,6 @@ from src.doctor.models import Doctor as DoctorModel
 from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 from src.doctor.models import DoctorPosition as DoctorPositionModel
-from src.position.models import Position as PositionModel
 
 
 def get_doctor_by_email(session: Session, email: str) -> DoctorModel | None:
@@ -56,6 +55,23 @@ def get_active_doctors_for_department(session: Session, department_id: uuid.UUID
     )
 
     return session.exec(statement).all()
+
+
+def stage_doctor(
+    session: Session,
+    name: str,
+    department_id: uuid.UUID,
+    team_id: Optional[uuid.UUID] = None,
+) -> DoctorModel:
+    """Adds a doctor in the db without commiting"""
+    new_doctor = DoctorModel(
+        name=name,
+        department_id=department_id,
+        team_id=team_id,
+    )
+    session.add(new_doctor)
+    session.flush()
+    return new_doctor
 
 
 def create_doctor(
