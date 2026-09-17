@@ -20,7 +20,7 @@ from src.user.models import User as UserModel
 from src.department.models import Department as DepartmentModel
 from src.doctor.models import Doctor as DoctorModel
 from src.team.models import Team as TeamModel
-from src.auth.models import Invitation as InvitationModel
+from src.auth.models import Invitation as InvitationModel, RefreshSession as RefreshSessionModel
 from src.user.schemas import UserAccountCreate
 from src.user import services as user_services
 from src.auth.security import create_access_token
@@ -218,6 +218,54 @@ def invitation_factory_fixture(session, department_factory, user_factory):
         return invitation
 
     return create_invitation
+
+
+@pytest.fixture(name="refresh_session_factory")
+def refresh_session_factory_fixture(session, user_factory):
+    """Create persisted refresh sessions with customizable fields and defaults."""
+
+    def create_refresh_session(  # pylint: disable=too-many-arguments
+        *,
+        user_id: uuid.UUID | None = None,
+        refresh_token_hash: str | None = None,
+        session_family: uuid.UUID | None = None,
+        csrf_token_hash: str | None = None,
+        expires_at: datetime.datetime | None = None,
+        last_used_at: datetime.datetime | None = None,
+        revoked_at: datetime.datetime | None = None,
+        revoked_reason: str | None = None,
+        replaced_by_session_id: uuid.UUID | None = None,
+        is_deleted: bool = False,
+    ) -> RefreshSessionModel:
+        if user_id is None:
+            user = user_factory(role=UserRole.SUPER_ADMIN)
+            user_id = user.id
+        if refresh_token_hash is None:
+            refresh_token_hash = uuid.uuid4().hex * 2  # 64 hex characters
+        if session_family is None:
+            session_family = uuid.uuid4()
+        if expires_at is None:
+            expires_at = datetime.datetime.now(
+                datetime.timezone.utc) + datetime.timedelta(days=14)
+
+        refresh_session = RefreshSessionModel(
+            user_id=user_id,
+            refresh_token_hash=refresh_token_hash,
+            session_family=session_family,
+            csrf_token_hash=csrf_token_hash,
+            expires_at=expires_at,
+            last_used_at=last_used_at,
+            revoked_at=revoked_at,
+            revoked_reason=revoked_reason,
+            replaced_by_session_id=replaced_by_session_id,
+            is_deleted=is_deleted,
+        )
+        session.add(refresh_session)
+        session.commit()
+        session.refresh(refresh_session)
+        return refresh_session
+
+    return create_refresh_session
 
 
 @pytest.fixture(name="auth_headers_factory")

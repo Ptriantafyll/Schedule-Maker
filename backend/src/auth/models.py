@@ -34,8 +34,8 @@ class Invitation(SyncBase, table=True):
     def is_expired(self) -> bool:
         """Checks whether an invitation has expired"""
         now = datetime.datetime.now(datetime.timezone.utc)
-        if self.expires_at.tzinfo is None:
-            now = datetime.datetime.utcnow()
+        if getattr(self.expires_at, "tzinfo", None) is None:
+            now = now.replace(tzinfo=None)
         return now > self.expires_at
 
     @property
@@ -44,6 +44,42 @@ class Invitation(SyncBase, table=True):
         return (
             not self.is_deleted
             and self.used_at is None
+            and self.revoked_at is None
+            and not self.is_expired
+        )
+
+
+class RefreshSession(SyncBase, table=True):
+    """
+    Represents the refresh sessions in the db.
+    """
+    user_id: uuid.UUID = Field(foreign_key="user.id", index=True)
+    refresh_token_hash: str = Field(index=True, unique=True)
+    session_family: uuid.UUID = Field(index=True)
+    csrf_token_hash: Optional[str] = Field(default=None, nullable=True)
+    expires_at: datetime.datetime = Field()
+    last_used_at: Optional[datetime.datetime] = Field(
+        default=None, nullable=True)
+    revoked_at: Optional[datetime.datetime] = Field(
+        default=None, nullable=True)
+    revoked_reason: Optional[str] = Field(default=None, nullable=True)
+    replaced_by_session_id: Optional[uuid.UUID] = Field(
+        default=None, foreign_key="refreshsession.id", nullable=True)
+
+    @property
+    def is_expired(self) -> bool:
+        """Checks whether an invitation has expired"""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        if getattr(self.expires_at, "tzinfo", None) is None:
+            now = now.replace(tzinfo=None)
+        return now > self.expires_at
+
+    @property
+    def is_active(self) -> bool:
+        """Checks whether an invitation is active on all fronts"""
+        return (
+            not self.is_deleted
+            and self.replaced_by_session_id is None
             and self.revoked_at is None
             and not self.is_expired
         )

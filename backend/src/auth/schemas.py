@@ -20,6 +20,8 @@ class Token(BaseModel):
     """JWT bearer access token response schema."""
     access_token: str
     token_type: str = "bearer"
+    refresh_token: Optional[str] = None
+    csrf_token: Optional[str] = None
 
 
 class TokenPayload(BaseModel):
@@ -51,7 +53,8 @@ class StaffInvitationCreate(BaseModel):
     @classmethod
     def validate_staff_role(cls, v: UserRole) -> UserRole:
         if v not in (UserRole.DOCTOR, UserRole.VIEWER):
-            raise ValueError("Department admins may only invite doctors or viewers.")
+            raise ValueError(
+                "Department admins may only invite doctors or viewers.")
         return v
 
 
@@ -156,3 +159,41 @@ class DepartmentProvisioningResponse(BaseModel):
     """Response returned upon provisioning a department with its first admin invitation."""
     department: DepartmentRead
     invitation: InvitationCreatedResponse
+
+
+class RefreshTokenRequest(BaseModel):
+    """Refresh token request for non-cookie users."""
+    refresh_token: Optional[str] = None
+    csrf_token: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("refresh_token", "csrf_token")
+    @classmethod
+    def strip_and_validate_not_empty(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None:
+            cleaned = v.strip()
+            if not cleaned:
+                raise ValueError("Field cannot be empty or whitespace only.")
+            return cleaned
+        return v
+
+
+class RefreshSessionRead(BaseModel):
+    """Used for administrative or user dashboard visibility."""
+
+    id: uuid.UUID
+    user_id: uuid.UUID
+    session_family: uuid.UUID
+    expires_at: datetime.datetime
+    last_used_at: Optional[datetime.datetime] = None
+    revoked_at: Optional[datetime.datetime] = None
+    revoked_reason: Optional[str] = None
+    replaced_by_session_id: Optional[uuid.UUID] = None
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    is_deleted: bool = False
+    is_active: bool
+    is_expired: bool
+
+    model_config = ConfigDict(from_attributes=True)

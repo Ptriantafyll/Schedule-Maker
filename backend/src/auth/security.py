@@ -30,6 +30,14 @@ REQUIRED_ACCESS_TOKEN_CLAIMS = (
 )
 
 
+def _hash_token(raw_value: str, token_name: str = "Token") -> str:
+    if not raw_value or not isinstance(raw_value, str) or not raw_value.strip():
+        raise ValueError(f"{token_name} cannot be empty.")
+
+    clean_token = raw_value.strip()
+    return hashlib.sha256(clean_token.encode("utf-8")).hexdigest()
+
+
 def hash_password(plain_password: str) -> str:
     """Hash a plaintext password with bcrypt."""
     salt = bcrypt.gensalt()
@@ -88,11 +96,24 @@ def generate_invitation_token(nbytes: int = 32) -> str:
 
 def hash_invitation_token(raw_token: str) -> str:
     """Hashes a generated invitation token"""
-    clean_token = raw_token.strip()
+    return _hash_token(raw_value=raw_token, token_name="Invitation token")
 
-    if len(clean_token) < 1:
-        raise ValueError(
-            "Invitation token cannot be empty."
-        )
 
-    return hashlib.sha256(clean_token.encode("utf-8")).hexdigest()
+def generate_refresh_token(nbytes: int = 32) -> str:
+    """Generates a refresh token"""
+    return secrets.token_urlsafe(nbytes=nbytes)
+
+
+def hash_refresh_token(raw_token: str) -> str:
+    """Hashes a generated refresh token"""
+    return _hash_token(raw_value=raw_token, token_name="Refresh token")
+
+
+def generate_csrf_token(nbytes: int = 32) -> str:
+    """Generates a CSRF token"""
+    return secrets.token_urlsafe(nbytes=nbytes)
+
+
+def hash_csrf_token(raw_token: str) -> str:
+    """Hashes a generated CSRF token"""
+    return _hash_token(raw_value=raw_token, token_name="CSRF token")
