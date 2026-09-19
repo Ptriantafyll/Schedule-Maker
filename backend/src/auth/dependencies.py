@@ -3,6 +3,7 @@ Security utils for authentication
 """
 import uuid
 import jwt
+import logging
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlmodel import Session
@@ -14,6 +15,8 @@ from src.user.models import UserRole
 from src.user import repository as user_repository
 from src.department.models import Department as DepartmentModel
 from src.doctor.models import Doctor as DoctorModel
+
+from src.utils.logger import log_audit_event
 
 oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl="/api/v1/auth/login", auto_error=False
@@ -74,6 +77,16 @@ def get_current_user(
 def require_department_scope(current_user: UserModel = Depends(get_current_user)) -> uuid.UUID:
     """Returns the authenticated user's department UUID or HTTP 403 if missing"""
     if current_user.department_id is None:
+        log_audit_event(
+            action="tenant.denied",
+            outcome="failure",
+            message="Access denied: missing department scope",
+            user_id=current_user.id,
+            role=current_user.role,
+            reason="missing_department_scope",
+            level=logging.WARNING
+        )
+
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid account scope."
@@ -86,6 +99,17 @@ def require_role(*allowed_roles: UserRole):
     """Factory dependent for role enforcement"""
     def role_guard(current_user: UserModel = Depends(get_current_user)) -> UserModel:
         if current_user.role not in allowed_roles:
+            log_audit_event(
+                action="rbac.denied",
+                outcome="failure",
+                message="Access denied: insufficient role",
+                user_id=current_user.id,
+                role=current_user.role,
+                department_id=current_user.department_id,
+                reason="insufficient_role",
+                level=logging.WARNING
+            )
+            
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions for this operation."

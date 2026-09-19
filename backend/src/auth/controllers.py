@@ -3,6 +3,7 @@ Authentication controller functions handling business logic
 """
 
 import uuid
+import logging
 from typing import Optional
 from fastapi import HTTPException, status, Response, Request
 from sqlmodel import Session
@@ -57,6 +58,8 @@ from src.user.services import (
 )
 from src.department.schemas import DepartmentRead
 
+from src.utils.logger import log_audit_event
+
 
 def login_controller(
     email: str,
@@ -68,6 +71,14 @@ def login_controller(
     user = user_repository.get_user_by_email(session, email)
 
     if not user or user.is_deleted or not verify_password(password, user.hashed_password):
+        log_audit_event(
+            action="auth.login",
+            outcome="failure",
+            message="User login failed.",
+            user_id=user.id if user else None,
+            reason="invalid_credentials",
+            level=logging.WARNING,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Username or password is incorrect",
@@ -98,6 +109,15 @@ def login_controller(
             max_age=14 * 24 * 3600,
         )
 
+    log_audit_event(
+        action="auth.login",
+        outcome="success",
+        message="User login succeeded",
+        user_id=user.id,
+        role=user.role,
+        department_id=user.department_id,
+    )
+
     return Token(
         access_token=access_token,
         token_type="bearer",
@@ -109,10 +129,19 @@ def login_controller(
 def signup_controller(session: Session, data: InvitationSignupRequest) -> UserModel:
     """Handles logic for user signup"""
     try:
-        return consume_invitation_and_signup(
+        new_user = consume_invitation_and_signup(
             session=session,
             data=data,
         )
+        log_audit_event(
+            action="invitation.consume",
+            outcome="success",
+            message="Invitation consumed",
+            user_id=new_user.id,
+            role=new_user.role,
+            department_id=new_user.department_id,
+        )
+        return new_user
     except InvitationNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -143,11 +172,20 @@ def create_staff_invitation_controller(
 ) -> InvitationCreatedResponse:
     """Handles logic for creating a staff invitation"""
     try:
-        return create_staff_invitation(
+        invitation = create_staff_invitation(
             session=session,
             current_user=current_user,
             data=data
         )
+        log_audit_event(
+            action="invitation.create",
+            outcome="success",
+            message="Staff invitation created",
+            user_id=current_user.id,
+            role=data.role,
+            department_id=current_user.department_id,
+        )
+        return invitation
     except (UnauthorizedInvitationActionError) as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -188,6 +226,13 @@ def provision_department_controller(
             detail=str(exc)
         ) from exc
 
+    log_audit_event(
+        action="department.provision",
+        outcome="success",
+        message="Department provisioned",
+        user_id=current_user.id,
+        department_id=dept.id,
+    )
     return DepartmentProvisioningResponse(
         department=DepartmentRead.model_validate(dept),
         invitation=inv,
@@ -201,11 +246,21 @@ def create_department_admin_invitation_controller(
 ) -> InvitationCreatedResponse:
     """Handles logic for creating a department admin invitation for an existing department"""
     try:
-        return create_department_admin_invitation(
+        invitation = create_department_admin_invitation(
             session=session,
             current_user=current_user,
             data=data,
         )
+        log_audit_event(
+            action="invitation.create",
+            outcome="success",
+            message="Department admin invitation created",
+            user_id=current_user.id,
+            role=UserRole.DEPARTMENT_ADMIN,
+            department_id=data.department_id,
+        )
+
+        return invitation
     except (UnauthorizedInvitationActionError) as exc:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -267,10 +322,20 @@ def revoke_invitation_controller(
             detail="Invitation not found."
         )
 
-    return auth_repository.revoke_invitation(
+    invitation = auth_repository.revoke_invitation(
         session=session,
         invitation=invitation,
     )
+
+    log_audit_event(
+        action="invitation.revoke",
+        outcome="success",
+        message="Invitation revoked",
+        user_id=current_user.id,
+        department_id=invitation.department_id,
+    )
+
+    return invitation
 
 
 def refresh_token_controller(
@@ -319,22 +384,56 @@ def refresh_token_controller(
             session=session,
             raw_refresh_token=raw_refresh,
         )
+        log_audit_event(
+            action="auth.refresh",
+            outcome="success",
+            message="Token rotation succeeded",
+            user_id=new_session.user_id,
+        )
     except (InvalidRefreshTokenError) as exc:
+        log_audit_event(
+            action="auth.refresh",
+            outcome="failure",
+            message="Invalid refresh token",
+            reason="invalid_refresh_token",
+            level=logging.WARNING,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
         ) from exc
     except (RefreshTokenReuseDetectedError) as exc:
+        log_audit_event(
+            action="auth.refresh",
+            outcome="failure",
+            message="Refresh token reuse detected",
+            reason="reuse_detected",
+            level=logging.ERROR,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token reuse detected. All sessions in this family have been revoked."
         ) from exc
     except (RevokedRefreshTokenError) as exc:
+        log_audit_event(
+            action="auth.refresh",
+            outcome="failure",
+            message="Revoked refresh token presented",
+            reason="revoked_refresh_token",
+            level=logging.ERROR,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token has been revoked",
         ) from exc
     except (ExpiredRefreshTokenError) as exc:
+        log_audit_event(
+            action="auth.refresh",
+            outcome="failure",
+            message="Expired refresh token presented",
+            reason="expired_refresh_token",
+            level=logging.WARNING,
+        )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Refresh token expired",
@@ -397,4 +496,9 @@ def logout_controller(
         samesite="lax",
     )
 
+    log_audit_event(
+        action="auth.logout",
+        outcome="success",
+        message="User logged out",
+    )
     return {"detail": "Successfully logged out"}

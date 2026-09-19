@@ -8,6 +8,7 @@ from src.user.schemas import UserAccountCreate
 from src.user.models import UserRole
 from src.user.models import User as UserModel
 from src.user import services as user_services
+from src.utils.logger import log_audit_event
 
 
 class SuperAdminAlreadyExistsError(Exception):
@@ -32,10 +33,20 @@ def create_super_admin(
     )
 
     try:
-        return user_services.create_user_account(
+        super_admin_user = user_services.create_user_account(
             session=session,
             account_data=account_data,
         )
+
+        log_audit_event(
+            action="super_admin.bootstrap",
+            outcome="success",
+            message="Super admin created",
+            user_id=super_admin_user.id,
+            role=super_admin_user.role,
+        )
+
+        return super_admin_user
     except user_services.UserEmailAlreadyExistsError as exc:
         raise SuperAdminAlreadyExistsError(
             "A user with this email already exists"

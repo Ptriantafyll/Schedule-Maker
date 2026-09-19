@@ -8,6 +8,9 @@ from __future__ import annotations
 
 import json
 import os
+import logging
+import uuid
+
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from logging import Formatter, LogRecord
@@ -24,6 +27,12 @@ _EXTRA_FIELDS = (
     "status_code",
     "duration_ms",
     "error_count",
+    "action",
+    "outcome",
+    "user_id",
+    "role",
+    "department_id",
+    "reason",
 )
 
 _LOG_LEVELS = frozenset(
@@ -152,11 +161,11 @@ def configure_logging() -> None:
 
 
 def request_fields(
-        request: Request,
-        *,
-        event: str,
-        status_code: int | None = None,
-        duration_ms: float | None = None,
+    request: Request,
+    *,
+    event: str,
+    status_code: int | None = None,
+    duration_ms: float | None = None,
 ) -> dict[str, object]:
     """Build safe, low-cardinality fields for an HTTP log event"""
 
@@ -174,3 +183,36 @@ def request_fields(
         fields["duration_ms"] = duration_ms
 
     return fields
+
+
+_audit_logger = logging.getLogger("src.security.audit")
+
+
+def log_audit_event(
+    action: str,
+    outcome: str,
+    message: str,
+    *,
+    user_id: uuid.UUID | str | None = None,
+    role: str | None = None,
+    department_id: uuid.UUID | str | None = None,
+    reason: str | None = None,
+    level: int = logging.INFO,
+) -> None:
+    """Emits a structured security audit record."""
+    extra: dict[str, Any] = {
+        "event": "security.audit",
+        "action": action,
+        "outcome": outcome,
+    }
+
+    if user_id is not None:
+        extra["user_id"] = user_id
+    if role is not None:
+        extra["role"] = role
+    if department_id is not None:
+        extra["department_id"] = department_id
+    if reason is not None:
+        extra["reason"] = reason
+
+    _audit_logger.log(level, message, extra=extra)

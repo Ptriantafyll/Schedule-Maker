@@ -4,6 +4,8 @@ Description: This is the entry point for the FastAPI application.
 It sets up the API server, configures CORS middleware, and defines a simple health check endpoint. 
 """
 import logging
+import os
+from typing import Optional
 
 from uuid import uuid4
 from time import perf_counter
@@ -27,6 +29,14 @@ from src.db.connection import init_db
 from src.utils.logger import configure_logging, request_fields, request_id_var
 from src.utils.misc import elapsed_ms
 
+DEFAULT_CORS_ORIGINS = (
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:8000",
+)
+ALLOWED_CORS_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+ALLOWED_CORS_HEADERS = ["Authorization", "Content-Type", "X-CSRF-Token"]
+
 configure_logging()
 logger = logging.getLogger(__name__)
 
@@ -40,6 +50,20 @@ async def lifespan(_app_instance: FastAPI):
     logger.info("[Shutdown] Cleaning up server resources...")
 
 
+def get_cors_origins(raw_origins: Optional[str] = None) -> list[str]:
+    """Returns the allowed cors origins."""
+    if raw_origins is None:
+        raw_origins = os.getenv("CORS_ALLOWED_ORIGINS", "")
+
+    parsed = [
+        origin.strip() for origin in raw_origins.split(",") if origin.strip()
+    ]
+
+    if parsed:
+        return parsed
+    return DEFAULT_CORS_ORIGINS
+
+
 app = FastAPI(
     title="Hospital Shift Scheduler API",
     description="Backend optimization engine and data sync portal for scheduling duties.",
@@ -50,10 +74,10 @@ app = FastAPI(
 # Configure CORS so Flutter Web and Mobile can reach this API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=ALLOWED_CORS_METHODS,
+    allow_headers=ALLOWED_CORS_HEADERS,
 )
 
 app.include_router(department_routes.router, prefix="/api/v1")
