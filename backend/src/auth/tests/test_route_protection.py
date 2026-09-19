@@ -8,7 +8,10 @@ EXPECTED_PUBLIC_OPERATIONS = {
     ("GET", "/health"),
     ("POST", "/api/v1/auth/login"),
     ("POST", "/api/v1/auth/signup"),
+    ("POST", "/api/v1/auth/refresh"),
+    ("POST", "/api/v1/auth/logout"),
 }
+
 
 HTTP_METHODS = {
     "get",

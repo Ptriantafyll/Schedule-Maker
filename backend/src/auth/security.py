@@ -29,6 +29,7 @@ REQUIRED_ACCESS_TOKEN_CLAIMS = (
     "token_type"
 )
 
+SECURE_COOKIE = os.getenv("SECURE_COOKIE", "false").lower() == "true"
 
 def _hash_token(raw_value: str, token_name: str = "Token") -> str:
     if not raw_value or not isinstance(raw_value, str) or not raw_value.strip():

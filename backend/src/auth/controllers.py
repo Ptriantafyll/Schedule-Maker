@@ -3,7 +3,8 @@ Authentication controller functions handling business logic
 """
 
 import uuid
-from fastapi import HTTPException, status
+from typing import Optional
+from fastapi import HTTPException, status, Response, Request
 from sqlmodel import Session
 from src.user import repository as user_repository
 from src.auth import repository as auth_repository
@@ -15,8 +16,15 @@ from src.auth.schemas import (
     DepartmentProvisioningResponse,
     InvitationCreatedResponse,
     InvitationSignupRequest,
+    RefreshTokenRequest,
 )
-from src.auth.security import verify_password, create_access_token
+from src.auth.security import (
+    verify_password,
+    create_access_token,
+    hash_refresh_token,
+    hash_csrf_token,
+    SECURE_COOKIE,
+)
 from src.user.models import UserRole, User as UserModel
 from src.auth.models import Invitation as InvitationModel
 from src.auth.services import (
@@ -24,6 +32,9 @@ from src.auth.services import (
     provision_department_with_admin,
     create_department_admin_invitation,
     consume_invitation_and_signup,
+    issue_refresh_session,
+    rotate_refresh_token,
+    terminate_refresh_session,
     UnauthorizedInvitationActionError,
     InvalidInvitationDoctorError,
     DoctorAlreadyLinkedError,
@@ -34,6 +45,11 @@ from src.auth.services import (
     InvitationRevokedError,
     InvitationNotFoundError,
     InvitationAlreadyUsedError,
+    InvalidRefreshTokenError,
+    RefreshTokenReuseDetectedError,
+    RevokedRefreshTokenError,
+    ExpiredRefreshTokenError,
+
 )
 from src.user.services import (
     UserEmailAlreadyExistsError,
@@ -42,7 +58,12 @@ from src.user.services import (
 from src.department.schemas import DepartmentRead
 
 
-def login_controller(email: str, password: str, session: Session) -> Token:
+def login_controller(
+    email: str,
+    password: str,
+    session: Session,
+    response: Optional[Response] = None,
+) -> Token:
     """Handles logic for logging in"""
     user = user_repository.get_user_by_email(session, email)
 
@@ -55,9 +76,33 @@ def login_controller(email: str, password: str, session: Session) -> Token:
 
     access_token = create_access_token({"sub": str(user.id)})
 
+    _, raw_refresh, raw_csrf = issue_refresh_session(
+        session=session, user_id=user.id)
+
+    if response is not None:
+        response.set_cookie(
+            key="refresh_token",
+            value=raw_refresh,
+            httponly=True,
+            secure=SECURE_COOKIE,
+            samesite="lax",
+            max_age=14 * 24 * 3600,
+        )
+
+        response.set_cookie(
+            key="csrf_token",
+            value=raw_csrf,
+            httponly=False,  # JavaScript must be able to read this cookie
+            secure=SECURE_COOKIE,
+            samesite="lax",
+            max_age=14 * 24 * 3600,
+        )
+
     return Token(
         access_token=access_token,
-        token_type="bearer"
+        token_type="bearer",
+        refresh_token=raw_refresh,
+        csrf_token=raw_csrf,
     )
 
 
@@ -226,3 +271,130 @@ def revoke_invitation_controller(
         session=session,
         invitation=invitation,
     )
+
+
+def refresh_token_controller(
+    session: Session,
+    request: Request,
+    response: Response,
+    body: Optional[RefreshTokenRequest] = None,
+) -> Token:
+    """Handles the logic for refreshing a token."""
+    if body and body.refresh_token:
+        raw_refresh = body.refresh_token
+        from_cookie = False
+    else:
+        raw_refresh = request.cookies.get("refresh_token")
+        from_cookie = True
+
+    if raw_refresh is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token required."
+        )
+
+    if from_cookie:
+        csrf_header = request.headers.get("X-CSRF-Token")
+        if not csrf_header:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="CSRF token header (X-CSRF-Token) missing",
+            )
+
+        refresh_hash = hash_refresh_token(raw_refresh)
+        current_session = auth_repository.get_refresh_session_by_token_hash(
+            session=session,
+            token_hash=refresh_hash,
+        )
+
+        if current_session and current_session.csrf_token_hash:
+            if hash_csrf_token(csrf_header) != current_session.csrf_token_hash:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Invalid CSRF token."
+                )
+
+    try:
+        new_session, new_raw_refresh, new_raw_csrf = rotate_refresh_token(
+            session=session,
+            raw_refresh_token=raw_refresh,
+        )
+    except (InvalidRefreshTokenError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        ) from exc
+    except (RefreshTokenReuseDetectedError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token reuse detected. All sessions in this family have been revoked."
+        ) from exc
+    except (RevokedRefreshTokenError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token has been revoked",
+        ) from exc
+    except (ExpiredRefreshTokenError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token expired",
+        ) from exc
+
+    access_token = create_access_token({"sub": str(new_session.user_id)})
+    response.set_cookie(
+        key="refresh_token",
+        value=new_raw_refresh,
+        httponly=True,
+        secure=SECURE_COOKIE,
+        samesite="lax",
+        max_age=14*24*3600,
+    )
+    response.set_cookie(
+        key="csrf_token",
+        value=new_raw_csrf,
+        httponly=False,
+        secure=SECURE_COOKIE,
+        samesite="lax",
+        max_age=14*24*3600,
+    )
+
+    return Token(
+        access_token=access_token,
+        token_type="bearer",
+        refresh_token=new_raw_refresh,
+        csrf_token=new_raw_csrf,
+    )
+
+
+def logout_controller(
+    session: Session,
+    request: Request,
+    response: Response,
+    body: Optional[RefreshTokenRequest] = None
+) -> dict[str, str]:
+    """Handles the logic for a user logging out."""
+    if body and body.refresh_token:
+        raw_refresh = body.refresh_token
+    else:
+        raw_refresh = request.cookies.get("refresh_token")
+
+    if raw_refresh:
+        terminate_refresh_session(
+            session=session,
+            raw_refresh_token=raw_refresh
+        )
+
+    response.delete_cookie(
+        key="refresh_token",
+        httponly=True,
+        secure=SECURE_COOKIE,
+        samesite="lax",
+    )
+    response.delete_cookie(
+        key="csrf_token",
+        httponly=False,
+        secure=SECURE_COOKIE,
+        samesite="lax",
+    )
+
+    return {"detail": "Successfully logged out"}

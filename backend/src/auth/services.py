@@ -8,7 +8,6 @@ from sqlmodel import Session
 from src.user.schemas import (
     UserRole,
     UserAccountCreate,
-    UserPersistenceCreate,
 )
 from src.auth.schemas import (
     StaffInvitationCreate,
@@ -19,6 +18,7 @@ from src.auth.schemas import (
 )
 from src.user.services import UserEmailAlreadyExistsError
 from src.auth import security
+from src.auth.models import RefreshSession as RefreshSessionModel
 from src.auth import repository as auth_repository
 from src.doctor import repository as doctor_repository
 from src.user import repository as user_repository
@@ -79,6 +79,22 @@ class InvitationRevokedError(Exception):
 
 class InvitationExpiredError(Exception):
     """Raised when trying to consume an invitation that has expired"""
+
+
+class InvalidRefreshTokenError(Exception):
+    """Raised when the presented token is not found in the database."""
+
+
+class ExpiredRefreshTokenError(Exception):
+    """Raised when the session's expires_at timestamp is in the past."""
+
+
+class RevokedRefreshTokenError(Exception):
+    """Raised when the session was previously revoked (e.g. logged out)."""
+
+
+class RefreshTokenReuseDetectedError(Exception):
+    """Raised when an already-replaced predecessor token is presented."""
 
 
 def _issue_invitation(
@@ -322,3 +338,135 @@ def consume_invitation_and_signup(
     session.commit()
     session.refresh(user)
     return user
+
+
+def issue_refresh_session(
+    session: Session,
+    user_id: uuid.UUID,
+) -> tuple[RefreshSessionModel, str, str]:
+    """Issues a refresh session."""
+    raw_refresh = security.generate_refresh_token()
+    raw_csrf = security.generate_csrf_token()
+
+    refresh_hash = security.hash_refresh_token(raw_refresh)
+    csrf_hash = security.hash_csrf_token(raw_csrf)
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    expires_at = now + datetime.timedelta(days=14)
+
+    refresh_session = auth_repository.create_refresh_session(
+        session=session,
+        user_id=user_id,
+        refresh_token_hash=refresh_hash,
+        expires_at=expires_at,
+        csrf_token_hash=csrf_hash,
+    )
+
+    return (refresh_session, raw_refresh, raw_csrf)
+
+
+def rotate_refresh_token(
+    session: Session,
+    raw_refresh_token: str,
+) -> tuple[RefreshSessionModel, str, str]:
+    """Rotates a refresh token."""
+    incoming_hash = security.hash_refresh_token(raw_refresh_token)
+
+    refresh_session = auth_repository.get_refresh_session_by_token_hash(
+        session=session,
+        token_hash=incoming_hash
+    )
+
+    if not refresh_session:
+        raise InvalidRefreshTokenError(
+            "Refresh session not found."
+        )
+
+    if refresh_session.replaced_by_session_id is not None:
+        auth_repository.revoke_session_family(
+            session=session,
+            session_family=refresh_session.session_family,
+            reason="reuse_detected",
+        )
+        raise RefreshTokenReuseDetectedError(
+            "Refresh token reuse detected."
+        )
+
+    if refresh_session.revoked_at is not None:
+        raise RevokedRefreshTokenError(
+            "Refresh token has been revoked."
+        )
+
+    if refresh_session.is_expired:
+        raise ExpiredRefreshTokenError(
+            "Refresh token expired."
+        )
+
+    user = user_repository.get_user_by_id(
+        session=session,
+        user_id=refresh_session.user_id,
+    )
+    if not user or user.is_deleted:
+        auth_repository.revoke_session_family(
+            session=session,
+            session_family=refresh_session.session_family,
+            reason="inactive_user",
+        )
+        raise InvalidRefreshTokenError("User account is inactive or deleted.")
+
+    now = datetime.datetime.now(datetime.timezone.utc)
+    new_expires_at = now + datetime.timedelta(days=14)
+
+    new_raw_refresh = security.generate_refresh_token()
+    new_refresh_hash = security.hash_refresh_token(new_raw_refresh)
+
+    new_raw_csrf = security.generate_csrf_token()
+    new_csrf_hash = security.hash_csrf_token(new_raw_csrf)
+
+    new_refresh_session = auth_repository.rotate_refresh_session(
+        session=session,
+        current_session=refresh_session,
+        new_refresh_token_hash=new_refresh_hash,
+        new_expires_at=new_expires_at,
+        new_csrf_token_hash=new_csrf_hash,
+    )
+
+    return (new_refresh_session, new_raw_refresh, new_raw_csrf)
+
+
+def terminate_refresh_session(
+    session: Session,
+    raw_refresh_token: str,
+) -> bool:
+    """Terminates a refresh session with reason logout."""
+    refresh_hash = security.hash_refresh_token(raw_refresh_token)
+
+    refresh_session = auth_repository.get_refresh_session_by_token_hash(
+        session=session,
+        token_hash=refresh_hash,
+    )
+
+    if not refresh_session:
+        return False
+
+    revoked_session = auth_repository.revoke_refresh_session(
+        session=session,
+        refresh_session=refresh_session,
+        reason="logout",
+    )
+
+    return revoked_session is not None
+
+
+def revoke_all_user_refresh_sessions(
+    session: Session,
+    user_id: uuid.UUID,
+    reason: str = "logout"
+) -> int:
+    """Revokes all user refresh sessions."""
+    sessions_revoked = auth_repository.revoke_all_sessions_for_user(
+        session=session,
+        user_id=user_id,
+        reason=reason,
+    )
+    return sessions_revoked

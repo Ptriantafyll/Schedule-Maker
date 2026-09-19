@@ -1782,10 +1782,133 @@ with Session(engine) as session:
         -ExpectedStatus 200 `
         -Name "department-admin lists department invitations"
 
+    # 10. Phase 8: Refresh-Session Persistence & Token Rotation Verification
+    Write-Host "Verifying Phase 8 Refresh Session & Rotation Lifecycle..." -ForegroundColor Cyan
+
+    # 10.1 Login to obtain access and refresh tokens
+    $p8LoginResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/login" `
+        -ContentType "application/x-www-form-urlencoded" `
+        -Body @{
+            username = $seedData.super_admin_email
+            password = $script:smokePassword
+        }
+    Assert-Response `
+        -Response $p8LoginResponse `
+        -ExpectedStatus 200 `
+        -Name "Phase 8 login returns session credentials"
+
+    $p8LoginData = $p8LoginResponse.Content | ConvertFrom-Json
+    $rawRefresh1 = [string]$p8LoginData.refresh_token
+    if ([string]::IsNullOrWhiteSpace($rawRefresh1)) {
+        throw "Phase 8 login did not return a refresh_token."
+    }
+    Write-Pass "Phase 8 login payload contains refresh_token"
+
+    # 10.2 Token rotation: POST /api/v1/auth/refresh with T_1
+    $rotateResponse1 = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/refresh" `
+        -Body @{
+            refresh_token = $rawRefresh1
+        }
+    Assert-Response `
+        -Response $rotateResponse1 `
+        -ExpectedStatus 200 `
+        -Name "refresh endpoint rotates T_1 to T_2"
+
+    $rotateData1 = $rotateResponse1.Content | ConvertFrom-Json
+    $rawRefresh2 = [string]$rotateData1.refresh_token
+    $rotatedAccess = [string]$rotateData1.access_token
+
+    if ([string]::IsNullOrWhiteSpace($rawRefresh2) -or $rawRefresh2 -eq $rawRefresh1) {
+        throw "Phase 8 refresh did not return a unique rotated refresh_token."
+    }
+    if ([string]::IsNullOrWhiteSpace($rotatedAccess)) {
+        throw "Phase 8 refresh did not return an access_token."
+    }
+    Write-Pass "refresh endpoint issued fresh access token and rotated refresh token"
+
+    # 10.3 Verify rotated access token works against protected profile endpoint
+    $testHeaders = New-BearerHeaders -Token $rotatedAccess
+    $profileResp = Invoke-ApiRequest `
+        -Method "GET" `
+        -Path "/api/v1/auth/me" `
+        -Headers $testHeaders
+    Assert-Response `
+        -Response $profileResp `
+        -ExpectedStatus 200 `
+        -Name "new access token queries protected endpoint"
+
+    # 10.4 Reuse Detection: Attacker presents stale T_1 -> rejected with 401
+    $replayResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/refresh" `
+        -Body @{
+            refresh_token = $rawRefresh1
+        }
+    Assert-Response `
+        -Response $replayResponse `
+        -ExpectedStatus 401 `
+        -Name "replay of stale T_1 is rejected with 401 reuse detected"
+
+    # 10.5 Session Family Invalidation: Legitimate client presents T_2 -> rejected with 401
+    $nukedFamilyResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/refresh" `
+        -Body @{
+            refresh_token = $rawRefresh2
+        }
+    Assert-Response `
+        -Response $nukedFamilyResponse `
+        -ExpectedStatus 401 `
+        -Name "reuse detection revokes entire session family (T_2 rejected with 401)"
+
+    # 10.6 Logout Flow: Login fresh session, call /logout, verify termination
+    $p8Login2Response = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/login" `
+        -ContentType "application/x-www-form-urlencoded" `
+        -Body @{
+            username = $seedData.super_admin_email
+            password = $script:smokePassword
+        }
+    Assert-Response `
+        -Response $p8Login2Response `
+        -ExpectedStatus 200 `
+        -Name "login for logout verification"
+    $p8Login2Data = $p8Login2Response.Content | ConvertFrom-Json
+    $logoutToken = [string]$p8Login2Data.refresh_token
+
+    $logoutResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/logout" `
+        -Body @{
+            refresh_token = $logoutToken
+        }
+    Assert-Response `
+        -Response $logoutResponse `
+        -ExpectedStatus 200 `
+        -Name "logout terminates active refresh session"
+
+    # Verify post-logout token replay is rejected
+    $postLogoutResponse = Invoke-ApiRequest `
+        -Method "POST" `
+        -Path "/api/v1/auth/refresh" `
+        -Body @{
+            refresh_token = $logoutToken
+        }
+    Assert-Response `
+        -Response $postLogoutResponse `
+        -ExpectedStatus 401 `
+        -Name "refresh with logged out token is rejected with 401"
+
     Write-Host ""
     Write-Host (
         "Authentication smoke test passed: $passedChecks checks."
     ) -ForegroundColor Green
+
 }
 catch {
     $exitCode = 1
