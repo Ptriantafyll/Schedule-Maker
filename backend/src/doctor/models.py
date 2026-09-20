@@ -13,6 +13,7 @@ from typing import Optional
 import uuid
 import datetime
 from sqlmodel import Field
+from sqlalchemy import UniqueConstraint
 
 from src.db.schemas import SyncBase
 
@@ -36,12 +37,30 @@ class Doctor(SyncBase, table=True):
 
 class DoctorUnavailability(SyncBase, table=True):
     """Tracks specific dates a doctor cannot work for a given month."""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "doctor_id",
+            "date",
+            name="uq_doctor_unavailability_doctor_date",
+        ),
+    )
+
     doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
     date: datetime.date
 
 
 class DoctorPreAssignment(SyncBase, table=True):
     """Hard constraints: locked-in (date, shift) assignments before solver runs."""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "doctor_id",
+            "date",
+            name="uq_doctor_pre_assignment_doctor_date",
+        ),
+    )
+
     doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
     shift_id: uuid.UUID = Field(foreign_key="shift.id")
     date: datetime.date
@@ -49,5 +68,14 @@ class DoctorPreAssignment(SyncBase, table=True):
 
 class DoctorPosition(SyncBase, table=True):
     """Association table for the many-to-many relationship between doctors and positions."""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "doctor_id",
+            "position_id",
+            name="uq_doctor_position_doctor_pos",
+        ),
+    )
+
     doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
     position_id: uuid.UUID = Field(foreign_key="position.id")

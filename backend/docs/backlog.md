@@ -4,39 +4,6 @@ Deferred issues that should be addressed outside the current implementation step
 
 ## Open
 
-### BL-001: Enable SQLite foreign-key enforcement
-
-**Area:** Database integrity  
-**Priority:** High
-
-#### Problem
-
-The SQLModel models declare foreign keys, but SQLite does not enforce them
-unless `PRAGMA foreign_keys=ON` is enabled for every database connection.
-The current database engine does not enable this setting.
-
-This can allow orphaned records, such as a user whose `department_id` does not
-reference an existing department. It can also make development and tests behave
-differently from production databases that enforce foreign keys by default.
-
-#### Required work
-
-1. Enable `PRAGMA foreign_keys=ON` for every SQLAlchemy SQLite connection.
-2. Keep the configuration conditional so it is not executed for other database
-   engines.
-3. Add a regression test proving that a nonexistent foreign-key value raises an
-   integrity error.
-4. Add a test proving that nullable foreign keys still accept `NULL`, including
-   the tenantless super-admin case.
-
-#### Completion criteria
-
-- Every application and test SQLite connection reports foreign-key enforcement
-  as enabled.
-- SQLite rejects records that reference nonexistent parent records.
-- Nullable foreign-key columns continue to accept `NULL`.
-- The existing test suite remains green.
-
 ### BL-002: Automated email dispatch for invitations (SMTP / SendGrid)
 
 **Area:** Authentication / Notifications  
@@ -246,5 +213,35 @@ In a cluster with $N$ pods, an attacker's requests can be distributed across pod
 - ICS generation writes once to the target path.
 - Unit tests verify valid `.xlsx` and `.ics` outputs.
 
+### BL-010: Consolidate or retire legacy schedule_maker.py implementation
 
+**Area:** Solver Engine / Architecture  
+**Priority:** Medium
 
+#### Problem
+
+The codebase maintains two divergent scheduling solver implementations:
+1. `src/scheduler.py` (`ShiftScheduler`): The modern, active implementation integrated with domain models, configurable soft-constraint weights, and API workflows.
+2. `src/schedule_maker.py`: An older standalone script with hardcoded constraints, a different API shape, and separate argument parsers.
+
+Maintaining both files introduces behavioral drift and confusion regarding which constraint formulation is canonical.
+
+#### Required work
+
+1. Audit CLI and desktop entry points to verify if anything still imports `src/schedule_maker.py`.
+2. Either:
+   - Retire `src/schedule_maker.py` entirely, migrating any unique CLI features to a modern CLI command importing `src.scheduler.ShiftScheduler`.
+   - Turn `src/schedule_maker.py` into a thin backward-compatible adapter wrapping `ShiftScheduler`.
+3. Remove redundant tests or update them to target `ShiftScheduler`.
+
+#### Completion criteria
+
+- Only one CP-SAT model building implementation exists in the codebase.
+- Any CLI workflows run against `ShiftScheduler`.
+
+## Resolved / Closed
+
+### BL-001: Enable SQLite foreign-key enforcement
+
+**Area:** Database integrity  
+**Resolution:** Enabled `PRAGMA foreign_keys=ON` via SQLAlchemy `@event.listens_for(Engine, "connect")` in `src/db/connection.py` for all `sqlite3.Connection` instances. Added regression tests in `src/tests/test_models.py` verifying PRAGMA activation, rejection of nonexistent foreign keys with `IntegrityError`, and acceptance of nullable foreign keys.

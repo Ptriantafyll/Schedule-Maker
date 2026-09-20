@@ -5,7 +5,10 @@ Description: This module sets up the database connection and session management 
 
 import os
 import logging
+import sqlite3
 from collections.abc import Generator
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
 logger = logging.getLogger(__name__)
@@ -16,6 +19,16 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///hospital_schedule.db")
 # connect_args={"check_same_thread": False} is strictly required ONLY for SQLite
 connect_args = {"check_same_thread": False} if DATABASE_URL.startswith(
     "sqlite") else {}
+
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    """Enable foreign key constraints for SQLite connections."""
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
 
 engine = create_engine(
     DATABASE_URL,

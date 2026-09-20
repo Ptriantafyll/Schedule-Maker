@@ -34,6 +34,15 @@ class Shift(SyncBase, table=True):
 
 class ShiftAssignment(SyncBase, table=True):
     """Represents the final schedule assignments after the solver runs."""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "doctor_id",
+            "date",
+            name="uq_shift_assignment_doctor_date",
+        ),
+    )
+
     doctor_id: uuid.UUID = Field(foreign_key="doctor.id")
     shift_id: uuid.UUID = Field(foreign_key="shift.id")
     date: datetime.date  # ISO Format: YYYY-MM-DD
