@@ -24,6 +24,15 @@ from src.auth.models import Invitation as InvitationModel, RefreshSession as Ref
 from src.user.schemas import UserAccountCreate
 from src.user import services as user_services
 from src.auth.security import create_access_token
+from src.utils.rate_limiter import auth_rate_limiter
+
+
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Resets the in-memory rate limiter to ensure complete test isolation."""
+    auth_rate_limiter.reset()
+    yield
+    auth_rate_limiter.reset()
 
 
 @pytest.fixture(name="session")

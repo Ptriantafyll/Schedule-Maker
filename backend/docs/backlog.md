@@ -193,3 +193,32 @@ Furthermore, hospital staff and physicians frequently rely on institutional iden
 - Users and administrators can enable TOTP MFA on their accounts.
 - Accounts with MFA enabled cannot obtain access tokens without a valid second factor.
 
+### BL-008: Distributed Rate Limiting for Multi-Instance / Kubernetes Deployments (Redis)
+
+**Area:** Security, Infrastructure & Scalability  
+**Priority:** Medium
+
+#### Problem
+
+The initial rate limiting implementation uses an in-memory sliding window (`InMemoryRateLimiter`). While optimal for local desktop use and single-server deployments (zero infrastructure overhead, microsecond memory lookups), in-memory rate limiting does not share state across horizontally scaled environments (such as multiple Kubernetes pods or multi-instance server clusters behind a load balancer). 
+
+In a cluster with $N$ pods, an attacker's requests can be distributed across pods, effectively multiplying their allowed request volume by $N$ before being throttled on any single node.
+
+#### Required work
+
+1. Implement a `RedisRateLimiter` adapter following the same interface as `InMemoryRateLimiter`:
+   - `is_allowed(key, max_requests, window_seconds) -> tuple[bool, int]`
+2. Use Redis atomic sorted sets (`ZADD`, `ZREMRANGEBYSCORE`, `ZCARD`) or a Redis Lua script to evaluate sliding windows atomically across all pods.
+3. Configure Redis connection parameters via environment variables (`REDIS_URL`, `REDIS_PASSWORD`).
+4. Provide a factory or dependency fallback:
+   - If `REDIS_URL` is set, use `RedisRateLimiter`.
+   - If `REDIS_URL` is unset, gracefully fall back to `InMemoryRateLimiter` (maintaining standalone and offline compatibility).
+5. Ensure rate limit response headers (`Retry-After`) and HTTP 429 status behavior remain identical across both backends.
+
+#### Completion criteria
+
+- Multiple API worker processes or Kubernetes pods share rate limit state via Redis.
+- Standalone local deployments continue to run with `InMemoryRateLimiter` without requiring Redis.
+- Unit and integration tests verify the distributed sliding window behavior against a mock/test Redis instance.
+
+

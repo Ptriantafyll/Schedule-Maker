@@ -1904,6 +1904,74 @@ with Session(engine) as session:
         -ExpectedStatus 401 `
         -Name "refresh with logged out token is rejected with 401"
 
+    Write-Host "Verifying Phase 11 Endpoint Rate Limiting..."
+    $throttledIp = "198.51.100.42"
+    $cleanIp = "198.51.100.43"
+    $rateLimitHeaders = @{
+        "X-Forwarded-For" = $throttledIp
+    }
+
+    # Make 5 signup attempts to reach the limit
+    for ($i = 1; $i -le 5; $i++) {
+        $attemptResp = Invoke-ApiRequest `
+            -Method POST `
+            -Path "/api/v1/auth/signup" `
+            -Headers $rateLimitHeaders `
+            -Body @{
+                invitation_token = "invalid_token_$i"
+                first_name = "Rate"
+                last_name = "Limit"
+                email = "rate_limit_$i@hospital.org"
+                password = "SecurePassword123!"
+            }
+        Assert-Response `
+            -Response $attemptResp `
+            -ExpectedStatus 404 `
+            -Name "rate limit warmup signup attempt $i"
+    }
+
+    # 6th request from throttled IP must be 429 Too Many Requests
+    $throttledResp = Invoke-ApiRequest `
+        -Method POST `
+        -Path "/api/v1/auth/signup" `
+        -Headers $rateLimitHeaders `
+        -Body @{
+            invitation_token = "invalid_token_6"
+            first_name = "Rate"
+            last_name = "Limit"
+            email = "rate_limit_6@hospital.org"
+            password = "SecurePassword123!"
+        }
+    Assert-Response `
+        -Response $throttledResp `
+        -ExpectedStatus 429 `
+        -Name "signup rate limit triggers HTTP 429"
+
+    # Verify Retry-After header
+    $retryAfter = [string]$throttledResp.Headers["Retry-After"]
+    if (-not $retryAfter -or [int]$retryAfter -le 0) {
+        throw "Rate limited response missing valid Retry-After header. Found: '$retryAfter'"
+    }
+    Write-Pass -Name "rate limited response includes positive Retry-After header"
+
+    # Verify an independent clean IP is not throttled
+    $unthrottledResp = Invoke-ApiRequest `
+        -Method POST `
+        -Path "/api/v1/auth/signup" `
+        -Headers @{ "X-Forwarded-For" = $cleanIp } `
+        -Body @{
+            invitation_token = "invalid_token_clean"
+            first_name = "Rate"
+            last_name = "Limit"
+            email = "rate_limit_clean@hospital.org"
+            password = "SecurePassword123!"
+        }
+    Assert-Response `
+        -Response $unthrottledResp `
+        -ExpectedStatus 404 `
+        -Name "unthrottled IP is isolated and receives standard 404"
+
+
     Write-Host ""
     Write-Host (
         "Authentication smoke test passed: $passedChecks checks."

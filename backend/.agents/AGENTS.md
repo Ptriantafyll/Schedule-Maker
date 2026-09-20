@@ -35,3 +35,5 @@ The folder structure is in docs/structure.md
 - Always document any new activity or anything that will be revisited in a new document in the docs/ folder. E.g. things that need to be documented are how to add a new library with uv, what the architecture is, how to deploy locally etc. The user wants to have a clear step by step document for every procedure. Do this whenever there is a new procedure or if you are not sure ask the user whether to include something in a new doc.
 - Always ask the user for approval when adding or changing a file
 - Always build with future scalability and code readability in mind
+- Always record things that need to be done for future scalability (such as distributed rate limiting with Redis for multi-server or Kubernetes deployments) in docs/backlog.md
+
