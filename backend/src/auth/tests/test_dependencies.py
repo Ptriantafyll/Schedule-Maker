@@ -273,10 +273,12 @@ def test_get_current_user_rejects_deleted_required_doctor(
 def test_get_current_user_rejects_mismatched_doctor_department(
     session,
     department,
+    department_factory,
     doctor,
     user_factory,
 ):
     """Tests that a user cannot authenticate if the doctor's department and the user's department don't match"""
+    other_department = department_factory(name="Other Department", code="OTHER")
     user = user_factory(
         role=UserRole.DOCTOR,
         department_id=department.id,
@@ -289,7 +291,7 @@ def test_get_current_user_rejects_mismatched_doctor_department(
     )
     assert authenticated_user.id == user.id
 
-    doctor.department_id = uuid.uuid4()
+    doctor.department_id = other_department.id
     session.add(doctor)
     session.commit()
 

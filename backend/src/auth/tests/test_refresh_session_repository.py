@@ -233,7 +233,7 @@ def test_list_active_sessions_for_user(session: Session, user_factory, refresh_s
     # Replaced session
     refresh_session_factory(
         user_id=user_1.id,
-        replaced_by_session_id=uuid.uuid4(),
+        replaced_by_session_id=active_session.id,
         revoked_at=now,
         revoked_reason="rotated",
     )

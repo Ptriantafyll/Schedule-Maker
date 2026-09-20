@@ -280,7 +280,7 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
             for team in self.department.teams:
                 yesterday_day_off_shifts = self._get_day_off_vars_for_team(
                     team, day_index-1)
-            self.model.add(sum(yesterday_day_off_shifts) <= 1)
+                self.model.add(sum(yesterday_day_off_shifts) <= 1)
 
     def _add_soft_constraint_penalize_duty_gap(self, gap_size: int, weight: int):
         """

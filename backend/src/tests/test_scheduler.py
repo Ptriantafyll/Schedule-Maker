@@ -622,3 +622,36 @@ def test_create_schedule_honors_solver_time_limit():
 
     assert scheduler.solver.parameters.max_time_in_seconds == 45.0
 
+
+def test_max_one_team_day_off_infeasible_with_two_preassigned_same_team():
+    """Verifies infeasibility when two doctors from the first team work a day-off shift on the same day."""
+    shift_er = Shift(name="ER", doctors_per_shift=2, grants_day_off=True)
+    target_date = datetime.date(2026, 4, 1)
+
+    doc_a = Doctor(name="Dr. A", email="a@test.com", pre_assignments=[(target_date, shift_er)])
+    doc_b = Doctor(name="Dr. B", email="b@test.com", pre_assignments=[(target_date, shift_er)])
+    doc_c = Doctor(name="Dr. C", email="c@test.com")
+    doc_d = Doctor(name="Dr. D", email="d@test.com")
+    doc_e = Doctor(name="Dr. E", email="e@test.com")
+    doc_f = Doctor(name="Dr. F", email="f@test.com")
+
+    teams = [
+        Team(name="Team 1", doctors=[doc_a, doc_b]),
+        Team(name="Team 2", doctors=[doc_c, doc_d]),
+        Team(name="Team 3", doctors=[doc_e, doc_f]),
+    ]
+    position = Position(name="ER", shifts=[shift_er])
+    test_department = Department(name="Test", teams=teams, positions=[position])
+
+    scheduler = ShiftScheduler(department=test_department)
+    scheduler._calculate_days_for_schedule(month=4, year=2026)
+    scheduler._build_model()
+    scheduler._add_hard_constraint_doctors_per_shift()
+    scheduler._add_hard_constraint_max_one_team_day_off()
+
+    solver = cp_model.CpSolver()
+    solver.parameters.random_seed = 42
+    status = solver.solve(scheduler.model)
+
+    assert status == cp_model.INFEASIBLE
+
