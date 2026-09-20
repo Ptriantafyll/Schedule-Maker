@@ -11,7 +11,7 @@ from typing import Optional
 import uuid
 import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ShiftBase(BaseModel):
@@ -23,7 +23,11 @@ class ShiftBase(BaseModel):
     """
 
     name: str
-    doctors_per_shift: int = 1
+    doctors_per_shift: int = Field(
+        default=1,
+        gt=0,
+        description="Minimum number of doctors needed per shift.",
+    )
     grants_day_off: bool = False
     position_id: uuid.UUID
 
@@ -43,8 +47,12 @@ class ShiftUpdate(BaseModel):
     """
 
     name: Optional[str] = None
-    doctors_per_shift: Optional[str] = None
-    grants_day_odd: Optional[bool] = None
+    doctors_per_shift: Optional[int] = Field(
+        default=None,
+        gt=0,
+        description="Minimum number of doctors needed per shift.",
+    )
+    grants_day_off: Optional[bool] = None
     position_id: Optional[uuid.UUID] = None
 
 

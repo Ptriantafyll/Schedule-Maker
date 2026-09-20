@@ -8,7 +8,7 @@ import datetime
 import calendar
 import math
 from ortools.sat.python import cp_model
-from models import Department, Doctor, Position, Shift, Team
+from src.models import Department, Doctor, Position, Shift, Team
 
 
 class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
@@ -499,7 +499,12 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         self._add_soft_constraint_balance_saturday_sunday_duties()
         self._combine_objectives()
 
-        status = self.solver.Solve(self.model)
+        if hasattr(self.department, "config") and self.department.config:
+            self.solver.parameters.max_time_in_seconds = float(
+                self.department.config.solver_time_limit
+            )
+
+        status = self.solver.solve(self.model)
 
         print(f"Solver status: {status}")
         print(f"Status name: {self.solver.status_name(status)}")

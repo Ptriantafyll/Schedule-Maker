@@ -6,8 +6,8 @@ Unit tests for ShiftScheduler constraints and date calculations.
 
 import datetime
 from ortools.sat.python import cp_model
-from scheduler import ShiftScheduler
-from models import Department, Team, Doctor, Position, Shift, ScheduleConfig
+from src.scheduler import ShiftScheduler
+from src.models import Department, Team, Doctor, Position, Shift, ScheduleConfig
 
 
 def _build_and_solve(department, month=4, year=2026, constraint_names=None):
@@ -27,7 +27,7 @@ def _build_and_solve(department, month=4, year=2026, constraint_names=None):
 
     solver = cp_model.CpSolver()
     solver.parameters.random_seed = 42
-    status = solver.Solve(scheduler.model)
+    status = solver.solve(scheduler.model)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE), \
         "Solver failed to find a solution"
     return scheduler, solver
@@ -606,3 +606,19 @@ def test_penalize_short_gaps_between_duties():
 
     assert len(scheduler.penalties) > 0, \
         "Constraint did not add any penalties"
+
+
+def test_create_schedule_honors_solver_time_limit():
+    """Verifies that ShiftScheduler.create_schedule applies the configured time limit."""
+    doctors = [Doctor(name=f"Dr {i}", email=f"dr{i}@test.com") for i in range(5)]
+    team = Team(name="Team 1", doctors=doctors)
+    shift = Shift(name="Night", doctors_per_shift=1)
+    position = Position(name="ER", shifts=[shift])
+    config = ScheduleConfig(solver_time_limit=45)
+    department = Department(name="Test", teams=[team], positions=[position], config=config)
+
+    scheduler = ShiftScheduler(department=department)
+    scheduler.create_schedule(month=4, year=2026)
+
+    assert scheduler.solver.parameters.max_time_in_seconds == 45.0
+

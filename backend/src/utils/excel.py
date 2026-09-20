@@ -3,7 +3,7 @@ Module: excel.py
 Description: Utility functions for Excel files.
 """
 
-from scheduler import ShiftScheduler
+from src.scheduler import ShiftScheduler
 import openpyxl
 from openpyxl.styles import PatternFill
 

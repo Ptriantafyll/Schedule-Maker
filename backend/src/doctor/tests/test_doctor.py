@@ -6,6 +6,7 @@ from typing import Optional
 import uuid
 import datetime
 import pytest
+from fastapi import HTTPException
 from sqlmodel import Session
 
 
@@ -544,14 +545,13 @@ def test_create_doctor_controller_optional_team(session, department):
 def test_get_doctor_controller_nonexistent(session, department):
     """Test that retrieving a non-existent doctor raises a 404 error"""
     non_existent_id = uuid.uuid4()
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.get_doctor_controller(
             session=session,
             department_id=department.id,
             doctor_id=non_existent_id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
 
@@ -562,14 +562,13 @@ def test_get_doctor_controller_deleted(session, new_doctor):
     session.add(new_doctor)
     session.commit()
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.get_doctor_controller(
             session=session,
             doctor_id=new_doctor.id,
             department_id=new_doctor.department_id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
 
@@ -586,7 +585,7 @@ def test_create_doctor_pre_assignment_controller_duplicate_date(
         shift_id=pre_assignment.shift_id
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_pre_assignment_controller(
             session=session,
             doctor_id=new_doctor.id,
@@ -594,7 +593,6 @@ def test_create_doctor_pre_assignment_controller_duplicate_date(
             pre_assignment_data=pre_assignment_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 400
     assert "already exists" in exc_info.value.detail
 
@@ -607,7 +605,7 @@ def test_create_doctor_pre_assignment_controller_nonexistent_doctor(session, dep
         shift_id=shift.id
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_pre_assignment_controller(
             session=session,
             doctor_id=missing_doctor_id,
@@ -615,7 +613,6 @@ def test_create_doctor_pre_assignment_controller_nonexistent_doctor(session, dep
             pre_assignment_data=pre_assignment_data
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor or shift not found."
     assert doctor_repository.get_doctor_pre_assignment_by_date(
@@ -637,7 +634,7 @@ def test_create_doctor_pre_assignment_controller_hides_foreign_doctor(
         shift_id=shift.id,
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_pre_assignment_controller(
             session=session,
             doctor_id=doctor_b.id,
@@ -645,7 +642,6 @@ def test_create_doctor_pre_assignment_controller_hides_foreign_doctor(
             pre_assignment_data=pre_assignment_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor or shift not found."
     assert doctor_repository.get_doctor_pre_assignment_by_date(
@@ -666,7 +662,7 @@ def test_create_doctor_pre_assignment_controller_hides_foreign_shift(
         shift_id=shift_b.id,
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_pre_assignment_controller(
             session=session,
             doctor_id=new_doctor.id,
@@ -674,7 +670,6 @@ def test_create_doctor_pre_assignment_controller_hides_foreign_shift(
             pre_assignment_data=pre_assignment_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor or shift not found."
     assert doctor_repository.get_doctor_pre_assignment_by_date(
@@ -695,7 +690,7 @@ def test_create_doctor_pre_assignment_controller_handles_missing_shift(
         shift_id=missing_shift_id,
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_pre_assignment_controller(
             session=session,
             doctor_id=new_doctor.id,
@@ -703,7 +698,6 @@ def test_create_doctor_pre_assignment_controller_handles_missing_shift(
             pre_assignment_data=pre_assignment_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor or shift not found."
     assert doctor_repository.get_doctor_pre_assignment_by_date(
@@ -729,7 +723,7 @@ def test_create_doctor_pre_assignment_checks_scope_before_duplicate(
         shift_id=shift_b.id,
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_pre_assignment_controller(
             session=session,
             doctor_id=doctor_b.id,
@@ -737,7 +731,6 @@ def test_create_doctor_pre_assignment_checks_scope_before_duplicate(
             pre_assignment_data=pre_assignment_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor or shift not found."
 
@@ -755,14 +748,13 @@ def test_list_doctor_pre_assignments_controller_hides_foreign_doctor(
     doctor_b,
 ):
     """Tests that listing pre-assignments for a foreign doctor returns 404, not an empty list."""
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.list_doctor_pre_assignments_controller(
             session=session,
             doctor_id=doctor_b.id,
             department_id=department.id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor not found."
 
@@ -778,7 +770,7 @@ def test_create_doctor_unavailability_controller_duplicate_date(
         date=unavailability.date,
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_unavailability_controller(
             session=session,
             doctor_id=new_doctor.id,
@@ -787,7 +779,6 @@ def test_create_doctor_unavailability_controller_duplicate_date(
             unavailability_data=unavailability_data
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 400
     assert "already exists" in exc_info.value.detail
 
@@ -803,7 +794,7 @@ def test_create_doctor_unavailability_controller_nonexistent_doctor(
         date=datetime.date(2026, 8, 12),
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_unavailability_controller(
             session=session,
             doctor_id=missing_doctor_id,
@@ -812,7 +803,6 @@ def test_create_doctor_unavailability_controller_nonexistent_doctor(
             unavailability_data=unavailability_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor not found."
     assert doctor_repository.get_doctor_unavailability_by_date(
@@ -832,7 +822,7 @@ def test_create_doctor_unavailability_controller_hides_foreign_doctor(
     unavailability_data = DoctorUnavailabilityCreate(
         date=datetime.date(2026, 9, 1))
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_unavailability_controller(
             session=session,
             doctor_id=doctor_b.id,
@@ -841,7 +831,6 @@ def test_create_doctor_unavailability_controller_hides_foreign_doctor(
             unavailability_data=unavailability_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor not found."
     assert doctor_repository.get_doctor_unavailability_by_date(
@@ -861,7 +850,7 @@ def test_create_doctor_unavailability_controller_rejects_doctor_targeting_other_
     unavailability_data = DoctorUnavailabilityCreate(
         date=datetime.date(2026, 9, 2))
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_unavailability_controller(
             session=session,
             doctor_id=other_doctor.id,
@@ -870,7 +859,6 @@ def test_create_doctor_unavailability_controller_rejects_doctor_targeting_other_
             unavailability_data=unavailability_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Cannot access another doctor's unavailability."
     assert doctor_repository.get_doctor_unavailability_by_date(
@@ -890,7 +878,7 @@ def test_create_doctor_unavailability_controller_rejects_doctor_targeting_foreig
     unavailability_data = DoctorUnavailabilityCreate(
         date=datetime.date(2026, 9, 3))
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_unavailability_controller(
             session=session,
             doctor_id=doctor_b.id,
@@ -899,7 +887,6 @@ def test_create_doctor_unavailability_controller_rejects_doctor_targeting_foreig
             unavailability_data=unavailability_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Cannot access another doctor's unavailability."
     assert doctor_repository.get_doctor_unavailability_by_date(
@@ -923,7 +910,7 @@ def test_create_doctor_unavailability_checks_ownership_before_duplicate(
     unavailability_data = DoctorUnavailabilityCreate(
         date=datetime.date(2026, 9, 5))
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_unavailability_controller(
             session=session,
             doctor_id=other_doctor.id,
@@ -932,7 +919,6 @@ def test_create_doctor_unavailability_checks_ownership_before_duplicate(
             unavailability_data=unavailability_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Cannot access another doctor's unavailability."
 
@@ -958,7 +944,7 @@ def test_create_doctor_unavailability_checks_admin_scope_before_duplicate(
     unavailability_data = DoctorUnavailabilityCreate(
         date=datetime.date(2026, 9, 6))
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_unavailability_controller(
             session=session,
             doctor_id=doctor_b.id,
@@ -967,7 +953,6 @@ def test_create_doctor_unavailability_checks_admin_scope_before_duplicate(
             unavailability_data=unavailability_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor not found."
 
@@ -1004,7 +989,7 @@ def test_list_doctor_unavailability_controller_hides_foreign_doctor(
     doctor_b,
 ):
     """Tests that a department admin cannot list unavailability for a foreign doctor."""
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.list_doctor_unavailability_controller(
             session=session,
             doctor_id=doctor_b.id,
@@ -1012,7 +997,6 @@ def test_list_doctor_unavailability_controller_hides_foreign_doctor(
             current_user=department_admin_user,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor not found."
 
@@ -1042,7 +1026,7 @@ def test_list_doctor_unavailability_controller_rejects_doctor_targeting_other_do
     other_doctor,
 ):
     """Tests that a doctor cannot list another same-department doctor's unavailability."""
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.list_doctor_unavailability_controller(
             session=session,
             doctor_id=other_doctor.id,
@@ -1050,7 +1034,6 @@ def test_list_doctor_unavailability_controller_rejects_doctor_targeting_other_do
             current_user=doctor_user,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Cannot access another doctor's unavailability."
 
@@ -1062,7 +1045,7 @@ def test_list_doctor_unavailability_controller_rejects_doctor_targeting_foreign_
     doctor_b,
 ):
     """Tests that a doctor cannot list a foreign-department doctor's unavailability."""
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.list_doctor_unavailability_controller(
             session=session,
             doctor_id=doctor_b.id,
@@ -1070,7 +1053,6 @@ def test_list_doctor_unavailability_controller_rejects_doctor_targeting_foreign_
             current_user=doctor_user,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 403
     assert exc_info.value.detail == "Cannot access another doctor's unavailability."
 
@@ -1083,7 +1065,7 @@ def test_create_doctor_position_controller_duplicate_assignment(session, new_doc
         position_id=position.id
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_position_controller(
             session=session,
             doctor_id=new_doctor.id,
@@ -1091,7 +1073,6 @@ def test_create_doctor_position_controller_duplicate_assignment(session, new_doc
             department_id=position.department_id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 400
     assert "already assigned" in exc_info.value.detail
 
@@ -1103,7 +1084,7 @@ def test_create_doctor_position_controller_nonexistent_doctor(session, position)
         position_id=position.id
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_position_controller(
             session=session,
             doctor_id=missing_doctor_id,
@@ -1111,7 +1092,6 @@ def test_create_doctor_position_controller_nonexistent_doctor(session, position)
             department_id=position.department_id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found." in exc_info.value.detail
     assert doctor_repository.get_doctor_position_by_id(
@@ -1131,7 +1111,7 @@ def test_create_doctor_position_controller_hides_foreign_doctor(
         position_id=position.id
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_position_controller(
             session=session,
             doctor_id=doctor_b.id,
@@ -1139,7 +1119,6 @@ def test_create_doctor_position_controller_hides_foreign_doctor(
             department_id=position.department_id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found." in exc_info.value.detail
     assert doctor_repository.get_doctor_position_by_id(
@@ -1159,7 +1138,7 @@ def test_create_doctor_position_controller_hides_foreign_position(
         position_id=position_b.id
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_position_controller(
             session=session,
             doctor_id=new_doctor.id,
@@ -1167,7 +1146,6 @@ def test_create_doctor_position_controller_hides_foreign_position(
             department_id=new_doctor.department_id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found." in exc_info.value.detail
     assert doctor_repository.get_doctor_position_by_id(
@@ -1187,7 +1165,7 @@ def test_create_doctor_position_controller_handles_missing_position(
         position_id=missing_position_id
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_position_controller(
             session=session,
             doctor_id=new_doctor.id,
@@ -1195,7 +1173,6 @@ def test_create_doctor_position_controller_handles_missing_position(
             department_id=new_doctor.department_id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found." in exc_info.value.detail
     assert doctor_repository.get_doctor_position_by_id(
@@ -1222,7 +1199,7 @@ def test_create_doctor_position_checks_scope_before_duplicate(
         position_id=position_b.id
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_position_controller(
             session=session,
             doctor_id=doctor_b.id,
@@ -1230,7 +1207,6 @@ def test_create_doctor_position_checks_scope_before_duplicate(
             department_id=department.id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
 
@@ -1279,14 +1255,13 @@ def test_list_doctor_positions_controller_hides_foreign_doctor(
         position=position_b,
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.list_doctor_positions_controller(
             session=session,
             doctor_id=doctor_b.id,
             department_id=department.id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor not found."
     assert doctor_repository.get_doctor_position_by_id(
@@ -1312,14 +1287,13 @@ def test_list_doctor_positions_controller_hides_deleted_doctor(
     session.add(new_doctor)
     session.commit()
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.list_doctor_positions_controller(
             session=session,
             doctor_id=new_doctor.id,
             department_id=new_doctor.department_id,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert exc_info.value.detail == "Doctor not found."
 
@@ -1331,7 +1305,7 @@ def test_create_pre_assignment_unavailability_conflict(session, new_doctor, unav
         shift_id=shift.id,
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         doctor_controllers.create_doctor_pre_assignment_controller(
             session=session,
             doctor_id=new_doctor.id,
@@ -1339,7 +1313,6 @@ def test_create_pre_assignment_unavailability_conflict(session, new_doctor, unav
             pre_assignment_data=pre_assignment_data,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 422
     assert "cannot be assigned to an unavailable day" in exc_info.value.detail
 

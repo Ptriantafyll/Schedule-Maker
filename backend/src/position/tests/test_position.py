@@ -5,6 +5,7 @@ Tests for the position module
 import uuid
 import datetime
 import pytest
+from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
 from src.position.schemas import PositionCreate
@@ -327,28 +328,26 @@ def test_create_position_controller_duplicate_name(session, position):
         duty_days=position.duty_days,
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         position_controllers.create_position_controller(
             position_data=position_data,
             department_id=position.department_id,
             session=session,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 400
     assert "already exists" in exc_info.value.detail
 
 
 def test_get_position_controller_nonexistent(session, position):
     """Tests that trying to retrieve a non existent position returns error"""
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         position_controllers.get_position_controller(
             position_id=uuid.uuid4(),
             department_id=position.department_id,
             session=session,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
 
@@ -359,14 +358,13 @@ def test_get_position_controller_deleted(session, position):
     session.add(position)
     session.commit()
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         position_controllers.get_position_controller(
             position_id=position.id,
             department_id=position.department_id,
             session=session,
         )
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
 

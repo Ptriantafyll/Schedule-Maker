@@ -7,6 +7,7 @@ import uuid
 import datetime
 from unittest.mock import Mock
 import pytest
+from fastapi import HTTPException
 from sqlmodel import Session
 
 from src.user.schemas import UserPersistenceCreate, UserAccountCreate
@@ -258,10 +259,9 @@ def test_create_user_controller_duplicate_email(session, user):
         department_id=None
     )
 
-    with pytest.raises(Exception) as exc_info:
+    with pytest.raises(HTTPException) as exc_info:
         user_controllers.create_user_controller(new_user_data, session)
 
-    assert exc_info.type.__name__ == "HTTPException"
     assert exc_info.value.status_code == 400
     assert "already exists" in exc_info.value.detail
 
@@ -272,10 +272,9 @@ def test_create_user_controller_duplicate_email(session, user):
 #     session.add(user)
 #     session.commit()
 
-#     with pytest.raises(Exception) as exc_info:
+#     with pytest.raises(HTTPException) as exc_info:
 #         user_controllers.get_user_controller_global(user.email, session)
-
-#     assert exc_info.type.__name__ == "HTTPException"
+# 
 #     assert exc_info.value.status_code == 404
 #     assert "not found" in exc_info.value.detail
 

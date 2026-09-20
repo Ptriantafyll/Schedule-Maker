@@ -221,4 +221,30 @@ In a cluster with $N$ pods, an attacker's requests can be distributed across pod
 - Standalone local deployments continue to run with `InMemoryRateLimiter` without requiring Redis.
 - Unit and integration tests verify the distributed sliding window behavior against a mock/test Redis instance.
 
+### BL-009: Optimize and clean up Excel and ICS calendar utility routines
+
+**Area:** Utilities / Export  
+**Priority:** Low
+
+#### Problem
+
+1. `src/utils/excel.py` iterates over the same doctor/date matrix twice and prints raw doctor names to stdout rather than using structured logging.
+2. `excel_to_ics.py` writes the calendar file to disk, reads the entire file back into memory, and writes it a second time solely to strip blank lines.
+
+#### Required work
+
+1. In `src/utils/excel.py`:
+   - Consolidate redundant matrix iteration into a single pass.
+   - Replace bare `print()` statements with structured log statements or remove them.
+2. In `excel_to_ics.py`:
+   - Serialize the `.ics` content cleanly in memory without intermediate disk read/write churn.
+3. Add automated unit tests covering both the Excel export and ICS file generation.
+
+#### Completion criteria
+
+- Excel export executes in a single matrix pass without stdout console noise.
+- ICS generation writes once to the target path.
+- Unit tests verify valid `.xlsx` and `.ics` outputs.
+
+
 
