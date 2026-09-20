@@ -2,7 +2,6 @@
 Unit tests for authentication refresh session request and response schemas.
 """
 
-import uuid
 import datetime
 import pytest
 from pydantic import ValidationError

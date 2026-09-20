@@ -7,7 +7,6 @@ import datetime
 from sqlmodel import Session
 
 from src.auth import repository as auth_repository
-from src.auth.models import RefreshSession
 from src.user.models import UserRole
 
 

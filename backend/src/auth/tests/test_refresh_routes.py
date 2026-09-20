@@ -2,7 +2,6 @@
 Integration and security tests for POST /api/v1/auth/refresh and POST /api/v1/auth/logout.
 """
 
-import uuid
 import datetime
 import pytest
 from sqlmodel import Session, select

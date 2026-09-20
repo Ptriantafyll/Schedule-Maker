@@ -6,9 +6,9 @@ import uuid
 import datetime
 import jwt
 import pytest
-import re
 
 from src.auth import security
+from src.auth.schemas import TokenPayload
 
 
 def test_access_token_contains_required_claims():
@@ -144,4 +144,20 @@ def test_create_access_token_honors_zero_expiry():
 
     with pytest.raises(jwt.ExpiredSignatureError):
         security.decode_access_token(access_token)
+
+
+def test_decoded_access_token_validates_against_token_payload_schema():
+    """Decoded access token maps cleanly to TokenPayload schema."""
+    user_id = str(uuid.uuid4())
+    token = security.create_access_token({"sub": user_id})
+    payload = security.decode_access_token(token)
+
+    token_payload = TokenPayload.model_validate(payload)
+    assert token_payload.sub == user_id
+    assert token_payload.iss == "schedule-maker-api"
+    assert token_payload.aud == "schedule-maker-clients"
+    assert token_payload.token_type == "access"
+    assert token_payload.exp > token_payload.iat
+    assert str(uuid.UUID(token_payload.jti)) == token_payload.jti
+
 

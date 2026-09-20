@@ -2,6 +2,7 @@
 Authentication routes
 """
 import uuid
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, status, Response, Request
@@ -31,6 +32,14 @@ from src.auth.schemas import (
     RefreshTokenRequest,
 )
 
+from src.utils.rate_limiter import rate_limit
+
+LOGIN_RATE_LIMIT = int(os.getenv(
+    "LOGIN_RATE_LIMIT", "50" if os.getenv("AUTH_SMOKE_PASSWORD") else "5")
+)
+SIGNUP_RATE_LIMIT = int(os.getenv("SIGNUP_RATE_LIMIT", "5"))
+REFRESH_RATE_LIMIT = int(os.getenv("REFRESH_RATE_LIMIT", "10"))
+
 router = APIRouter(
     prefix="/auth",
     tags=["Authentication"]
@@ -43,7 +52,12 @@ def get_current_user_profile(current_user: UserModel = Depends(get_current_user)
     return current_user
 
 
-@router.post("/login", response_model=Token, status_code=status.HTTP_200_OK)
+@router.post(
+    "/login",
+    response_model=Token,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(rate_limit(LOGIN_RATE_LIMIT, 60, "login"))],
+)
 def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
     session: Session = Depends(get_session),
@@ -58,7 +72,12 @@ def login(
     )
 
 
-@router.post("/signup", response_model=UserRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/signup",
+    response_model=UserRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(rate_limit(SIGNUP_RATE_LIMIT, 60, "signup"))],
+)
 def signup(
     signup_data: InvitationSignupRequest,
     session: Session = Depends(get_session),
@@ -70,7 +89,12 @@ def signup(
     )
 
 
-@router.post("/refresh", response_model=Token, status_code=status.HTTP_200_OK)
+@router.post(
+    "/refresh",
+    response_model=Token,
+    status_code=status.HTTP_200_OK,
+    dependencies=[Depends(rate_limit(REFRESH_RATE_LIMIT, 60, "refresh"))],
+)
 def refresh_token(
     request: Request,
     response: Response,

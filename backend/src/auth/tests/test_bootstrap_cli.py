@@ -16,7 +16,7 @@ from src.user.models import UserRole
 
 CLI_EMAIL = "superadmin@test.com"
 CLI_FULL_NAME = "Test Super Admin"
-MATCHING_PASSWORD = "matching-password"
+MATCHING_PASSWORD = "SecurePassword123!"
 CLI_ARGS = (
     "--email",
     CLI_EMAIL,
@@ -153,7 +153,7 @@ def test_bootstrap_cli_creates_super_admin(
         session=fake_session,
         email=CLI_EMAIL,
         full_name=CLI_FULL_NAME,
-        password="matching-password"
+        password=MATCHING_PASSWORD
     )
     assert "created successfully" in captured.out.lower()
     assert captured.err == ""

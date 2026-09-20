@@ -9,6 +9,7 @@ from src.user.models import UserRole
 from src.user.models import User as UserModel
 from src.user import services as user_services
 from src.utils.logger import log_audit_event
+from src.auth.security import validate_password_strength
 
 
 class SuperAdminAlreadyExistsError(Exception):
@@ -23,6 +24,7 @@ def create_super_admin(
     password: str,
 ) -> UserModel:
     """Creates super admin user"""
+    validate_password_strength(password)
     account_data = UserAccountCreate(
         email=email,
         full_name=full_name,

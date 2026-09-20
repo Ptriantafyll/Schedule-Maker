@@ -3,6 +3,7 @@ Security utils for authentication
 """
 
 import os
+import re
 import datetime
 from typing import Optional
 import uuid
@@ -30,6 +31,20 @@ REQUIRED_ACCESS_TOKEN_CLAIMS = (
 )
 
 SECURE_COOKIE = os.getenv("SECURE_COOKIE", "false").lower() == "true"
+
+COMMON_PASSWORDS = [
+    "password123!",
+    "admin12345!",
+    "doctor1234!",
+    "welcome123!",
+    "hospital123!",
+    "changeme123!",
+]
+
+
+class WeakPasswordError(ValueError):
+    """Raised when a password does not satisfy the security policy."""
+
 
 def _hash_token(raw_value: str, token_name: str = "Token") -> str:
     if not raw_value or not isinstance(raw_value, str) or not raw_value.strip():
@@ -118,3 +133,27 @@ def generate_csrf_token(nbytes: int = 32) -> str:
 def hash_csrf_token(raw_token: str) -> str:
     """Hashes a generated CSRF token"""
     return _hash_token(raw_value=raw_token, token_name="CSRF token")
+
+
+def validate_password_strength(password: str) -> None:
+    """Validates the strength of a password"""
+    if len(password) < 10:
+        raise WeakPasswordError(
+            "Password must be at least 10 characters long."
+        )
+    if len(password.encode("utf-8")) > 72:
+        raise WeakPasswordError("Password must not exceed 72 bytes.")
+    if not re.search(r"[a-z]", password):
+        raise WeakPasswordError(
+            "Password must contain at least one lowercase letter."
+        )
+    if not re.search(r"[A-Z]", password):
+        raise WeakPasswordError(
+            "Password must contain at least one uppercase letter."
+        )
+    if not re.search(r"\d", password):
+        raise WeakPasswordError("Password must contain at least one digit. ")
+    if not re.search(r"[^a-zA-Z0-9]", password):
+        raise WeakPasswordError("Password must contain at least one special character.")
+    if password.lower() in COMMON_PASSWORDS:
+        raise WeakPasswordError("Password is too common or easily guessable.")

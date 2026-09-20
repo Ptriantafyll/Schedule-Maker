@@ -3,7 +3,6 @@ Integration and route tests for invitation management and issuing endpoints.
 """
 
 import uuid
-import datetime
 import pytest
 
 from src.user.models import UserRole

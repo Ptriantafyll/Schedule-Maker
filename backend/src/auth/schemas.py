@@ -10,11 +10,12 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from src.user.models import UserRole
 from src.department.schemas import DepartmentRead
-
+from src.auth.security import validate_password_strength
 
 # ----------------------------------------
 # Authentication Tokens
 # ----------------------------------------
+
 
 class Token(BaseModel):
     """JWT bearer access token response schema."""
@@ -25,12 +26,14 @@ class Token(BaseModel):
 
 
 class TokenPayload(BaseModel):
-    """Decoded JWT payload containing user claims and expiration."""
+    """Decoded JWT payload containing verified standard claims."""
     sub: str  # user.id as string
-    email: str
-    role: UserRole
-    department_id: Optional[str] = None
     exp: datetime.datetime
+    iat: datetime.datetime
+    jti: str
+    iss: str
+    aud: str
+    token_type: str = "access"
 
 
 # ----------------------------------------
@@ -112,9 +115,10 @@ class InvitationSignupRequest(BaseModel):
 
     @field_validator("password")
     @classmethod
-    def validate_password_not_empty(cls, v: str) -> str:
+    def validate_password(cls, v: str) -> str:
         if not v:
             raise ValueError("Password cannot be empty.")
+        validate_password_strength(v)
         return v
 
 

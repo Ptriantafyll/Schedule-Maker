@@ -2,7 +2,6 @@
 Unit tests for the RefreshSession service layer and reuse detection logic.
 """
 
-import uuid
 import datetime
 import pytest
 from sqlmodel import Session
@@ -18,7 +17,6 @@ from src.auth.services import (
     RefreshTokenReuseDetectedError,
 )
 from src.auth.security import hash_refresh_token, hash_csrf_token
-from src.auth.models import RefreshSession
 from src.user.models import UserRole
 
 

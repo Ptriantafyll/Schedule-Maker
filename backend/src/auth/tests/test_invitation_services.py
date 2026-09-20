@@ -17,7 +17,6 @@ from src.auth.services import (
     InvalidInvitationDoctorError,
     DoctorAlreadyLinkedError,
     DoctorInvitationAlreadyPendingError,
-    InvalidInvitationRoleError,
 )
 
 

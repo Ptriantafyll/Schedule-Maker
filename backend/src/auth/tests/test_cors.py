@@ -9,8 +9,6 @@ Validates:
 - Configurable CORS origins via environment variable helper
 """
 
-import os
-import pytest
 from src.main import get_cors_origins, ALLOWED_CORS_HEADERS, ALLOWED_CORS_METHODS
 
 

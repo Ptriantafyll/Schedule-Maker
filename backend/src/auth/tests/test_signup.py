@@ -4,14 +4,12 @@ Integration and route tests for public invitation consumption and account signup
 
 import uuid
 import datetime
-import pytest
 
 from sqlmodel import Session, select
 from src.user.models import UserRole
 from src.auth.security import generate_invitation_token, hash_invitation_token
 from src.auth import repository as auth_repository
 from src.doctor.models import Doctor as DoctorModel
-from src.user.models import User as UserModel
 
 
 # ==============================================================================

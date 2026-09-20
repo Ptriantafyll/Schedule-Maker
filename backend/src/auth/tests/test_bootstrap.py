@@ -10,7 +10,7 @@ from src.user import repository as user_repository
 from src.user.models import UserRole
 from src.user.models import User as UserModel
 
-PLAIN_SUPER_ADMIN_PASSWORD = "secure-test-password"
+PLAIN_SUPER_ADMIN_PASSWORD = "SecurePassword123!"
 SUPER_ADMIN_EMAIL = "superadmin@test.com"
 
 

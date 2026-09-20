@@ -14,7 +14,6 @@ import io
 import json
 import logging
 import pytest
-from sqlmodel import Session
 
 from src.utils.logger import JsonFormatter
 from src.user.models import UserRole
@@ -234,3 +233,57 @@ def test_zero_credential_leakage_in_audit_records(client, test_user, audit_logs)
     assert raw_refresh not in all_logs
     assert raw_csrf not in all_logs
     assert new_refresh not in all_logs
+
+
+# --------------------------------------------------------------------------
+# 5. Rate Limiting Audit & Anti-Enumeration
+# --------------------------------------------------------------------------
+
+def test_rate_limiting_emits_audit_log(client, test_user, audit_logs):
+    """When a client breaches rate limits, a structured audit log is emitted at WARNING level."""
+    # Send 5 requests to reach the limit
+    for _ in range(5):
+        client.post(
+            "/api/v1/auth/login",
+            data={"username": test_user.email, "password": "wrong-password"},
+        )
+
+    # 6th request breaches the rate limit and receives HTTP 429
+    blocked_resp = client.post(
+        "/api/v1/auth/login",
+        data={"username": test_user.email, "password": "wrong-password"},
+    )
+    assert blocked_resp.status_code == 429
+
+    records = get_audit_records(audit_logs)
+    rate_limited_events = [
+        r for r in records if r.get("action") == "auth.rate_limited"
+    ]
+
+    assert len(rate_limited_events) == 1, "Expected auth.rate_limited audit event"
+    event = rate_limited_events[0]
+    assert event["event"] == "security.audit"
+    assert event["outcome"] == "failure"
+    assert event["reason"] == "too_many_requests"
+    assert event["level"] == "WARNING"
+
+    # Verify zero secret or credential leakage in audit records
+    all_logs = audit_logs.getvalue()
+    assert "wrong-password" not in all_logs
+
+
+def test_login_failure_anti_enumeration_consistency(client, test_user):
+    """Responses for non-existent users vs invalid passwords must return identical status and error detail."""
+    resp_wrong_pw = client.post(
+        "/api/v1/auth/login",
+        data={"username": test_user.email, "password": "wrong-password"},
+    )
+    resp_nonexistent = client.post(
+        "/api/v1/auth/login",
+        data={"username": "nonexistent_doctor_12345@hospital.org", "password": "wrong-password"},
+    )
+
+    assert resp_wrong_pw.status_code == 401
+    assert resp_nonexistent.status_code == 401
+    assert resp_wrong_pw.json() == resp_nonexistent.json()
+
