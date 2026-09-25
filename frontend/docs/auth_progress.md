@@ -2,6 +2,8 @@
 
 This document tracks the end-to-end implementation of the **Authentication feature** (`features/auth`) in the Flutter frontend, following **MVVM** and **Riverpod 2.x**.
 
+Use the [updated auth implementation plan](frontend_auth_implementation_plan.md) for the current signup and cross-platform session contracts. This checklist records code progress, not completion of the planning documents.
+
 For each step, it outlines:
 1. **Business Reason (The Problem We Are Solving)**: Why a hospital scheduling app requires this capability.
 2. **Technical Implementation Needed**: The exact classes, methods, and tests required.
@@ -28,7 +30,7 @@ For each step, it outlines:
 The Domain Layer defines the core data contracts and state definitions of the application. It has zero dependencies on Flutter UI (`BuildContext`, widgets) and zero dependencies on HTTP libraries (`Dio`).
 
 ### Step 1.1: `UserRole` Enum & Permission Rules
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** A hospital operates on strict organizational hierarchy. A Super Admin manages hospital-wide tenants, a Department Admin manages shifts and doctor assignments for their department, a Doctor can only view schedules and submit time-off requests, and a Viewer has read-only access. The frontend must enforce these roles so doctors never see administrative controls, and department admins never accidentally mutate other departments.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/domain/models/user_role.dart`.
@@ -44,25 +46,25 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 ---
 
 ### Step 1.2: `User` Entity
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** The app must display the doctor's or administrator's identity (e.g. "Welcome, Dr. Smith", display email, active role) and know which department they belong to so schedule queries are automatically scoped.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/domain/models/user.dart`.
   - Immutable class with fields: `id` (String), `email` (String), `fullName` (String), `role` (`UserRole`), `departmentId` (String?), `doctorId` (String?).
-  - Factory constructor `User.fromJson(Map<String, dynamic> json)` parsing the backend `/api/v1/auth/me` response.
+  - Parse `/api/v1/auth/me` in a data-layer `UserDto` and map to this pure domain entity; reject unknown roles.
   - Value equality (`==` and `hashCode`) and `toString()` for debugging and test comparisons.
-  - **TDD Test:** Create `test/features/auth/domain/models/user_test.dart` testing deserialization with and without nullable `departmentId` / `doctorId`.
+  - **TDD Test:** Test the domain entity and a data DTO mapping with/without nullable `departmentId` / `doctorId`.
 
 ---
 
 ### Step 1.3: `AuthTokens` Model
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** The backend returns credentials consisting of a short-lived access token, a long-lived refresh token, and an optional CSRF token. The frontend needs a structured in-memory model to hold this payload after authentication.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/domain/models/auth_tokens.dart`.
   - Fields: `accessToken` (String), `tokenType` (String), `refreshToken` (String?), `csrfToken` (String?).
-  - Factory `AuthTokens.fromJson(Map<String, dynamic> json)`.
-  - **TDD Test:** Create `test/features/auth/domain/models/auth_tokens_test.dart` verifying parsing of login responses.
+  - Keep `AuthTokens` pure Dart; parse JSON in a data-layer token DTO.
+  - **TDD Test:** Test the domain model and data DTO parsing of login/refresh responses without printing tokens.
 
 ---
 
@@ -72,9 +74,9 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/domain/state/auth_state.dart`.
   - Dart 3 sealed class hierarchy:
-    - `AuthStateInitial`: App is booting and checking secure storage.
     - `AuthStateUnauthenticated`: No active session; show Login / Signup.
-    - `AuthStateAuthenticated(User user)`: Active session with user identity; show Dashboard.
+    - `AuthStateAuthenticated(User user)`: Active session with user identity; show a role-appropriate destination.
+  - Use `AsyncValue.loading` while restoring a session instead of a duplicate `AuthStateInitial`.
   - **TDD Test:** Create `test/features/auth/domain/state/auth_state_test.dart` testing pattern matching and equality.
 
 ---
@@ -96,9 +98,9 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 - **Status:** `[ ] Pending`
 - **Business Reason:** Hospital security policy prohibits open public signups. Doctors and staff must receive an invitation link containing a one-time cryptographic token from an administrator before creating an account.
 - **Technical Implementation Needed:**
-  - In `AuthRemoteDataSource`, implement `signup({required String invitationToken, required String email, required String password, required String fullName})`:
+  - In `AuthRemoteDataSource`, implement signup with `invitationToken`, `firstName`, `lastName`, `email`, and `password`:
     - Sends a JSON POST request to `/api/v1/auth/signup`.
-    - Returns `AuthTokens`.
+    - Returns `201 UserRead`, **not tokens**; show success and navigate to login.
 
 ---
 
@@ -120,11 +122,11 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 - **Business Reason:** The presentation layer and ViewModels should never know about raw HTTP details or secure storage key names. The repository acts as the single source of truth for authentication: when login succeeds, it automatically stores tokens securely and fetches the user profile before returning.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/data/repositories/auth_repository.dart`.
-  - Coordinates `AuthRemoteDataSource` and `TokenStorage`:
-    - `login(...)`: Calls remote login, calls `tokenStorage.saveTokens()`, fetches `getCurrentUser()`, returns `User`.
-    - `signup(...)`: Calls remote signup, saves tokens, fetches `getCurrentUser()`, returns `User`.
-    - `logout(...)`: Calls remote logout, calls `tokenStorage.clearTokens()`.
-    - `restoreSession()`: Reads token from storage; if present, verifies by calling `getCurrentUser()`; if invalid/expired, clears storage.
+  - Coordinates `AuthRemoteDataSource` and platform session transport (`TokenStorage` for native; browser cookies for Web):
+    - `login(...)`: Calls remote login, saves tokens according to native or browser policy, fetches `getCurrentUser()`, returns `User`.
+    - `signup(...)`: Calls remote signup, returns the created `UserRead`, **does not save tokens** or fetch `/auth/me`, and leaves the user unauthenticated.
+    - `logout(...)`: Calls remote logout and clears local session; explicitly reports a failed server revocation.
+    - `restoreSession()`: Refreshes/verifies a native or browser session and fetches `/auth/me`; distinguish revoked tokens from network outages.
   - Expose `authRepositoryProvider = Provider<AuthRepository>((ref) => ...)`.
   - **TDD Test:** Create `test/features/auth/data/auth_repository_test.dart` mocking the data source and storage.
 
@@ -134,17 +136,11 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 
 ### Step 4.1: Concurrency-Safe Refresh Interceptor
 - **Status:** `[ ] Pending`
-- **Business Reason:** JWT access tokens expire every 15–30 minutes for security. If a doctor is working in the app when the token expires, their next actions should not fail or kick them out to the login screen. Furthermore, if three widgets fetch data concurrently and all get a 401, the app must not fire three simultaneous refresh requests (which would invalidate each other); it must pause, refresh once, and replay all three requests seamlessly.
+- **Business Reason:** JWT access tokens expire (the current backend default is 60 minutes, configurable) for security. If a doctor is working in the app when the token expires, their next actions should not fail or kick them out to the login screen. Furthermore, if three widgets fetch data concurrently and all get a 401, the app must not fire three simultaneous refresh requests (which would invalidate each other); it must pause, refresh once, and replay all three requests seamlessly.
 - **Technical Implementation Needed:**
-  - Update `lib/core/network/api_client.dart` with a `QueuedInterceptorsWrapper`.
-  - On `onError` with `statusCode == 401`:
-    - Lock request queue.
-    - Read refresh token from `TokenStorage`.
-    - Call `/api/v1/auth/refresh`.
-    - Store new tokens.
-    - Retry original request with new access token.
-    - Unlock queue.
-    - If refresh fails (e.g. refresh token revoked/expired), purge storage and notify auth state.
+  - Complete `lib/core/network/api_client.dart` with form login, validated base URL, platform-aware session transport, and typed errors for 409/422/429.
+  - On a protected request's 401, share **one in-flight refresh** among concurrent failures (a queued interceptor alone does not guarantee this); rotate native stored token or use Web cookies + CSRF, then retry each original request once.
+  - Do not refresh public login/signup failures or recurse on refresh/logout; notify auth state on revoked/expired sessions and show transient network errors rather than silently logging out.
   - **TDD Test:** Create `test/core/network/api_client_refresh_test.dart`.
 
 ---
@@ -159,11 +155,11 @@ The Domain Layer defines the core data contracts and state definitions of the ap
   - Class `AuthController extends AsyncNotifier<AuthState>`:
     - `build()`: Calls `repository.restoreSession()`; returns `AuthStateAuthenticated(user)` or `AuthStateUnauthenticated()`.
     - `login({required String email, required String password})`: Sets state to `AsyncValue.loading()`, awaits repository call, sets `AsyncValue.data(AuthStateAuthenticated(user))`. On failure, sets `AsyncValue.error(exception)`.
-    - `signup(...)`: Similar flow for invitation acceptance.
+    - `signup(...)`: Consumes invitation; on 201 stays unauthenticated, shows success, and navigates to login.
     - `logout()`: Calls `repository.logout()`, sets `AsyncValue.data(const AuthStateUnauthenticated())`.
   - Derived convenience providers:
-    - `currentUserProvider`: `ref.watch(authControllerProvider).valueOrNull?.user`
-    - `isAuthenticatedProvider`: `ref.watch(authControllerProvider).valueOrNull is AuthStateAuthenticated`
+    - `currentUserProvider`: returns the user only when state is `AuthStateAuthenticated`.
+    - `isAuthenticatedProvider`: true only after a verified `/auth/me` response, not after signup.
     - `userRoleProvider`: `ref.watch(currentUserProvider)?.role`
   - **TDD Test:** Create `test/features/auth/presentation/auth_controller_test.dart` using Riverpod `ProviderContainer`.
 
@@ -177,9 +173,9 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/presentation/widgets/auth_gate.dart`.
   - Listens to `authControllerProvider`:
-    - `AuthStateInitial` / loading ➔ Displays a centered Material 3 loading indicator or splash screen.
+    - Loading ➔ Displays a centered Material 3 loading indicator or splash screen.
     - `AuthStateUnauthenticated` ➔ Renders `LoginScreen`.
-    - `AuthStateAuthenticated` ➔ Renders `HomeScreen` (or dashboard placeholder).
+    - `AuthStateAuthenticated` ➔ Renders role-aware destinations; super admins do not have department schedule access.
 
 ---
 
@@ -187,8 +183,7 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 - **Status:** `[ ] Pending`
 - **Business Reason:** A clean, accessible Material 3 interface allowing doctors and staff to enter email and password, see clear validation errors (e.g. empty fields, invalid email format), and view a progress spinner during submission.
 - **Technical Implementation Needed:**
-  - Create `lib/features/auth/presentation/widgets/auth_text_field.dart`:
-    - Reusable styled input with validation, obscuring toggle for password, and helper text.
+  - Start with Material 3 `TextFormField` in both forms; keep a password-visibility field auth-owned and extract common input styling only after later features need it.
   - Create `lib/features/auth/presentation/screens/login_screen.dart`:
     - Form with email and password fields.
     - Button calling `ref.read(authControllerProvider.notifier).login(...)`.
@@ -203,8 +198,9 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 - **Business Reason:** A dedicated screen where a doctor or administrator invited to the hospital can enter their invitation token, name, email, and choose their password to activate their account.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/presentation/screens/signup_screen.dart`:
-    - Form with `invitationToken`, `fullName`, `email`, and `password`.
+    - Form with `invitationToken`, `firstName`, `lastName`, `email`, and `password`.
     - Submits via `ref.read(authControllerProvider.notifier).signup(...)`.
+    - On success, shows confirmation and sends the user to login instead of entering authenticated state.
   - **Widget Test:** Create `test/features/auth/presentation/signup_screen_test.dart`.
 
 ---
