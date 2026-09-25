@@ -25,9 +25,8 @@ The folder structure is in docs/structure.md
 
 - When making changes don't paste all the code at once. Instead go step by step in small chunks of code explaining the process each time
 - When the user is learning and doing most of the coding themselves, explain: (1) why we are making a decision, (2) what the best practices are and (3) if there is a new feature that we haven't touched explain how it works
-- When the user stops and corrects a suggestion or says they don't like something, add that preference to this GEMINI.md file
+- When the user stops and corrects a suggestion or says they don't like something, add that preference to this AGENTS.md file
 - After every change, check if anything can be made cleaner and if there is repeated code that can be extracted into a helper function
-- Use snake_case for OR-Tools CP-SAT methods (e.g. `model.add`, `model.new_bool_var`, `only_enforce_if`), not PascalCase
 - Use TDD (Test-Driven Development) approach: write tests first, then implement the code to make them pass
 - Don't do everything by yourself, the user wants to write most of the code by themselves. Only write code if you were specifically asked to.
 - Do not write code suggestions first. Instead, explain the high-level logic, requirements, or design first, let the user think and write the code themselves, and then review it.
@@ -36,4 +35,11 @@ The folder structure is in docs/structure.md
 - Always ask the user for approval when adding or changing a file
 - Always build with future scalability and code readability in mind
 - Always record things that need to be done for future scalability (such as distributed rate limiting with Redis for multi-server or Kubernetes deployments) in docs/backlog.md
+- Always work feature-by-feature: create a clear, step-by-step implementation plan for each feature before writing code, and execute it incrementally step by step
+- Verify actual backend code before designing client contracts: Never assume generic REST conventions or rely on older design docs. Always inspect the live backend routes.py and Pydantic schemas.py to confirm exact request field names, HTTP status codes, and response bodies
+- Enforce Backend Readiness Gates: Distinguish between mounted backend endpoints (registered in src/main.py) and planned/unmounted routes. If a backend capability does not exist yet (e.g. schedule publishing or pending-request approvals), build against explicit test fixtures and mark the live integration blocked at the gate. Never connect a UI action to an unrelated or premature endpoint
+- Avoid premature UI abstractions ("Rule of Two"): Keep form fields, buttons, and layout widgets owned by their feature using standard Material 3 widgets first. Extract a component into common widgets only after at least two real features demonstrate the need for the exact same behavior
+- Account for platform transport differences and concurrency: Always design networking with dual-transport awareness (Native uses secure hardware storage; Web uses HttpOnly cookies + CSRF). Ensure sensitive asynchronous operations (like token refresh) use single-flight execution (sharing one in-flight Future) to prevent race conditions during concurrent 401 failures
+- Enforce tenant and role boundaries in navigation: Account for role shape differences (e.g. a Super Admin has department_id = null and cannot access departmental rosters or schedules) so routing directs users to their authorized workspace
+- For the presentation layer (UI screens, dialogs, forms, layout widgets), always ask the user for the design first and ask clarifying questions before writing code or proposing UI designs.
 
