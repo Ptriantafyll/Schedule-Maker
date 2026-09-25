@@ -22,7 +22,7 @@ final apiClientProvider = Provider<ApiClient>((ref) {
   return ApiClient(dio, tokenStorage);
 });
 
-final class ApiClient {
+class ApiClient {
   ApiClient(this._dio, this._tokenStorage);
 
   final Dio _dio;
@@ -46,6 +46,7 @@ final class ApiClient {
     String path, {
     Object? data,
     Map<String, dynamic>? queryParameters,
+    String? contentType,
     bool requiresAuth = true,
   }) {
     return _send(() async {
@@ -53,26 +54,37 @@ final class ApiClient {
         path,
         data: data,
         queryParameters: queryParameters,
-        options: await _requestOptions(requiresAuth: requiresAuth),
+        options: await _requestOptions(
+          requiresAuth: requiresAuth,
+          contentType: contentType,
+        ),
       );
     });
   }
 
-  Future<Options> _requestOptions({required bool requiresAuth}) async {
-    if (!requiresAuth) {
-      return Options();
+  Future<Options> _requestOptions({
+    required bool requiresAuth,
+    String? contentType,
+  }) async {
+    final headers = <String, dynamic>{};
+
+    if (requiresAuth) {
+      final accessToken = await _tokenStorage.readAccessToken();
+
+      if (accessToken == null || accessToken.isEmpty) {
+        throw const ApiException(
+          type: ApiErrorType.unauthorized,
+          message: 'You are not signed in.',
+        );
+      }
+
+      headers['Authorization'] = 'Bearer $accessToken';
     }
 
-    final accessToken = await _tokenStorage.readAccessToken();
-
-    if (accessToken == null || accessToken.isEmpty) {
-      throw const ApiException(
-        type: ApiErrorType.unauthorized,
-        message: 'You are not signed in.',
-      );
-    }
-
-    return Options(headers: {'Authorization': 'Bearer $accessToken'});
+    return Options(
+      headers: headers.isNotEmpty ? headers : null,
+      contentType: contentType,
+    );
   }
 
   Future<Response<T>> _send<T>(Future<Response<T>> Function() request) async {
