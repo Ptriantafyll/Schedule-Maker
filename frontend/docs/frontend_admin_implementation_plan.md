@@ -15,6 +15,9 @@ Invitation contracts matter for forms: super-admin provisioning takes **departme
 
 ## 2. MVVM and widget ownership
 
+> [!IMPORTANT]
+> **Presentation Layer Rule**: For the presentation layer (UI screens, dialogs, forms, layout widgets), **always ask the user for the design first and ask clarifying questions** before writing any code or proposing UI designs.
+
 | Layer | Candidate responsibilities | Reuse |
 | --- | --- | --- |
 | Domain and data | Department/resource/invitation entities, DTOs, and small repositories for the supported API calls; later publishing and decision repositories | Reuse roster/shift/position mapping with the schedule feature when it actually needs the same data. Reuse request domain status/decision mapping with the requests feature rather than defining a second request model. |

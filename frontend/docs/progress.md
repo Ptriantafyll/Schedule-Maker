@@ -15,8 +15,8 @@ For each step, it outlines:
 
 | Phase | Description | Status |
 | :--- | :--- | :--- |
-| **Phase 1** | Domain Layer (Pure Business Entities & State Models) | `[ ] In Progress` |
-| **Phase 2** | Data Layer: Remote Data Source (`AuthRemoteDataSource`) | `[ ] Pending` |
+| **Phase 1** | Domain Layer (Pure Business Entities & State Models) | `[x] Completed` |
+| **Phase 2** | Data Layer: Remote Data Source (`AuthRemoteDataSource`) | `[x] Completed` |
 | **Phase 3** | Data Layer: Repository (`AuthRepository`) | `[ ] Pending` |
 | **Phase 4** | Core Network Polish: Silent 401 Refresh Queue | `[ ] Pending` |
 | **Phase 5** | ViewModel: State Management (`AuthController` via Riverpod) | `[ ] Pending` |
@@ -69,7 +69,7 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 ---
 
 ### Step 1.4: `AuthState` Sealed Class
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** The application UI needs a clean, compile-time safe way to know what screen to show at any given second: is the app still reading saved keys from the phone? Is the user logged out? Or are they logged in as Dr. Smith? Using a sealed class guarantees that the UI handles every possible auth state without missing any edge case.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/domain/state/auth_state.dart`.
@@ -81,10 +81,20 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 
 ---
 
-## Phase 2: Data Layer: Remote Data Source (`AuthRemoteDataSource`)
+## Phase 2: Data Layer: DTOs & Remote Data Source (`AuthRemoteDataSource`)
 
-### Step 2.1: Login Endpoint Call (`POST /api/v1/auth/login`)
-- **Status:** `[ ] Pending`
+### Step 2.1: Data Transfer Objects (`UserDto` & `AuthTokensDto`)
+- **Status:** `[x] Completed`
+- **Business Reason:** The FastAPI backend sends `snake_case` JSON schemas (`UserRead`, `Token`) with API-specific metadata. DTOs isolate raw HTTP serialization from our pure domain entities (`User`, `AuthTokens`), ensuring changes to server field names never break domain models or UI widgets.
+- **Technical Implementation Needed:**
+  - `lib/features/auth/data/dtos/user_dto.dart`: Parses `UserRead` JSON and maps to domain `User` entity (`toDomain()`). **Status:** `[x] Completed`.
+  - `lib/features/auth/data/dtos/auth_tokens_dto.dart`: Parses `Token` JSON (`access_token`, `token_type`, `refresh_token`, `csrf_token`) and maps to domain `AuthTokens`. **Status:** `[x] Completed`.
+  - **TDD Tests:** Create `test/features/auth/data/dtos/user_dto_test.dart` (Passing) and `test/features/auth/data/dtos/auth_tokens_dto_test.dart` (Passing).
+
+---
+
+### Step 2.2: Login Endpoint Call (`POST /api/v1/auth/login`)
+- **Status:** `[x] Completed`
 - **Business Reason:** Doctors and administrators need to enter their hospital credentials to securely authenticate into the system.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/data/datasources/auth_remote_data_source.dart`.
@@ -94,8 +104,8 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 
 ---
 
-### Step 2.2: Invitation Signup Endpoint Call (`POST /api/v1/auth/signup`)
-- **Status:** `[ ] Pending`
+### Step 2.3: Invitation Signup Endpoint Call (`POST /api/v1/auth/signup`)
+- **Status:** `[x] Completed`
 - **Business Reason:** Hospital security policy prohibits open public signups. Doctors and staff must receive an invitation link containing a one-time cryptographic token from an administrator before creating an account.
 - **Technical Implementation Needed:**
   - In `AuthRemoteDataSource`, implement signup with `invitationToken`, `firstName`, `lastName`, `email`, and `password`:
@@ -104,14 +114,14 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 
 ---
 
-### Step 2.3: Refresh, Logout, and Current User Calls
-- **Status:** `[ ] Pending`
+### Step 2.4: Refresh, Logout, and Current User Calls
+- **Status:** `[x] Completed`
 - **Business Reason:** Support extending sessions, cleanly terminating sessions (revoking the refresh token in the backend database), and fetching user profiles on startup.
 - **Technical Implementation Needed:**
-  - `refresh({String? refreshToken, String? csrfToken})`: Calls `POST /api/v1/auth/refresh`.
-  - `logout({String? refreshToken, String? csrfToken})`: Calls `POST /api/v1/auth/logout`.
-  - `getCurrentUser(String accessToken)`: Calls `GET /api/v1/auth/me` with Bearer token, returns `User`.
-  - **TDD Test:** Create `test/features/auth/data/auth_remote_data_source_test.dart` using a mocked HTTP client.
+  - `refresh({String? refreshToken, String? csrfToken})`: Calls `POST /api/v1/auth/refresh`. **Status:** `[x] Completed`.
+  - `logout({String? refreshToken, String? csrfToken})`: Calls `POST /api/v1/auth/logout`. **Status:** `[x] Completed`.
+  - `getCurrentUser()`: Calls `GET /api/v1/auth/me` with `requiresAuth: true`, returns domain `User`. **Status:** `[x] Completed`.
+  - **TDD Test:** Implemented in `test/features/auth/data/datasources/auth_remote_data_source_test.dart` (Passing).
 
 ---
 
@@ -166,6 +176,9 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 ---
 
 ## Phase 6: View Layer: Presentation (`AuthGate`, `LoginScreen`, `SignupScreen`)
+
+> [!IMPORTANT]
+> **Presentation Layer Rule**: For the presentation layer (UI screens, dialogs, forms, layout widgets), **always ask the user for the design first and ask clarifying questions** before writing any code or proposing UI designs.
 
 ### Step 6.1: `AuthGate` Navigation Controller Widget
 - **Status:** `[ ] Pending`

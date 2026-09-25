@@ -39,6 +39,9 @@ Each step includes small unit, Riverpod provider, and widget tests as it is buil
 
 ## 3. MVVM and folder ownership
 
+> [!IMPORTANT]
+> **Presentation Layer Rule**: For the presentation layer (UI screens, dialogs, forms, layout widgets), **always ask the user for the design first and ask clarifying questions** before writing any code or proposing UI designs.
+
 Within `lib\features\auth`, `schedule`, `requests`, and `admin`, keep:
 
 - **Model:** Pure Dart domain entities and rules in `domain\`; API request/response DTOs, JSON parsing, remote data sources, and repository implementations in `data\`. Do not put Dio or Flutter in domain entities.

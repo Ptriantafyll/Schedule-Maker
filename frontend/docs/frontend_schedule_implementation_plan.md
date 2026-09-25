@@ -15,6 +15,9 @@ The current `GET /api/v1/shifts/assignments` returns **all active assignments** 
 
 ## 2. MVVM ownership and suggested widgets
 
+> [!IMPORTANT]
+> **Presentation Layer Rule**: For the presentation layer (UI screens, dialogs, forms, layout widgets), **always ask the user for the design first and ask clarifying questions** before writing any code or proposing UI designs.
+
 | Layer | What to plan | Why |
 | --- | --- | --- |
 | Domain model | Immutable `ScheduleMonth`, `PublishedSchedule` (month, department, publication status, assignments), `ShiftAssignment` (IDs and date), display-ready doctor/shift/position reference models | Dates and IDs should be predictable across layouts; the published state must come from a trusted server response in production. Never infer it from local assignments. |

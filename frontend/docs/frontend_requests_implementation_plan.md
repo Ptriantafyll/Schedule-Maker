@@ -14,6 +14,9 @@ The backend currently has `GET`/`POST /api/v1/doctors/{doctor_id}/unavailability
 
 ## 2. MVVM structure and widget reuse
 
+> [!IMPORTANT]
+> **Presentation Layer Rule**: For the presentation layer (UI screens, dialogs, forms, layout widgets), **always ask the user for the design first and ask clarifying questions** before writing any code or proposing UI designs.
+
 | Layer | Unavailability (build first) | Swap (add second) | Shared boundary |
 | --- | --- | --- | --- |
 | Domain/data | Pending request with date(s), identity/department and status; DTOs and request repository | Pending request referencing the requester's published assignment and proposed swap details; DTOs/repository methods when backend contract exists | One small request ID/status vocabulary (`pending`, `approved`, `rejected`) and list mapping if the server shares it. Avoid one DTO full of unrelated optional fields. |

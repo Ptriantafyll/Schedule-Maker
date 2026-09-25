@@ -164,6 +164,9 @@ frontend/lib/
 ### Step 5: Presentation Layer - Views (Screens & AuthGate)
 **Goal:** Material 3 UI widgets bound cleanly to the Riverpod ViewModel.
 
+> [!IMPORTANT]
+> **Presentation Layer Rule**: For the presentation layer (UI screens, dialogs, forms, layout widgets), **always ask the user for the design first and ask clarifying questions** before writing any code or proposing UI designs.
+
 1. **`lib/features/auth/presentation/widgets/auth_gate.dart`**:
    - Root widget listening to `authControllerProvider`:
      - When `loading`: Renders a loading splash screen.

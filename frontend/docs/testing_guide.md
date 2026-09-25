@@ -141,6 +141,66 @@ test('returns identical instance when no arguments passed', () {
 });
 ```
 
+### Pattern E: Security Redaction (`toString`)
+
+Credentials and tokens should never leak into log files, crash traces, or analytics. Always assert that sensitive raw values are absent from `toString()` and replaced by redaction placeholders:
+
+```dart
+test('redacts raw tokens and never leaks secrets in toString', () {
+  final stringified = secretTokens.toString();
+
+  expect(stringified, contains('[REDACTED]'));
+  expect(stringified, isNot(contains('super-secret-access-token')));
+});
+```
+
+### Pattern F: Dart 3 Sealed Classes & Pattern Matching
+
+When modeling discrete domain/UI states (e.g. `AuthState`), test that:
+1. Each concrete class is an instance of the sealed base type (`expect(state, isA<AuthState>())`).
+2. Value equality and hash codes hold per state type.
+3. Dart 3 `switch` expressions exhaustively match each case and destructure internal values cleanly:
+
+```dart
+test('exhaustive switch cleanly distinguishes states', () {
+  const AuthState unauth = AuthStateUnauthenticated();
+  const AuthState auth = AuthStateAuthenticated(testUser);
+
+  String describe(AuthState state) => switch (state) {
+        AuthStateUnauthenticated() => 'guest',
+        AuthStateAuthenticated(:final user) => 'user: ${user.fullName}',
+      };
+
+  expect(describe(unauth), equals('guest'));
+  expect(describe(auth), equals('user: Dr. Gregory House'));
+});
+```
+
+### Pattern G: Testing DTOs (JSON Parsing & Domain Mapping)
+
+When testing Data Transfer Objects (DTOs), verify:
+1. **Full payload deserialization**: All backend `snake_case` keys are properly mapped to camelCase fields.
+2. **Nullable / optional field handling**: Server payloads with `null` or omitted optional keys don't throw.
+3. **Defensive validation**: Missing or malformed required fields throw a `FormatException`.
+4. **Domain mapping (`toDomain`)**: The DTO maps accurately into the pure domain entity.
+5. **Serialization (`toJson`)**: The DTO formats back into the exact `snake_case` payload expected by the backend.
+
+```dart
+test('parses payload and maps to pure domain entity', () {
+  final dto = UserDto.fromJson(serverJson);
+  final user = dto.toDomain();
+
+  expect(user, isA<User>());
+  expect(user.fullName, equals('Dr. Gregory House'));
+});
+
+test('throws FormatException when required id is missing', () {
+  final invalidJson = Map<String, dynamic>.from(serverJson)..remove('id');
+
+  expect(() => UserDto.fromJson(invalidJson), throwsA(isA<FormatException>()));
+});
+```
+
 ---
 
 ## 5. Test-Driven Development (TDD) Lifecycle
