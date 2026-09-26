@@ -27,6 +27,7 @@ class ApiClient {
 
   final Dio _dio;
   final TokenStorage _tokenStorage;
+  Future<bool>? _refreshFuture;
 
   Future<Response<T>> get<T>(
     String path, {
@@ -39,7 +40,7 @@ class ApiClient {
         queryParameters: queryParameters,
         options: await _requestOptions(requiresAuth: requiresAuth),
       );
-    });
+    }, requiresAuth: requiresAuth);
   }
 
   Future<Response<T>> post<T>(
@@ -59,7 +60,7 @@ class ApiClient {
           contentType: contentType,
         ),
       );
-    });
+    }, requiresAuth: requiresAuth);
   }
 
   Future<Options> _requestOptions({
@@ -87,11 +88,73 @@ class ApiClient {
     );
   }
 
-  Future<Response<T>> _send<T>(Future<Response<T>> Function() request) async {
+  Future<Response<T>> _send<T>(
+    Future<Response<T>> Function() request, {
+    bool requiresAuth = true,
+    bool isRetry = false,
+  }) async {
     try {
       return await request();
     } on DioException catch (exception) {
+      final statusCode = exception.response?.statusCode;
+
+      // Only attempt refresh for protected requests that haven't been retried yet
+      if (statusCode == 401 && requiresAuth && !isRetry) {
+        _refreshFuture ??= _performRefresh();
+        final refreshSucceeded = await _refreshFuture!;
+
+        if (refreshSucceeded) {
+          // Retry the original request once with updated token header
+          return _send(request, requiresAuth: requiresAuth, isRetry: true);
+        }
+      }
+
       throw _mapDioException(exception);
+    }
+  }
+
+  Future<bool> _performRefresh() async {
+    try {
+      final refreshToken = await _tokenStorage.readRefreshToken();
+
+      // Call /auth/refresh using _dio directly (so it doesn't trigger _send interceptor)
+      final response = await _dio.post<Map<String, dynamic>>(
+        '/auth/refresh',
+        data: refreshToken != null ? {'refresh_token': refreshToken} : null,
+        options: Options(contentType: 'application/json'),
+      );
+
+      final data = response.data;
+      if (data == null) return false;
+
+      final newAccessToken = data['access_token'] as String?;
+      final newRefreshToken = data['refresh_token'] as String?;
+
+      if (newAccessToken != null && newAccessToken.isNotEmpty) {
+        await _tokenStorage.saveTokens(
+          accessToken: newAccessToken,
+          refreshToken: newRefreshToken ?? refreshToken,
+        );
+        return true;
+      }
+      return false;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) {
+        await _tokenStorage.clearTokens();
+        return false;
+      }
+
+      if (e.type == DioExceptionType.connectionError ||
+          e.type == DioExceptionType.connectionTimeout ||
+          e.type == DioExceptionType.receiveTimeout) {
+        throw const ApiException(
+          type: ApiErrorType.network,
+          message: 'Network error during refresh token.',
+        );
+      }
+      return false;
+    } finally {
+      _refreshFuture = null;
     }
   }
 

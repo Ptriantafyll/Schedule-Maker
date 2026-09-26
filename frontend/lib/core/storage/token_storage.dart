@@ -5,7 +5,7 @@ final tokenStorageProvider = Provider<TokenStorage>((ref) {
   return TokenStorage(const FlutterSecureStorage());
 });
 
-final class TokenStorage {
+class TokenStorage {
   TokenStorage(this._storage);
 
   final FlutterSecureStorage _storage;
@@ -19,7 +19,7 @@ final class TokenStorage {
     if (accessToken.isEmpty) {
       throw ArgumentError.value(
         accessToken,
-        'accessToken'
+        'accessToken',
         'Access Token must not be empty',
       );
     }
@@ -28,9 +28,9 @@ final class TokenStorage {
 
     if (refreshToken == null || refreshToken.isEmpty) {
       await _storage.delete(key: _refreshTokenKey);
+    } else {
+      await _storage.write(key: _refreshTokenKey, value: refreshToken);
     }
-
-    await _storage.write(key: _refreshTokenKey, value: refreshToken);
   }
 
   Future<String?> readAccessToken() {
