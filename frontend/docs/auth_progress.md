@@ -17,9 +17,9 @@ For each step, it outlines:
 | :--- | :--- | :--- |
 | **Phase 1** | Domain Layer (Pure Business Entities & State Models) | `[x] Completed` |
 | **Phase 2** | Data Layer: Remote Data Source (`AuthRemoteDataSource`) | `[x] Completed` |
-| **Phase 3** | Data Layer: Repository (`AuthRepository`) | `[ ] Pending` |
-| **Phase 4** | Core Network Polish: Silent 401 Refresh Queue | `[ ] Pending` |
-| **Phase 5** | ViewModel: State Management (`AuthController` via Riverpod) | `[ ] Pending` |
+| **Phase 3** | Data Layer: Repository (`AuthRepository`) | `[x] Completed` |
+| **Phase 4** | Core Network Polish: Silent 401 Refresh Queue | `[x] Completed` |
+| **Phase 5** | ViewModel: State Management (`AuthController` via Riverpod) | `[x] Completed` |
 | **Phase 6** | View Layer: Presentation (`AuthGate`, `LoginScreen`, `SignupScreen`) | `[ ] Pending` |
 | **Phase 7** | End-to-End Verification & Backend Integration | `[ ] Pending` |
 
@@ -128,37 +128,37 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 ## Phase 3: Data Layer: Repository (`AuthRepository`)
 
 ### Step 3.1: Session & Storage Orchestration
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** The presentation layer and ViewModels should never know about raw HTTP details or secure storage key names. The repository acts as the single source of truth for authentication: when login succeeds, it automatically stores tokens securely and fetches the user profile before returning.
 - **Technical Implementation Needed:**
-  - Create `lib/features/auth/data/repositories/auth_repository.dart`.
+  - Create `lib/features/auth/data/repositories/auth_repository.dart`. **Status:** `[x] Completed`.
   - Coordinates `AuthRemoteDataSource` and platform session transport (`TokenStorage` for native; browser cookies for Web):
-    - `login(...)`: Calls remote login, saves tokens according to native or browser policy, fetches `getCurrentUser()`, returns `User`.
-    - `signup(...)`: Calls remote signup, returns the created `UserRead`, **does not save tokens** or fetch `/auth/me`, and leaves the user unauthenticated.
-    - `logout(...)`: Calls remote logout and clears local session; explicitly reports a failed server revocation.
-    - `restoreSession()`: Refreshes/verifies a native or browser session and fetches `/auth/me`; distinguish revoked tokens from network outages.
-  - Expose `authRepositoryProvider = Provider<AuthRepository>((ref) => ...)`.
-  - **TDD Test:** Create `test/features/auth/data/auth_repository_test.dart` mocking the data source and storage.
+    - `login(...)`: Calls remote login, saves tokens according to native or browser policy, fetches `getCurrentUser()`, returns `User`. **Status:** `[x] Completed`.
+    - `signup(...)`: Calls remote signup, returns the created `UserRead`, **does not save tokens** or fetch `/auth/me`, and leaves the user unauthenticated. **Status:** `[x] Completed`.
+    - `logout(...)`: Calls remote logout and clears local session; explicitly reports a failed server revocation. **Status:** `[x] Completed`.
+    - `restoreSession()`: Refreshes/verifies a native or browser session and fetches `/auth/me`; distinguish revoked tokens from network outages. **Status:** `[x] Completed`.
+  - Expose `authRepositoryProvider = Provider<AuthRepository>((ref) => ...)`. **Status:** `[x] Completed`.
+  - **TDD Test:** Implemented in `test/features/auth/data/repositories/auth_repository_test.dart` (Passing 12/12 tests).
 
 ---
 
 ## Phase 4: Core Network Polish: Silent 401 Refresh Queue
 
 ### Step 4.1: Concurrency-Safe Refresh Interceptor
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** JWT access tokens expire (the current backend default is 60 minutes, configurable) for security. If a doctor is working in the app when the token expires, their next actions should not fail or kick them out to the login screen. Furthermore, if three widgets fetch data concurrently and all get a 401, the app must not fire three simultaneous refresh requests (which would invalidate each other); it must pause, refresh once, and replay all three requests seamlessly.
 - **Technical Implementation Needed:**
-  - Complete `lib/core/network/api_client.dart` with form login, validated base URL, platform-aware session transport, and typed errors for 409/422/429.
-  - On a protected request's 401, share **one in-flight refresh** among concurrent failures (a queued interceptor alone does not guarantee this); rotate native stored token or use Web cookies + CSRF, then retry each original request once.
-  - Do not refresh public login/signup failures or recurse on refresh/logout; notify auth state on revoked/expired sessions and show transient network errors rather than silently logging out.
-  - **TDD Test:** Create `test/core/network/api_client_refresh_test.dart`.
+  - Complete `lib/core/network/api_client.dart` with form login, validated base URL, platform-aware session transport, and typed errors for 409/422/429. **Status:** `[x] Completed`.
+  - On a protected request's 401, share **one in-flight refresh** among concurrent failures (a queued interceptor alone does not guarantee this); rotate native stored token or use Web cookies + CSRF, then retry each original request once. **Status:** `[x] Completed`.
+  - Do not refresh public login/signup failures or recurse on refresh/logout; notify auth state on revoked/expired sessions and show transient network errors rather than silently logging out. **Status:** `[x] Completed`.
+  - **TDD Test:** Implemented in `test/core/network/api_client_refresh_test.dart` (Passing 6/6 tests).
 
 ---
 
 ## Phase 5: ViewModel: State Management (`AuthController`)
 
 ### Step 5.1: Riverpod `AsyncNotifier` ViewModel
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** Screens need a reactive state manager that handles loading indicators, captures error messages, and triggers navigation when authentication succeeds or fails.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/presentation/controllers/auth_controller.dart`.
@@ -175,46 +175,66 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 
 ---
 
-## Phase 6: View Layer: Presentation (`AuthGate`, `LoginScreen`, `SignupScreen`)
+## Phase 6: View Layer: Presentation (`LoginScreen`, `SignupScreen`, `AuthGate`, & Password Reset)
 
 > [!IMPORTANT]
 > **Presentation Layer Rule**: For the presentation layer (UI screens, dialogs, forms, layout widgets), **always ask the user for the design first and ask clarifying questions** before writing any code or proposing UI designs.
 
-### Step 6.1: `AuthGate` Navigation Controller Widget
+### Step 6.1: `LoginScreen` (Staff Login UI & Validation)
 - **Status:** `[ ] Pending`
-- **Business Reason:** When the user opens the application, they should automatically see the Dashboard if already logged in, or the Login screen if logged out, without flickering or race conditions.
+- **Business Reason:** A clean, accessible clinical interface matching the MedShift design mockup (`login.png`) allowing doctors and hospital staff to securely sign in, see immediate input validation, experience smooth loading feedback, and access onboarding or support.
+- **Technical Implementation Needed:**
+  - Create `lib/features/auth/presentation/screens/login_screen.dart`:
+    - MedShift branding header: circular badge with medical cross (`+`), "MedShift" title, "Clinical Scheduling & Management" subtitle.
+    - Card container: "Staff Login" heading.
+    - Form fields: "Email" with medical placeholder (`doctor@hospital.org`) & leading icon; "Password" with lock icon, obscure toggle, and "Forgot Password?" action.
+    - Full-width primary button: "Login to Dashboard" with inline loading spinner when `authControllerProvider` is loading.
+    - Form validation: rejects empty fields or invalid email syntax without triggering network calls.
+    - Riverpod integration: calls `ref.read(authControllerProvider.notifier).login(email, password)`.
+    - Error handling: catches errors and shows feedback (SnackBar or inline banner).
+    - Navigation prompt: "New staff member? Complete Onboarding Registration →" linking to `SignupScreen`.
+    - Footer bar: "Need assistance? Contact the Help Desk (Ext. 4420)".
+  - **TDD Test:** Create `test/features/auth/presentation/screens/login_screen_test.dart` testing rendering, validation, submission, loading spinner, error feedback, and navigation links.
+
+---
+
+### Step 6.2: `SignupScreen` (Invitation Onboarding Form)
+- **Status:** `[ ] Pending`
+- **Business Reason:** A dedicated onboarding screen where a newly invited doctor or administrator enters their cryptographic invitation token, personal details, and sets their password to activate their account.
+- **Technical Implementation Needed:**
+  - Create `lib/features/auth/presentation/screens/signup_screen.dart`:
+    - Matches the MedShift clinical visual theme.
+    - Form fields: `invitationToken`, `firstName`, `lastName`, `email`, and `password`.
+    - Submits via `ref.read(authControllerProvider.notifier).signup(...)`.
+    - On success: displays confirmation message and directs the user to `LoginScreen` (remains unauthenticated per backend policy).
+  - **TDD Test:** Create `test/features/auth/presentation/screens/signup_screen_test.dart`.
+
+---
+
+### Step 6.3: `AuthGate` Navigation Controller Widget
+- **Status:** `[ ] Pending`
+- **Business Reason:** The root navigation switcher that dynamically routes the user to the correct screen based on their session state without visual flickering or race conditions.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/presentation/widgets/auth_gate.dart`.
   - Listens to `authControllerProvider`:
-    - Loading ➔ Displays a centered Material 3 loading indicator or splash screen.
-    - `AuthStateUnauthenticated` ➔ Renders `LoginScreen`.
-    - `AuthStateAuthenticated` ➔ Renders role-aware destinations; super admins do not have department schedule access.
+    - Loading ➔ Displays a centered clinical loading indicator/splash.
+    - `AuthStateUnauthenticated` ➔ Renders `LoginScreen` (or navigates between Login/Signup).
+    - `AuthStateAuthenticated` ➔ Renders role-aware destination (Home/Dashboard).
+  - **TDD Test:** Create `test/features/auth/presentation/widgets/auth_gate_test.dart`.
 
 ---
 
-### Step 6.2: `LoginScreen` & Reusable Auth Text Field
+### Step 6.4: Full-Stack Password Reset Flow
 - **Status:** `[ ] Pending`
-- **Business Reason:** A clean, accessible Material 3 interface allowing doctors and staff to enter email and password, see clear validation errors (e.g. empty fields, invalid email format), and view a progress spinner during submission.
+- **Business Reason:** Self-service credential recovery so hospital staff who forget their credentials can regain access without manual database interventions from systems administrators.
 - **Technical Implementation Needed:**
-  - Start with Material 3 `TextFormField` in both forms; keep a password-visibility field auth-owned and extract common input styling only after later features need it.
-  - Create `lib/features/auth/presentation/screens/login_screen.dart`:
-    - Form with email and password fields.
-    - Button calling `ref.read(authControllerProvider.notifier).login(...)`.
-    - Uses `ref.listen` on `authControllerProvider` to display errors via `SnackBar`.
-    - Link to "Have an invitation? Sign up here".
-  - **Widget Test:** Create `test/features/auth/presentation/login_screen_test.dart` testing validation, button disabled/loading state, and error display.
-
----
-
-### Step 6.3: `SignupScreen` (Invitation Acceptance)
-- **Status:** `[ ] Pending`
-- **Business Reason:** A dedicated screen where a doctor or administrator invited to the hospital can enter their invitation token, name, email, and choose their password to activate their account.
-- **Technical Implementation Needed:**
-  - Create `lib/features/auth/presentation/screens/signup_screen.dart`:
-    - Form with `invitationToken`, `firstName`, `lastName`, `email`, and `password`.
-    - Submits via `ref.read(authControllerProvider.notifier).signup(...)`.
-    - On success, shows confirmation and sends the user to login instead of entering authenticated state.
-  - **Widget Test:** Create `test/features/auth/presentation/signup_screen_test.dart`.
+  - **Backend**:
+    - Add password reset request endpoint (`POST /api/v1/auth/forgot-password`).
+    - Add password reset confirmation endpoint (`POST /api/v1/auth/reset-password`).
+    - Unit and integration tests for reset tokens.
+  - **Frontend**:
+    - Add forgot-password dialog / screen requesting user email.
+    - Add token verification and new password creation form.
 
 ---
 
