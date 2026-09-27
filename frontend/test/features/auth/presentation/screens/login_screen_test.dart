@@ -83,6 +83,7 @@ void main() {
   group('LoginScreen Widget Tests (Mockup & Presentation)', () {
     testWidgets('renders all MedShift branding and layout elements', (tester) async {
       await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pumpAndSettle();
 
       // Branding Header
       expect(find.text('MedShift'), findsOneWidget);
@@ -110,6 +111,7 @@ void main() {
 
     testWidgets('validates required fields and email syntax on submission', (tester) async {
       await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pumpAndSettle();
 
       // Tap submit with empty fields
       await tester.tap(find.text('Login to Dashboard'));
@@ -225,7 +227,9 @@ void main() {
         ),
       );
 
-      await tester.tap(find.textContaining('Complete Onboarding Registration'));
+      final onboardingFinder = find.textContaining('Complete Onboarding Registration');
+      await tester.ensureVisible(onboardingFinder);
+      await tester.tap(onboardingFinder);
       await tester.pumpAndSettle();
 
       expect(signupNavigated, isTrue);
