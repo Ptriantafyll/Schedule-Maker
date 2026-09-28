@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:frontend/features/auth/presentation/screens/login_screen.dart';
+import 'package:frontend/features/auth/presentation/widgets/auth_gate.dart';
 import 'package:frontend/theme/app_theme.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -17,7 +17,7 @@ class App extends StatelessWidget {
       title: 'Shift scheduling app',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      home: LoginScreen(),
+      home: const AuthGate(),
     );
   }
 }
