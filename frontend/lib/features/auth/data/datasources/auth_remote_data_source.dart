@@ -20,7 +20,7 @@ class AuthRemoteDataSource {
     required String password,
   }) async {
     final response = await _apiClient.post<Map<String, dynamic>>(
-      '/auth/login',
+      '/api/v1/auth/login',
       data: {'username': username, 'password': password},
       contentType: 'application/x-www-form-urlencoded',
       requiresAuth: false,
@@ -45,7 +45,7 @@ class AuthRemoteDataSource {
     required String password,
   }) async {
     final response = await _apiClient.post<Map<String, dynamic>>(
-      '/auth/signup',
+      '/api/v1/auth/signup',
       data: {
         'invitation_token': invitationToken,
         'first_name': firstName,
@@ -73,7 +73,7 @@ class AuthRemoteDataSource {
         : null;
 
     final response = await _apiClient.post<Map<String, dynamic>>(
-      '/auth/refresh',
+      '/api/v1/auth/refresh',
       data: body,
       requiresAuth: false,
     );
@@ -95,7 +95,7 @@ class AuthRemoteDataSource {
         : null;
 
     final response = await _apiClient.post<Map<String, dynamic>>(
-      '/auth/logout',
+      '/api/v1/auth/logout',
       data: body,
       requiresAuth: false,
     );
@@ -110,7 +110,7 @@ class AuthRemoteDataSource {
   }
 
   Future<User> getCurrentUser() async {
-    final response = await _apiClient.get<Map<String, dynamic>>('/auth/me', requiresAuth: true);
+    final response = await _apiClient.get<Map<String, dynamic>>('/api/v1/auth/me', requiresAuth: true);
     
     final data = response.data;
     if (data == null) {

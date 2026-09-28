@@ -117,9 +117,9 @@ class ApiClient {
     try {
       final refreshToken = await _tokenStorage.readRefreshToken();
 
-      // Call /auth/refresh using _dio directly (so it doesn't trigger _send interceptor)
+      // Call /api/v1/auth/refresh using _dio directly (so it doesn't trigger _send interceptor)
       final response = await _dio.post<Map<String, dynamic>>(
-        '/auth/refresh',
+        '/api/v1/auth/refresh',
         data: refreshToken != null ? {'refresh_token': refreshToken} : null,
         options: Options(contentType: 'application/json'),
       );

@@ -74,7 +74,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: validTokenJson,
         statusCode: 200,
-        requestOptions: RequestOptions(path: '/auth/login'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/login'),
       );
 
       final tokens = await dataSource.login(
@@ -88,7 +88,7 @@ void main() {
       expect(tokens.csrfToken, equals('csrf-789'));
       expect(tokens.tokenType, equals('bearer'));
 
-      expect(fakeApiClient.capturedPath, equals('/auth/login'));
+      expect(fakeApiClient.capturedPath, equals('/api/v1/auth/login'));
       expect(
         fakeApiClient.capturedData,
         equals({
@@ -140,7 +140,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: null,
         statusCode: 200,
-        requestOptions: RequestOptions(path: '/auth/login'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/login'),
       );
 
       expect(
@@ -173,7 +173,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: validUserJson,
         statusCode: 201,
-        requestOptions: RequestOptions(path: '/auth/signup'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/signup'),
       );
 
       final user = await dataSource.signup(
@@ -192,7 +192,7 @@ void main() {
       expect(user.departmentId, equals('dept-456'));
       expect(user.doctorId, equals('doc-789'));
 
-      expect(fakeApiClient.capturedPath, equals('/auth/signup'));
+      expect(fakeApiClient.capturedPath, equals('/api/v1/auth/signup'));
       expect(
         fakeApiClient.capturedData,
         equals({
@@ -231,7 +231,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: null,
         statusCode: 201,
-        requestOptions: RequestOptions(path: '/auth/signup'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/signup'),
       );
 
       expect(
@@ -261,7 +261,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: validTokenJson,
         statusCode: 200,
-        requestOptions: RequestOptions(path: '/auth/refresh'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/refresh'),
       );
 
       final tokens = await dataSource.refresh(
@@ -274,7 +274,7 @@ void main() {
       expect(tokens.refreshToken, equals('new-ref-456'));
       expect(tokens.csrfToken, equals('new-csrf-789'));
 
-      expect(fakeApiClient.capturedPath, equals('/auth/refresh'));
+      expect(fakeApiClient.capturedPath, equals('/api/v1/auth/refresh'));
       expect(
         fakeApiClient.capturedData,
         equals({
@@ -289,7 +289,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: validTokenJson,
         statusCode: 200,
-        requestOptions: RequestOptions(path: '/auth/refresh'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/refresh'),
       );
 
       final tokens = await dataSource.refresh();
@@ -297,7 +297,7 @@ void main() {
       expect(tokens, isA<AuthTokens>());
       expect(tokens.accessToken, equals('new-acc-123'));
 
-      expect(fakeApiClient.capturedPath, equals('/auth/refresh'));
+      expect(fakeApiClient.capturedPath, equals('/api/v1/auth/refresh'));
       expect(fakeApiClient.capturedData, isNull);
       expect(fakeApiClient.capturedRequiresAuth, isFalse);
     });
@@ -321,7 +321,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: null,
         statusCode: 200,
-        requestOptions: RequestOptions(path: '/auth/refresh'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/refresh'),
       );
 
       expect(
@@ -338,7 +338,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: {'detail': 'Logged out successfully'},
         statusCode: 200,
-        requestOptions: RequestOptions(path: '/auth/logout'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/logout'),
       );
 
       await dataSource.logout(
@@ -346,7 +346,7 @@ void main() {
         csrfToken: 'csrf-to-revoke',
       );
 
-      expect(fakeApiClient.capturedPath, equals('/auth/logout'));
+      expect(fakeApiClient.capturedPath, equals('/api/v1/auth/logout'));
       expect(
         fakeApiClient.capturedData,
         equals({
@@ -361,12 +361,12 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: {'detail': 'Logged out successfully'},
         statusCode: 200,
-        requestOptions: RequestOptions(path: '/auth/logout'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/logout'),
       );
 
       await dataSource.logout();
 
-      expect(fakeApiClient.capturedPath, equals('/auth/logout'));
+      expect(fakeApiClient.capturedPath, equals('/api/v1/auth/logout'));
       expect(fakeApiClient.capturedData, isNull);
       expect(fakeApiClient.capturedRequiresAuth, isFalse);
     });
@@ -405,7 +405,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: validUserJson,
         statusCode: 200,
-        requestOptions: RequestOptions(path: '/auth/me'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/me'),
       );
 
       final user = await dataSource.getCurrentUser();
@@ -418,7 +418,7 @@ void main() {
       expect(user.departmentId, equals('dept-456'));
       expect(user.doctorId, equals('doc-789'));
 
-      expect(fakeApiClient.capturedPath, equals('/auth/me'));
+      expect(fakeApiClient.capturedPath, equals('/api/v1/auth/me'));
       expect(fakeApiClient.capturedRequiresAuth, isTrue);
     });
 
@@ -441,7 +441,7 @@ void main() {
       fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
         data: null,
         statusCode: 200,
-        requestOptions: RequestOptions(path: '/auth/me'),
+        requestOptions: RequestOptions(path: '/api/v1/auth/me'),
       );
 
       expect(

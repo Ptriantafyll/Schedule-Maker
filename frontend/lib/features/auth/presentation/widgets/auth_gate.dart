@@ -40,7 +40,42 @@ class _AuthGateState extends ConsumerState<AuthGate> {
       }
 
       return Scaffold(
-        body: Center(child: Text('Authenticated: ${user.fullName}')),
+        appBar: AppBar(
+          title: const Text('MedShift Dashboard'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Log Out',
+              onPressed: () {
+                ref.read(authControllerProvider.notifier).logout();
+              },
+            ),
+          ],
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Authenticated: ${user.fullName}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text('Role: ${user.role.displayName}'),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                icon: const Icon(Icons.logout),
+                label: const Text('Log Out'),
+                onPressed: () {
+                  ref.read(authControllerProvider.notifier).logout();
+                },
+              ),
+            ],
+          ),
+        ),
       );
     }
 
