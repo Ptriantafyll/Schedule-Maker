@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_hero_card.dart';
+import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
 
@@ -36,11 +37,15 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
         ],
       ),
       drawer: const ProfileDrawer(),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          AdminHeroCard(targetMonth: 'November', onGeneratePressed: () {}),
-        ],
+      body: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            AdminHeroCard(targetMonth: 'November', onGeneratePressed: () {}),
+            const SizedBox(height: 10),
+            AdminMetricCards(),
+          ],
+        ),
       ),
       bottomNavigationBar: BottomNavBar(
         currentIndex: _currentIndex,
