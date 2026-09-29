@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_hero_card.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.dart';
 import 'package:frontend/features/admin/presentation/widgets/draft_preview_canvas.dart';
+import 'package:frontend/features/admin/presentation/widgets/generation_mode_dialog.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
 
@@ -15,6 +16,22 @@ class AdminScreen extends ConsumerStatefulWidget {
 
 class _AdminScreenState extends ConsumerState<AdminScreen> {
   int _currentIndex = 3;
+
+  Future<void> _handleGeneratePressed() async {
+    final mode = await showDialog<GenerationMode>(
+      context: context,
+      builder: (_) => const GenerationModeDialog(),
+    );
+
+    if (!mounted || mode == null) return;
+
+    switch (mode) {
+      case (GenerationMode.currentRoster):
+        break;
+      case (GenerationMode.excelUpload):
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +59,10 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            AdminHeroCard(targetMonth: 'November', onGeneratePressed: () {}),
+            AdminHeroCard(
+              targetMonth: 'November',
+              onGeneratePressed: _handleGeneratePressed,
+            ),
             const SizedBox(height: 10),
             AdminMetricCards(),
             const SizedBox(height: 10),

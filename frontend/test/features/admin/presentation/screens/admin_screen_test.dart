@@ -5,6 +5,7 @@ import 'package:frontend/features/admin/presentation/screens/admin_screen.dart';
 import 'package:frontend/features/auth/domain/models/user.dart';
 import 'package:frontend/features/auth/domain/models/user_role.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:frontend/features/admin/presentation/widgets/generation_mode_dialog.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
 
@@ -34,7 +35,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('MedShift Admin'), findsOneWidget);
-      expect(find.byType(CircleAvatar), findsOneWidget);
+      expect(
+        find.descendant(of: find.byType(AppBar), matching: find.byType(CircleAvatar)),
+        findsOneWidget,
+      );
       expect(
         find.byWidgetPredicate(
           (widget) => widget is Icon && (widget.icon == Icons.notifications_none || widget.icon == Icons.notifications_outlined || widget.icon == Icons.notifications),
@@ -51,8 +55,8 @@ void main() {
       // Initially drawer is closed
       expect(find.byType(ProfileDrawer), findsNothing);
 
-      // Tap profile avatar
-      final avatarFinder = find.byType(CircleAvatar);
+      // Tap profile avatar in AppBar
+      final avatarFinder = find.descendant(of: find.byType(AppBar), matching: find.byType(CircleAvatar));
       expect(avatarFinder, findsOneWidget);
       await tester.tap(avatarFinder);
       await tester.pumpAndSettle();
@@ -77,6 +81,19 @@ void main() {
       // Tap Admin tab
       await tester.tap(find.text('Admin'));
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('tapping Generate Schedule button opens GenerationModeDialog', (tester) async {
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GenerationModeDialog), findsNothing);
+
+      await tester.tap(find.text('Generate Schedule'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(GenerationModeDialog), findsOneWidget);
+      expect(find.text('Select Generation Mode'), findsOneWidget);
     });
   });
 }
