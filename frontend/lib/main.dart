@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/features/admin/presentation/screens/admin_screen.dart';
 import 'package:frontend/features/auth/presentation/widgets/auth_gate.dart';
 import 'package:frontend/theme/app_theme.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 void main() {
   runApp(const ProviderScope(child: App()));
@@ -17,7 +18,9 @@ class App extends StatelessWidget {
       title: 'Shift scheduling app',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
-      home: const AuthGate(),
+      home: const AuthGate(
+        home: AdminScreen(),
+      ),
     );
   }
 }

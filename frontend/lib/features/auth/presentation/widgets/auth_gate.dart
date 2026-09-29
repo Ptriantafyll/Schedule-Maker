@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:frontend/features/admin/presentation/screens/admin_screen.dart';
 import 'package:frontend/features/auth/domain/models/user.dart';
 import 'package:frontend/features/auth/domain/state/auth_state.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
@@ -40,45 +39,44 @@ class _AuthGateState extends ConsumerState<AuthGate> {
         return widget.home!;
       }
 
-      return AdminScreen();
-      // return Scaffold(
-      //   appBar: AppBar(
-      //     title: const Text('MedShift Dashboard'),
-      //     actions: [
-      //       IconButton(
-      //         icon: const Icon(Icons.logout),
-      //         tooltip: 'Log Out',
-      //         onPressed: () {
-      //           ref.read(authControllerProvider.notifier).logout();
-      //         },
-      //       ),
-      //     ],
-      //   ),
-      //   body: Center(
-      //     child: Column(
-      //       mainAxisAlignment: MainAxisAlignment.center,
-      //       children: [
-      //         Text(
-      //           'Authenticated: ${user.fullName}',
-      //           style: const TextStyle(
-      //             fontSize: 18,
-      //             fontWeight: FontWeight.bold,
-      //           ),
-      //         ),
-      //         const SizedBox(height: 8),
-      //         Text('Role: ${user.role.displayName}'),
-      //         const SizedBox(height: 24),
-      //         FilledButton.icon(
-      //           icon: const Icon(Icons.logout),
-      //           label: const Text('Log Out'),
-      //           onPressed: () {
-      //             ref.read(authControllerProvider.notifier).logout();
-      //           },
-      //         ),
-      //       ],
-      //     ),
-      //   ),
-      // );
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('MedShift Dashboard'),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.logout),
+              tooltip: 'Log Out',
+              onPressed: () {
+                ref.read(authControllerProvider.notifier).logout();
+              },
+            ),
+          ],
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'Authenticated: ${user.fullName}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text('Role: ${user.role.displayName}'),
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                icon: const Icon(Icons.logout),
+                label: const Text('Log Out'),
+                onPressed: () {
+                  ref.read(authControllerProvider.notifier).logout();
+                },
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     if (_showSignup) {
