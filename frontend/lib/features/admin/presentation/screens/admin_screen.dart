@@ -1,8 +1,10 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_hero_card.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.dart';
 import 'package:frontend/features/admin/presentation/widgets/draft_preview_canvas.dart';
+import 'package:frontend/features/admin/presentation/widgets/excel_upload_dialog.dart';
 import 'package:frontend/features/admin/presentation/widgets/generation_mode_dialog.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
@@ -29,6 +31,17 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
       case (GenerationMode.currentRoster):
         break;
       case (GenerationMode.excelUpload):
+        final file = await showDialog<PlatformFile>(
+          context: context,
+          builder: (_) => const ExcelUploadDialog(),
+        );
+
+        if (!mounted || file == null) return;
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Schedule generated from ${file.name}')),
+        );
+
         break;
     }
   }
