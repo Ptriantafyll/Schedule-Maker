@@ -5,6 +5,7 @@ import 'package:frontend/features/admin/presentation/screens/admin_screen.dart';
 import 'package:frontend/features/auth/domain/models/user.dart';
 import 'package:frontend/features/auth/domain/models/user_role.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
+import 'package:frontend/features/admin/presentation/widgets/excel_upload_dialog.dart';
 import 'package:frontend/features/admin/presentation/widgets/generation_mode_dialog.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
@@ -94,6 +95,55 @@ void main() {
 
       expect(find.byType(GenerationModeDialog), findsOneWidget);
       expect(find.text('Select Generation Mode'), findsOneWidget);
+    });
+
+    testWidgets('selecting Current Department Roster generates schedule and updates canvas and snackbar', (tester) async {
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pumpAndSettle();
+
+      // Initially in awaiting generation state
+      expect(find.text('Awaiting Generation'), findsOneWidget);
+      expect(find.text('Draft Schedule Generated'), findsNothing);
+
+      // Tap Generate Schedule on Hero Card
+      await tester.tap(find.text('Generate Schedule'));
+      await tester.pumpAndSettle();
+
+      // Select Current Department Roster
+      await tester.tap(find.text('Current Department Roster'));
+      await tester.pumpAndSettle();
+
+      // Draft canvas should now display Draft Schedule Generated
+      expect(find.text('Draft Schedule Generated'), findsOneWidget);
+      expect(find.text('Awaiting Generation'), findsNothing);
+
+      // SnackBar should be displayed
+      expect(find.text('Schedule generated from current roster'), findsOneWidget);
+    });
+
+    testWidgets('selecting Import from Excel opens ExcelUploadDialog', (tester) async {
+      await tester.pumpWidget(createWidgetUnderTest());
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ExcelUploadDialog), findsNothing);
+
+      // Tap Generate Schedule on Hero Card
+      await tester.tap(find.text('Generate Schedule'));
+      await tester.pumpAndSettle();
+
+      // Select Import from Excel (.xlsx)
+      await tester.tap(find.text('Import from Excel (.xlsx)'));
+      await tester.pumpAndSettle();
+
+      // ExcelUploadDialog should be displayed
+      expect(find.byType(ExcelUploadDialog), findsOneWidget);
+      expect(find.text('Import Schedule Workbook'), findsOneWidget);
+
+      // Cancel Excel dialog
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ExcelUploadDialog), findsNothing);
     });
   });
 }

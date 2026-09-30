@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+// ignore: depend_on_referenced_packages
 import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -9,23 +10,18 @@ base class FakePlatformFile extends PlatformFile {
   FakePlatformFile({
     required this.name,
     required this.fileSize,
-    String? path,
-    Uint8List? bytes,
-  })  : _path = path,
-        _bytes = bytes ?? Uint8List(0);
+  });
 
   @override
   final String name;
 
   final int fileSize;
-  final String? _path;
-  final Uint8List _bytes;
 
   @override
-  Uri get uri => _path != null ? Uri.file(_path) : Uri.parse('memory://$name');
+  Uri get uri => Uri.file(name);
 
   @override
-  XFile get xFile => XFile.fromData(_bytes, name: name);
+  XFile get xFile => XFile(name);
 
   @override
   int? lengthSync() => fileSize;
@@ -34,18 +30,16 @@ base class FakePlatformFile extends PlatformFile {
   Future<int?> length() async => fileSize;
 
   @override
-  Future<Uint8List> readAsBytes() async => _bytes;
+  Future<Uint8List> readAsBytes() async => Uint8List(0);
 
   @override
-  Stream<Uint8List> readAsByteStream() => Stream.value(_bytes);
+  Stream<Uint8List> readAsByteStream() => const Stream.empty();
 }
 
 void main() {
   final testFile = FakePlatformFile(
     name: 'november_roster.xlsx',
     fileSize: 25600, // 25.0 KB
-    bytes: Uint8List.fromList([0, 1, 2]),
-    path: '/path/to/november_roster.xlsx',
   );
 
   group('ExcelUploadDialog Widget Tests', () {

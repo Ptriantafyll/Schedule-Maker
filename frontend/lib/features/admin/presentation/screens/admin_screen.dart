@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/features/admin/presentation/controllers/schedule_generation_controller.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_hero_card.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.dart';
 import 'package:frontend/features/admin/presentation/widgets/draft_preview_canvas.dart';
@@ -29,6 +30,20 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
     switch (mode) {
       case (GenerationMode.currentRoster):
+        await ref
+            .read(scheduleGenerationControllerProvider.notifier)
+            .generateFromCurrentRoster(month: 'November');
+
+        if (!mounted) return;
+
+        final currentState = ref.read(scheduleGenerationControllerProvider);
+        if (currentState.status == GenerationStatus.success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Schedule generated from current roster'),
+            ),
+          );
+        }
         break;
       case (GenerationMode.excelUpload):
         final file = await showDialog<PlatformFile>(
@@ -38,16 +53,26 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
         if (!mounted || file == null) return;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Schedule generated from ${file.name}')),
-        );
+        await ref
+            .read(scheduleGenerationControllerProvider.notifier)
+            .generateFromExcel(file);
 
+        if (!mounted) return;
+
+        final currentState = ref.read(scheduleGenerationControllerProvider);
+        if (currentState.status == GenerationStatus.success) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Schedule generated from ${file.name}')),
+          );
+        }
         break;
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final genState = ref.watch(scheduleGenerationControllerProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('MedShift Admin'),
@@ -75,11 +100,12 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
             AdminHeroCard(
               targetMonth: 'November',
               onGeneratePressed: _handleGeneratePressed,
+              isGenerating: genState.isSolving,
             ),
             const SizedBox(height: 10),
             AdminMetricCards(),
             const SizedBox(height: 10),
-            DraftPreviewCanvas(),
+            DraftPreviewCanvas(isGenerated: genState.isGenerated),
           ],
         ),
       ),

@@ -74,6 +74,7 @@ void main() {
       final buttonFinder = find.byType(FilledButton);
       final button = tester.widget<FilledButton>(buttonFinder);
       expect(button.onPressed, isNull);
+      expect(wasPressed, isFalse);
     });
   });
 }
