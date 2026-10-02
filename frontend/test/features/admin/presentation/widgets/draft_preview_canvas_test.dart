@@ -278,5 +278,50 @@ void main() {
       expect(find.text('Doctor'), findsOneWidget);
       expect(find.byKey(const ValueKey('cal_day_1')), findsNothing);
     });
+
+    testWidgets('renders compact icon export button on mobile viewports', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          isGenerated: true,
+          draft: sampleDraft,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byTooltip('Export to Excel'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Export to Excel'), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('renders calendar view on mobile viewport without overflow', (tester) async {
+      tester.view.physicalSize = const Size(360, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          isGenerated: true,
+          draft: sampleDraft,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Switch to Calendar View
+      await tester.tap(find.byIcon(Icons.calendar_view_month));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('cal_day_1')), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
   });
 }
