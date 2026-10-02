@@ -27,7 +27,22 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
   CanvasViewMode _viewMode = CanvasViewMode.table;
   int _selectedDay = 1;
 
-  Widget _buildExportButton() {
+  Widget _buildExportButton({bool isCompact = false}) {
+    if (isCompact) {
+      if (widget.isExporting) {
+        return const SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      }
+      return IconButton(
+        onPressed: widget.onExportPressed,
+        tooltip: 'Export to Excel',
+        icon: const Icon(Icons.file_download_outlined),
+      );
+    }
+
     return OutlinedButton.icon(
       onPressed: widget.isExporting ? null : widget.onExportPressed,
       label: const Text('Export to Excel'),
@@ -207,7 +222,7 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
                 : theme.colorScheme.outlineVariant.withValues(alpha: 0.4),
           ),
         ),
-        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -326,9 +341,9 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 7,
-              crossAxisSpacing: 6,
-              mainAxisSpacing: 6,
-              childAspectRatio: 1.1,
+              crossAxisSpacing: 4,
+              mainAxisSpacing: 4,
+              mainAxisExtent: 48,
             ),
             itemCount: leadingBlanks + daysInMonth,
             itemBuilder: (context, index) {
@@ -415,38 +430,50 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
           children: [
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Draft Preview Canvas',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  Row(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final isCompact = constraints.maxWidth < 500;
+                  return Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      if (hasDraft) ...[
-                        _buildExportButton(),
-                        const SizedBox(width: 8),
-                      ],
-                      IconButton(
-                        isSelected: _viewMode == CanvasViewMode.calendar,
-                        onPressed: () =>
-                            setState(() => _viewMode = CanvasViewMode.calendar),
-                        icon: const Icon(Icons.calendar_view_month),
-                        tooltip: 'Calendar View',
+                      Flexible(
+                        child: Text(
+                          'Draft Preview Canvas',
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
                       ),
-                      IconButton(
-                        isSelected: _viewMode == CanvasViewMode.table,
-                        onPressed: () =>
-                            setState(() => _viewMode = CanvasViewMode.table),
-                        icon: const Icon(Icons.table_chart_outlined),
-                        tooltip: 'Table View',
+                      const SizedBox(width: 8),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (hasDraft) ...[
+                            _buildExportButton(isCompact: isCompact),
+                            const SizedBox(width: 4),
+                          ],
+                          IconButton(
+                            isSelected: _viewMode == CanvasViewMode.calendar,
+                            onPressed: () => setState(
+                              () => _viewMode = CanvasViewMode.calendar,
+                            ),
+                            icon: const Icon(Icons.calendar_view_month),
+                            tooltip: 'Calendar View',
+                          ),
+                          IconButton(
+                            isSelected: _viewMode == CanvasViewMode.table,
+                            onPressed: () => setState(
+                              () => _viewMode = CanvasViewMode.table,
+                            ),
+                            icon: const Icon(Icons.table_chart_outlined),
+                            tooltip: 'Table View',
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                ],
+                  );
+                },
               ),
             ),
             const Divider(height: 1),
