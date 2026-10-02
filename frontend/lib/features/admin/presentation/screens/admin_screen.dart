@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,11 +8,17 @@ import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.
 import 'package:frontend/features/admin/presentation/widgets/draft_preview_canvas.dart';
 import 'package:frontend/features/admin/presentation/widgets/excel_upload_dialog.dart';
 import 'package:frontend/features/admin/presentation/widgets/generation_mode_dialog.dart';
+import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
 
 class AdminScreen extends ConsumerStatefulWidget {
-  const AdminScreen({super.key});
+  const AdminScreen({super.key, this.onSaveFile});
+
+  final Future<String?> Function({
+    required String fileName,
+    required List<int> bytes,
+  })? onSaveFile;
 
   @override
   ConsumerState<AdminScreen> createState() => _AdminScreenState();
@@ -19,6 +26,22 @@ class AdminScreen extends ConsumerStatefulWidget {
 
 class _AdminScreenState extends ConsumerState<AdminScreen> {
   int _currentIndex = 3;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadActiveDraft();
+    });
+  }
+
+  void _loadActiveDraft() {
+    final user = ref.read(currentUserProvider);
+    ref.read(scheduleGenerationControllerProvider.notifier).loadActiveDraft(
+      targetMonth: '2026-11',
+      departmentId: user?.departmentId,
+    );
+  }
 
   Future<void> _handleGeneratePressed() async {
     final mode = await showDialog<GenerationMode>(
@@ -28,49 +51,111 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
     if (!mounted || mode == null) return;
 
-    switch (mode) {
-      case (GenerationMode.currentRoster):
-        await ref
-            .read(scheduleGenerationControllerProvider.notifier)
-            .generateFromCurrentRoster(month: 'November');
+    if (mode == GenerationMode.currentRoster) {
+      await _generateFromCurrentRoster();
+      return;
+    }
 
-        if (!mounted) return;
+    if (mode == GenerationMode.excelUpload) {
+      await _generateFromExcelUpload();
+    }
+  }
 
-        final currentState = ref.read(scheduleGenerationControllerProvider);
-        if (currentState.status == GenerationStatus.success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Schedule generated from current roster'),
-            ),
-          );
-        }
-        break;
-      case (GenerationMode.excelUpload):
-        final file = await showDialog<PlatformFile>(
-          context: context,
-          builder: (_) => const ExcelUploadDialog(),
+  Future<void> _generateFromCurrentRoster() async {
+    await ref
+        .read(scheduleGenerationControllerProvider.notifier)
+        .generateFromCurrentRoster(month: 'November');
+
+    if (!mounted) return;
+
+    final currentState = ref.read(scheduleGenerationControllerProvider);
+    if (currentState.status == GenerationStatus.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Schedule generated from current roster')),
+      );
+    }
+  }
+
+  Future<void> _generateFromExcelUpload() async {
+    final file = await showDialog<PlatformFile>(
+      context: context,
+      builder: (_) => const ExcelUploadDialog(),
+    );
+
+    if (!mounted || file == null) return;
+
+    final user = ref.read(currentUserProvider);
+    await ref
+        .read(scheduleGenerationControllerProvider.notifier)
+        .generateFromExcel(
+          file,
+          targetMonth: '2026-11',
+          departmentId: user?.departmentId,
         );
 
-        if (!mounted || file == null) return;
+    if (!mounted) return;
 
-        await ref
-            .read(scheduleGenerationControllerProvider.notifier)
-            .generateFromExcel(file);
+    final currentState = ref.read(scheduleGenerationControllerProvider);
+    if (currentState.status == GenerationStatus.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Schedule generated from ${file.name}')),
+      );
+    }
+  }
 
-        if (!mounted) return;
+  Future<void> _handleExportPressed() async {
+    final user = ref.read(currentUserProvider);
+    const targetMonth = '2026-11';
+    final bytes = await ref
+        .read(scheduleGenerationControllerProvider.notifier)
+        .exportCurrentDraft(
+          targetMonth: targetMonth,
+          departmentId: user?.departmentId,
+        );
 
-        final currentState = ref.read(scheduleGenerationControllerProvider);
-        if (currentState.status == GenerationStatus.success) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Schedule generated from ${file.name}')),
+    if (!mounted || bytes == null) return;
+
+    final fileName = 'schedule_$targetMonth.xlsx';
+    final savedPath = widget.onSaveFile != null
+        ? await widget.onSaveFile!(
+            fileName: fileName,
+            bytes: bytes,
+          )
+        : await FilePicker.saveFile(
+            dialogTitle: 'Save Schedule',
+            fileName: fileName,
+            bytes: Uint8List.fromList(bytes),
+            type: FileType.custom,
+            allowedExtensions: const ['xlsx'],
           );
-        }
-        break;
+
+    if (!mounted) return;
+
+    if (savedPath != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Schedule exported successfully')),
+      );
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<ScheduleGenerationState>(
+      scheduleGenerationControllerProvider,
+      (previous, next) {
+        if (next.status == GenerationStatus.error &&
+            next.errorMessage != null &&
+            next.errorMessage != previous?.errorMessage) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(next.errorMessage!),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+      },
+    );
+
     final genState = ref.watch(scheduleGenerationControllerProvider);
 
     return Scaffold(
@@ -103,9 +188,14 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
               isGenerating: genState.isSolving,
             ),
             const SizedBox(height: 10),
-            AdminMetricCards(),
+            const AdminMetricCards(),
             const SizedBox(height: 10),
-            DraftPreviewCanvas(isGenerated: genState.isGenerated),
+            DraftPreviewCanvas(
+              isGenerated: genState.isGenerated,
+              draft: genState.draft,
+              isExporting: genState.isExporting,
+              onExportPressed: _handleExportPressed,
+            ),
           ],
         ),
       ),

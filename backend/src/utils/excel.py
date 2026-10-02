@@ -4,6 +4,7 @@ Description: Utility functions for Excel files.
 """
 
 from src.scheduler import ShiftScheduler
+
 import openpyxl
 from openpyxl.styles import PatternFill
 

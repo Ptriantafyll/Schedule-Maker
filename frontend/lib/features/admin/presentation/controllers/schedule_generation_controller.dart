@@ -1,72 +1,130 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/core/network/api_exception.dart';
+import 'package:frontend/features/admin/data/repositories/schedule_draft_repository.dart';
+import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+import 'package:frontend/features/admin/presentation/state/schedule_generation_state.dart';
 
-enum GenerationStatus { idle, solving, success, error }
-
-class ScheduleGenerationState {
-  const ScheduleGenerationState({
-    this.status = GenerationStatus.idle,
-    this.source = '',
-    this.errorMessage,
-    this.generatedAt,
-  });
-
-  final GenerationStatus status;
-  final String source;
-  final String? errorMessage;
-  final DateTime? generatedAt;
-
-  bool get isGenerated => status == GenerationStatus.success;
-  bool get isSolving => status == GenerationStatus.solving;
-
-  ScheduleGenerationState copyWith({
-    GenerationStatus? status,
-    String? source,
-    String? errorMessage,
-    DateTime? generatedAt,
-  }) {
-    return ScheduleGenerationState(
-      status: status ?? this.status,
-      source: source ?? this.source,
-      errorMessage: errorMessage,
-      generatedAt: generatedAt ?? this.generatedAt,
-    );
-  }
-}
-
-abstract class ScheduleRepository {
-  Future<void> generateFromRoster({required String month});
-  Future<void> generateFromExcel({required PlatformFile file});
-}
-
-class DefaultScheduleRepository implements ScheduleRepository {
-  @override
-  Future<void> generateFromRoster({required String month}) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-  }
-
-  @override
-  Future<void> generateFromExcel({required PlatformFile file}) async {
-    await Future.delayed(const Duration(milliseconds: 500));
-  }
-}
-
-final scheduleRepositoryProvider = Provider<ScheduleRepository>((ref) {
-  return DefaultScheduleRepository();
-});
+export 'package:frontend/features/admin/presentation/state/schedule_generation_state.dart';
 
 class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
   @override
-  ScheduleGenerationState build() => ScheduleGenerationState();
+  ScheduleGenerationState build() => const ScheduleGenerationState();
+
+  String _extractErrorMessage(Object error) {
+    if (error is ApiException) {
+      return error.message;
+    }
+    return error.toString();
+  }
+
+  Future<void> loadActiveDraft({
+    required String targetMonth,
+    String? departmentId,
+  }) async {
+    state = state.copyWith(clearError: true);
+
+    try {
+      final repository = ref.read(scheduleDraftRepositoryProvider);
+      final draft = await repository.getActiveDraft(
+        targetMonth: targetMonth,
+        departmentId: departmentId,
+      );
+      _applyLoadedDraft(draft);
+    } catch (e) {
+      state = state.copyWith(
+        status: GenerationStatus.error,
+        errorMessage: _extractErrorMessage(e),
+        clearDraft: true,
+      );
+    }
+  }
+
+  void _applyLoadedDraft(ScheduleDraft? draft) {
+    if (draft == null) {
+      state = state.copyWith(
+        status: GenerationStatus.idle,
+        clearDraft: true,
+      );
+      return;
+    }
+
+    state = state.copyWith(
+      status: GenerationStatus.success,
+      draft: draft,
+      source: draft.sourceFilename.isNotEmpty
+          ? draft.sourceFilename
+          : 'Active Draft',
+      generatedAt: draft.createdAt,
+    );
+  }
+
+  Future<void> generateFromExcel(
+    PlatformFile file, {
+    String targetMonth = '2026-11',
+    String? departmentId,
+  }) async {
+    state = state.copyWith(
+      status: GenerationStatus.solving,
+      clearError: true,
+    );
+
+    try {
+      final repository = ref.read(scheduleDraftRepositoryProvider);
+      final draft = await repository.generateFromExcel(
+        file: file,
+        targetMonth: targetMonth,
+        departmentId: departmentId,
+      );
+      state = state.copyWith(
+        status: GenerationStatus.success,
+        draft: draft,
+        source: file.name,
+        generatedAt: draft.createdAt,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: GenerationStatus.error,
+        errorMessage: _extractErrorMessage(e),
+        clearDraft: true,
+      );
+    }
+  }
+
+  Future<List<int>?> exportCurrentDraft({
+    required String targetMonth,
+    String? departmentId,
+  }) async {
+    state = state.copyWith(
+      isExporting: true,
+      clearError: true,
+    );
+
+    try {
+      final repository = ref.read(scheduleDraftRepositoryProvider);
+      return await repository.exportExcel(
+        targetMonth: targetMonth,
+        departmentId: departmentId,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: GenerationStatus.error,
+        errorMessage: _extractErrorMessage(e),
+      );
+      return null;
+    } finally {
+      state = state.copyWith(isExporting: false);
+    }
+  }
 
   Future<void> generateFromCurrentRoster({String month = 'November'}) async {
     state = state.copyWith(
       status: GenerationStatus.solving,
-      errorMessage: null,
+      clearError: true,
     );
 
     try {
-      final repository = ref.read(scheduleRepositoryProvider);
+      final repository = ref.read(scheduleDraftRepositoryProvider);
       await repository.generateFromRoster(month: month);
       state = state.copyWith(
         status: GenerationStatus.success,
@@ -76,29 +134,7 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
     } catch (e) {
       state = state.copyWith(
         status: GenerationStatus.error,
-        errorMessage: e.toString(),
-      );
-    }
-  }
-
-  Future<void> generateFromExcel(PlatformFile file) async {
-    state = state.copyWith(
-      status: GenerationStatus.solving,
-      errorMessage: null,
-    );
-
-    try {
-      final repository = ref.read(scheduleRepositoryProvider);
-      await repository.generateFromExcel(file: file);
-      state = state.copyWith(
-        status: GenerationStatus.success,
-        generatedAt: DateTime.now(),
-        source: file.name,
-      );
-    } catch (e) {
-      state = state.copyWith(
-        status: GenerationStatus.error,
-        errorMessage: e.toString(),
+        errorMessage: _extractErrorMessage(e),
       );
     }
   }

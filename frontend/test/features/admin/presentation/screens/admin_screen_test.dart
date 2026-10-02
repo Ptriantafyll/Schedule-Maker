@@ -1,14 +1,88 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:frontend/features/admin/data/repositories/schedule_draft_repository.dart';
+import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
 import 'package:frontend/features/admin/presentation/screens/admin_screen.dart';
 import 'package:frontend/features/auth/domain/models/user.dart';
 import 'package:frontend/features/auth/domain/models/user_role.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/admin/presentation/widgets/excel_upload_dialog.dart';
 import 'package:frontend/features/admin/presentation/widgets/generation_mode_dialog.dart';
+import 'package:frontend/core/network/api_exception.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
+
+class FakeAdminScheduleDraftRepository implements ScheduleDraftRepository {
+  ScheduleDraft? draftToReturn;
+  List<int> exportBytesToReturn = [1, 2, 3];
+  Object? errorToThrow;
+  int getActiveDraftCallCount = 0;
+  int exportExcelCallCount = 0;
+  int generateFromExcelCallCount = 0;
+  int generateFromRosterCallCount = 0;
+
+  @override
+  Future<ScheduleDraft> generateFromExcel({
+    required PlatformFile file,
+    required String targetMonth,
+    String? departmentId,
+  }) async {
+    generateFromExcelCallCount++;
+    if (errorToThrow != null) throw errorToThrow!;
+    return draftToReturn ?? _createSampleDraft();
+  }
+
+  @override
+  Future<ScheduleDraft?> getActiveDraft({
+    required String targetMonth,
+    String? departmentId,
+  }) async {
+    getActiveDraftCallCount++;
+    if (errorToThrow != null) throw errorToThrow!;
+    return draftToReturn;
+  }
+
+  @override
+  Future<List<int>> exportExcel({
+    required String targetMonth,
+    String? departmentId,
+  }) async {
+    exportExcelCallCount++;
+    return exportBytesToReturn;
+  }
+
+  @override
+  Future<void> generateFromRoster({required String month}) async {
+    generateFromRosterCallCount++;
+  }
+
+  static ScheduleDraft _createSampleDraft() {
+    return ScheduleDraft(
+      id: 'draft-101',
+      departmentId: 'dept-er',
+      targetMonth: '2026-11',
+      sourceFilename: 'november_roster.xlsx',
+      totalDuties: 28,
+      solverStatus: 'OPTIMAL',
+      status: 'draft',
+      assignments: const [
+        ScheduleAssignment(
+          date: '2026-11-01',
+          dayName: 'Sunday',
+          doctorName: 'Dr. Gregory House',
+          doctorEmail: 'house@hospital.org',
+          position: 'ER',
+          shift: 'Night',
+        ),
+      ],
+      unavailabilities: const {},
+      createdAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
+      updatedAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
+    );
+  }
+}
 
 void main() {
   const testAdmin = User(
@@ -19,13 +93,27 @@ void main() {
     departmentId: 'dept-er',
   );
 
-  Widget createWidgetUnderTest({User? user = testAdmin}) {
+  Widget createWidgetUnderTest({
+    User? user = testAdmin,
+    ScheduleDraftRepository? repository,
+    Future<String?> Function({
+      required String fileName,
+      required List<int> bytes,
+    })? onSaveFile,
+  }) {
     return ProviderScope(
       overrides: [
         currentUserProvider.overrideWithValue(user),
+        scheduleDraftRepositoryProvider.overrideWithValue(
+          repository ?? FakeAdminScheduleDraftRepository(),
+        ),
       ],
-      child: const MaterialApp(
-        home: AdminScreen(),
+      child: MaterialApp(
+        home: AdminScreen(
+          onSaveFile: onSaveFile ??
+              ({required fileName, required bytes}) async =>
+                  '/downloads/$fileName',
+        ),
       ),
     );
   }
@@ -144,6 +232,65 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ExcelUploadDialog), findsNothing);
+    });
+
+    testWidgets('automatically loads active draft on startup for admin department and renders draft canvas', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      fakeRepo.draftToReturn = FakeAdminScheduleDraftRepository._createSampleDraft();
+
+      await tester.pumpWidget(createWidgetUnderTest(repository: fakeRepo));
+      await tester.pumpAndSettle();
+
+      expect(fakeRepo.getActiveDraftCallCount, equals(1));
+      expect(find.text('OPTIMAL'), findsOneWidget);
+      expect(find.text('Dr. Gregory House'), findsOneWidget);
+      expect(find.text('Awaiting Generation'), findsNothing);
+    });
+
+    testWidgets('when no active draft exists on startup, canvas remains in awaiting generation state', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      fakeRepo.draftToReturn = null;
+
+      await tester.pumpWidget(createWidgetUnderTest(repository: fakeRepo));
+      await tester.pumpAndSettle();
+
+      expect(fakeRepo.getActiveDraftCallCount, equals(1));
+      expect(find.text('Awaiting Generation'), findsOneWidget);
+      expect(find.text('OPTIMAL'), findsNothing);
+    });
+
+    testWidgets('tapping Export to Excel on canvas invokes export draft', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      fakeRepo.draftToReturn = FakeAdminScheduleDraftRepository._createSampleDraft();
+
+      await tester.pumpWidget(createWidgetUnderTest(repository: fakeRepo));
+      await tester.pumpAndSettle();
+
+      final exportButtonFinder = find.widgetWithText(OutlinedButton, 'Export to Excel');
+      expect(exportButtonFinder, findsOneWidget);
+
+      await tester.ensureVisible(exportButtonFinder);
+      await tester.pumpAndSettle();
+
+      await tester.tap(exportButtonFinder);
+      await tester.pumpAndSettle();
+
+      expect(fakeRepo.exportExcelCallCount, equals(1));
+      expect(find.text('Schedule exported successfully'), findsOneWidget);
+    });
+
+    testWidgets('when active draft fetch fails with an error on startup, an error SnackBar is displayed', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      fakeRepo.errorToThrow = const ApiException(
+        type: ApiErrorType.server,
+        message: 'Internal server error occurred',
+        statusCode: 500,
+      );
+
+      await tester.pumpWidget(createWidgetUnderTest(repository: fakeRepo));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Internal server error occurred'), findsOneWidget);
     });
   });
 }

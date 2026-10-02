@@ -1,0 +1,77 @@
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:frontend/features/admin/data/datasources/schedule_draft_remote_data_source.dart';
+import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+
+final scheduleDraftRepositoryProvider = Provider<ScheduleDraftRepository>((
+  ref,
+) {
+  final remoteDataSource = ref.watch(scheduleDraftRemoteDataSourceProvider);
+  return ScheduleDraftRepositoryImpl(remoteDataSource: remoteDataSource);
+});
+
+abstract class ScheduleDraftRepository {
+  Future<ScheduleDraft> generateFromExcel({
+    required PlatformFile file,
+    required String targetMonth,
+    String? departmentId,
+  });
+
+  Future<ScheduleDraft?> getActiveDraft({
+    required String targetMonth,
+    String? departmentId,
+  });
+
+  Future<List<int>> exportExcel({
+    required String targetMonth,
+    String? departmentId,
+  });
+
+  Future<void> generateFromRoster({required String month});
+}
+
+class ScheduleDraftRepositoryImpl implements ScheduleDraftRepository {
+  ScheduleDraftRepositoryImpl({required this.remoteDataSource});
+
+  final ScheduleDraftRemoteDataSource remoteDataSource;
+
+  @override
+  Future<ScheduleDraft> generateFromExcel({
+    required PlatformFile file,
+    required String targetMonth,
+    String? departmentId,
+  }) async {
+    return await remoteDataSource.generateFromExcel(
+      file: file,
+      targetMonth: targetMonth,
+      departmentId: departmentId,
+    );
+  }
+
+  @override
+  Future<ScheduleDraft?> getActiveDraft({
+    required String targetMonth,
+    String? departmentId,
+  }) async {
+    return await remoteDataSource.getActiveDraft(
+      targetMonth: targetMonth,
+      departmentId: departmentId,
+    );
+  }
+
+  @override
+  Future<List<int>> exportExcel({
+    required String targetMonth,
+    String? departmentId,
+  }) async {
+    return await remoteDataSource.exportExcel(
+      targetMonth: targetMonth,
+      departmentId: departmentId,
+    );
+  }
+
+  @override
+  Future<void> generateFromRoster({required String month}) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+}
