@@ -44,12 +44,14 @@ class FakeAdminScheduleDraftRepository implements ScheduleDraftRepository {
     return draftToReturn;
   }
 
+  String? capturedDraftId;
+
   @override
   Future<List<int>> exportExcel({
-    required String targetMonth,
-    String? departmentId,
+    required String draftId,
   }) async {
     exportExcelCallCount++;
+    capturedDraftId = draftId;
     return exportBytesToReturn;
   }
 
@@ -276,6 +278,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fakeRepo.exportExcelCallCount, equals(1));
+      expect(fakeRepo.capturedDraftId, equals('draft-101'));
       expect(find.text('Schedule exported successfully'), findsOneWidget);
     });
 

@@ -77,14 +77,14 @@ class FakeScheduleDraftRepository implements ScheduleDraftRepository {
     return scheduleDraftToReturn;
   }
 
+  String? capturedDraftId;
+
   @override
   Future<List<int>> exportExcel({
-    required String targetMonth,
-    String? departmentId,
+    required String draftId,
   }) async {
     exportExcelCallCount++;
-    capturedTargetMonth = targetMonth;
-    capturedDepartmentId = departmentId;
+    capturedDraftId = draftId;
     if (exceptionToThrow != null) throw exceptionToThrow!;
     return exportBytesToReturn;
   }
@@ -255,6 +255,7 @@ void main() {
       final controller = container.read(scheduleGenerationControllerProvider.notifier);
 
       final bytesFuture = controller.exportCurrentDraft(
+        draftId: 'draft-1',
         targetMonth: '2026-11',
         departmentId: 'dept-1',
       );
@@ -265,8 +266,7 @@ void main() {
 
       expect(bytes, equals([1, 2, 3]));
       expect(fakeRepository.exportExcelCallCount, equals(1));
-      expect(fakeRepository.capturedTargetMonth, equals('2026-11'));
-      expect(fakeRepository.capturedDepartmentId, equals('dept-1'));
+      expect(fakeRepository.capturedDraftId, equals('draft-1'));
       expect(container.read(scheduleGenerationControllerProvider).isExporting, isFalse);
     });
 
@@ -275,6 +275,7 @@ void main() {
       final controller = container.read(scheduleGenerationControllerProvider.notifier);
 
       final bytes = await controller.exportCurrentDraft(
+        draftId: 'draft-1',
         targetMonth: '2026-11',
       );
 

@@ -23,8 +23,7 @@ abstract class ScheduleDraftRepository {
   });
 
   Future<List<int>> exportExcel({
-    required String targetMonth,
-    String? departmentId,
+    required String draftId,
   });
 
   Future<void> generateFromRoster({required String month});
@@ -61,12 +60,10 @@ class ScheduleDraftRepositoryImpl implements ScheduleDraftRepository {
 
   @override
   Future<List<int>> exportExcel({
-    required String targetMonth,
-    String? departmentId,
+    required String draftId,
   }) async {
     return await remoteDataSource.exportExcel(
-      targetMonth: targetMonth,
-      departmentId: departmentId,
+      draftId: draftId,
     );
   }
 

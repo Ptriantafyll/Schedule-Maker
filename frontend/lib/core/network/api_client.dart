@@ -33,12 +33,17 @@ class ApiClient {
     String path, {
     Map<String, dynamic>? queryParameters,
     bool requiresAuth = true,
+    ResponseType? responseType,
   }) {
     return _send(() async {
+      final options = await _requestOptions(requiresAuth: requiresAuth);
+      if (responseType != null) {
+        options.responseType = responseType;
+      }
       return _dio.get<T>(
         path,
         queryParameters: queryParameters,
-        options: await _requestOptions(requiresAuth: requiresAuth),
+        options: options,
       );
     }, requiresAuth: requiresAuth);
   }

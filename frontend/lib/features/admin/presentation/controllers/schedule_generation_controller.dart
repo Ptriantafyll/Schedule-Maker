@@ -92,9 +92,19 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
   }
 
   Future<List<int>?> exportCurrentDraft({
+    String? draftId,
     required String targetMonth,
     String? departmentId,
   }) async {
+    final effectiveDraftId = draftId ?? state.draft?.id;
+    if (effectiveDraftId == null) {
+      state = state.copyWith(
+        status: GenerationStatus.error,
+        errorMessage: 'No active schedule draft to export.',
+      );
+      return null;
+    }
+
     state = state.copyWith(
       isExporting: true,
       clearError: true,
@@ -103,8 +113,7 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
     try {
       final repository = ref.read(scheduleDraftRepositoryProvider);
       return await repository.exportExcel(
-        targetMonth: targetMonth,
-        departmentId: departmentId,
+        draftId: effectiveDraftId,
       );
     } catch (e) {
       state = state.copyWith(

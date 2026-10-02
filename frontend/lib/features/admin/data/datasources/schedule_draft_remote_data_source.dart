@@ -67,17 +67,16 @@ class ScheduleDraftRemoteDataSource {
   }
 
   Future<List<int>> exportExcel({
-    required String targetMonth,
-    String? departmentId,
+    required String draftId,
   }) async {
     final queryParams = <String, dynamic>{
-      'target_month': targetMonth,
-      'department_id': ?departmentId,
+      'draft_id': draftId,
     };
 
     final response = await _apiClient.get<List<int>>(
       '/api/v1/schedules/export-excel',
       queryParameters: queryParams,
+      responseType: ResponseType.bytes,
     );
 
     return response.data ?? const <int>[];

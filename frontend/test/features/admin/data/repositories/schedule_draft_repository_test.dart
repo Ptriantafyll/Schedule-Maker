@@ -72,13 +72,13 @@ class FakeScheduleDraftRemoteDataSource implements ScheduleDraftRemoteDataSource
     return draftToReturn;
   }
 
+  String? capturedDraftId;
+
   @override
   Future<List<int>> exportExcel({
-    required String targetMonth,
-    String? departmentId,
+    required String draftId,
   }) async {
-    capturedTargetMonth = targetMonth;
-    capturedDepartmentId = departmentId;
+    capturedDraftId = draftId;
 
     if (exceptionToThrow != null) throw exceptionToThrow!;
     return bytesToReturn ?? const <int>[];
@@ -169,16 +169,14 @@ void main() {
   });
 
   group('ScheduleDraftRepositoryImpl.exportExcel', () {
-    test('delegates to remoteDataSource and passes departmentId', () async {
+    test('delegates to remoteDataSource and passes draftId', () async {
       fakeRemoteDataSource.bytesToReturn = [1, 2, 3];
 
       final result = await repository.exportExcel(
-        targetMonth: '2026-11',
-        departmentId: 'dept-1',
+        draftId: 'draft-1',
       );
 
-      expect(fakeRemoteDataSource.capturedTargetMonth, equals('2026-11'));
-      expect(fakeRemoteDataSource.capturedDepartmentId, equals('dept-1'));
+      expect(fakeRemoteDataSource.capturedDraftId, equals('draft-1'));
       expect(result, equals([1, 2, 3]));
     });
   });

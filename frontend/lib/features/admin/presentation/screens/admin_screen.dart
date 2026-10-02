@@ -105,10 +105,12 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
   Future<void> _handleExportPressed() async {
     final user = ref.read(currentUserProvider);
-    const targetMonth = '2026-11';
+    final genState = ref.read(scheduleGenerationControllerProvider);
+    final targetMonth = genState.draft?.targetMonth ?? '2026-11';
     final bytes = await ref
         .read(scheduleGenerationControllerProvider.notifier)
         .exportCurrentDraft(
+          draftId: genState.draft?.id,
           targetMonth: targetMonth,
           departmentId: user?.departmentId,
         );

@@ -72,15 +72,19 @@ class FakeApiClient implements ApiClient {
     return responseToReturn as Response<T>;
   }
 
+  ResponseType? capturedResponseType;
+
   @override
   Future<Response<T>> get<T>(
     String path, {
     Map<String, dynamic>? queryParameters,
     bool requiresAuth = true,
+    ResponseType? responseType,
   }) async {
     capturedPath = path;
     capturedQueryParams = queryParameters;
     capturedRequiresAuth = requiresAuth;
+    capturedResponseType = responseType;
 
     if (exceptionToThrow != null) {
       throw exceptionToThrow!;
@@ -233,12 +237,12 @@ void main() {
       );
 
       final result = await dataSource.exportExcel(
-        targetMonth: '2026-11',
-        departmentId: 'dept-uuid-1',
+        draftId: 'draft-uuid-1',
       );
 
       expect(fakeApiClient.capturedPath, equals('/api/v1/schedules/export-excel'));
-      expect(fakeApiClient.capturedQueryParams?['target_month'], equals('2026-11'));
+      expect(fakeApiClient.capturedQueryParams?['draft_id'], equals('draft-uuid-1'));
+      expect(fakeApiClient.capturedResponseType, equals(ResponseType.bytes));
       expect(result, equals(sampleBytes));
     });
   });
