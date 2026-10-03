@@ -48,6 +48,6 @@ class ScheduleConfig(SyncBase, table=True):
     w_full_wkend_off_bonus: int = 5
     w_balance_full_wkends_off: int = 20
     w_diff_wkend_duty_day: int = 2
-    solver_time_limit: int = 120
+    solver_time_limit: int = 300
     max_duties_per_month: int = 8
     month_blocks: int = 3

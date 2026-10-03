@@ -189,8 +189,8 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
               onGeneratePressed: _handleGeneratePressed,
               isGenerating: genState.isSolving,
             ),
-            const SizedBox(height: 10),
-            const AdminMetricCards(),
+            // const SizedBox(height: 10),
+            // const AdminMetricCards(),
             const SizedBox(height: 10),
             DraftPreviewCanvas(
               isGenerated: genState.isGenerated,

@@ -21,7 +21,7 @@ class ScheduleConfig:  # pylint: disable=too-many-instance-attributes
     w_diff_wkend_duty_day: int = 2
 
     # Solver settings
-    solver_time_limit: int = 120
+    solver_time_limit: int = 300
     max_duties_per_month: int = 8
 
     # Schedule variables
