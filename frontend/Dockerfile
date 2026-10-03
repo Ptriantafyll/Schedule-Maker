@@ -28,11 +28,8 @@ RUN flutter pub get
 # Step 2: Copy remaining source code
 COPY . .
 
-# Build argument for the API Gateway base URL
-ARG API_BASE_URL=http://localhost:3000
-
-# Step 3: Build the web application in release mode
-RUN flutter build web --release --dart-define=API_BASE_URL=${API_BASE_URL}
+# Step 3: Build the web application in release mode (dynamic origin detection)
+RUN flutter build web --release
 
 # ==========================================
 # Stage 2: Production Nginx Runtime
