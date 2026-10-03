@@ -41,6 +41,7 @@ class FakeApiClient implements ApiClient {
     String path, {
     Map<String, dynamic>? queryParameters,
     bool requiresAuth = true,
+    ResponseType? responseType,
   }) async {
     capturedPath = path;
     capturedRequiresAuth = requiresAuth;
