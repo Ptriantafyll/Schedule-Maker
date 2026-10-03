@@ -1,0 +1,21 @@
+# Version control & documentation
+.git/
+.gitignore
+.agents/
+.gemini/
+.claude/
+docs/
+
+# Flutter & Dart build caches (prevents host artifacts from polluting container)
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+
+# IDE & OS files
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db

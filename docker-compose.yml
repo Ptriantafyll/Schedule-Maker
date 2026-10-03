@@ -1,0 +1,56 @@
+services:
+  # -------------------------------------------------------------
+  # Backend API & Constraint Solver Engine
+  # -------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: schedule_maker_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "sqlite:////app/data/hospital_schedule.db"
+      CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000"
+    volumes:
+      - ./backend/data:/app/data
+    expose:
+      - "8000"
+    networks:
+      - schedule-net
+
+  # -------------------------------------------------------------
+  # Frontend Web Application (Flutter SPA)
+  # -------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        API_BASE_URL: "http://localhost:3000"
+    container_name: schedule_maker_frontend
+    restart: unless-stopped
+    expose:
+      - "80"
+    networks:
+      - schedule-net
+
+  # -------------------------------------------------------------
+  # API Gateway & Reverse Proxy (Sole Public Ingress)
+  # -------------------------------------------------------------
+  gateway:
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile
+    container_name: schedule_maker_gateway
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - schedule-net
+
+networks:
+  schedule-net:
+    driver: bridge
