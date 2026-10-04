@@ -504,6 +504,8 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
                 self.department.config.solver_time_limit
             )
 
+        self.solver.parameters.num_search_workers = 8
+
         status = self.solver.solve(self.model)
 
         print(f"Solver status: {status}")
