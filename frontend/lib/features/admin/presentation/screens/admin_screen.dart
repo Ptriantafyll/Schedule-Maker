@@ -18,7 +18,8 @@ class AdminScreen extends ConsumerStatefulWidget {
   final Future<String?> Function({
     required String fileName,
     required List<int> bytes,
-  })? onSaveFile;
+  })?
+  onSaveFile;
 
   @override
   ConsumerState<AdminScreen> createState() => _AdminScreenState();
@@ -37,10 +38,12 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
   void _loadActiveDraft() {
     final user = ref.read(currentUserProvider);
-    ref.read(scheduleGenerationControllerProvider.notifier).loadActiveDraft(
-      targetMonth: '2026-11',
-      departmentId: user?.departmentId,
-    );
+    ref
+        .read(scheduleGenerationControllerProvider.notifier)
+        .loadActiveDraft(
+          targetMonth: '2026-11',
+          departmentId: user?.departmentId,
+        );
   }
 
   Future<void> _handleGeneratePressed() async {
@@ -119,10 +122,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
     final fileName = 'schedule_$targetMonth.xlsx';
     final savedPath = widget.onSaveFile != null
-        ? await widget.onSaveFile!(
-            fileName: fileName,
-            bytes: bytes,
-          )
+        ? await widget.onSaveFile!(fileName: fileName, bytes: bytes)
         : await FilePicker.saveFile(
             dialogTitle: 'Save Schedule',
             fileName: fileName,
@@ -142,21 +142,21 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
   @override
   Widget build(BuildContext context) {
-    ref.listen<ScheduleGenerationState>(
-      scheduleGenerationControllerProvider,
-      (previous, next) {
-        if (next.status == GenerationStatus.error &&
-            next.errorMessage != null &&
-            next.errorMessage != previous?.errorMessage) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(next.errorMessage!),
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-          );
-        }
-      },
-    );
+    ref.listen<ScheduleGenerationState>(scheduleGenerationControllerProvider, (
+      previous,
+      next,
+    ) {
+      if (next.status == GenerationStatus.error &&
+          next.errorMessage != null &&
+          next.errorMessage != previous?.errorMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next.errorMessage!),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    });
 
     final genState = ref.watch(scheduleGenerationControllerProvider);
 
@@ -184,19 +184,28 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            AdminHeroCard(
-              targetMonth: 'November',
-              onGeneratePressed: _handleGeneratePressed,
-              isGenerating: genState.isSolving,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: AdminHeroCard(
+                targetMonth: 'November',
+                onGeneratePressed: _handleGeneratePressed,
+                isGenerating: genState.isSolving,
+              ),
             ),
-            // const SizedBox(height: 10),
-            // const AdminMetricCards(),
             const SizedBox(height: 10),
-            DraftPreviewCanvas(
-              isGenerated: genState.isGenerated,
-              draft: genState.draft,
-              isExporting: genState.isExporting,
-              onExportPressed: _handleExportPressed,
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 20),
+              child: AdminMetricCards(),
+            ),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: DraftPreviewCanvas(
+                isGenerated: genState.isGenerated,
+                draft: genState.draft,
+                isExporting: genState.isExporting,
+                onExportPressed: _handleExportPressed,
+              ),
             ),
           ],
         ),

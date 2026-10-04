@@ -262,12 +262,42 @@ def _parse_unavailability(
     return result
 
 
+def _resolve_shift_for_pre_assignment(
+    shift_name: str,
+    positions: list[Position],
+    has_explicit_shifts: bool,
+) -> Shift:
+    """Finds a matching shift across the doctor's positions or creates one in fallback mode."""
+    for pos in positions:
+        match = next(
+            (s for s in pos.shifts if s.name.lower() == shift_name.lower()),
+            None
+        )
+        if match is not None:
+            return match
+
+    if has_explicit_shifts:
+        pos_names = ", ".join(f"'{p.name}'" for p in positions)
+        raise ValueError(
+            f"Shift '{shift_name}' not defined for position(s) {pos_names} in Shifts sheet."
+        )
+
+    primary_pos = positions[0]
+    if len(primary_pos.shifts) == 1 and primary_pos.shifts[0].name == "Duty":
+        primary_pos.shifts[0].name = shift_name
+        return primary_pos.shifts[0]
+
+    new_shift = Shift(name=shift_name, doctors_per_shift=1, grants_day_off=True)
+    primary_pos.shifts.append(new_shift)
+    return new_shift
+
+
 def _parse_pre_assignments(
     raw_val: str | None,
     year: int,
     month: int,
     days_in_month: int,
-    position: Position,
+    positions: list[Position],
     has_explicit_shifts: bool,
 ) -> list[tuple[datetime.date, Shift]]:
     """
@@ -275,14 +305,14 @@ def _parse_pre_assignments(
 
     Accepts comma-separated "Day:ShiftName" pairs (e.g., "5:Night, 12:Morning").
     Resolves the day number to a concrete date in the target month and matches
-    the shift against the doctor's position.
+    the shift against any of the doctor's positions.
 
     Args:
         raw_val: The raw cell string from Excel (e.g., "5:Night", or None/empty).
         year: The target schedule year (e.g., 2026).
         month: The target schedule month (1-12).
         days_in_month: Total number of days in the target month.
-        position: The doctor's Position domain model containing available shifts.
+        positions: The doctor's Position domain models containing available shifts.
         has_explicit_shifts: True if the workbook included an explicit 'Shifts' sheet.
 
     Returns:
@@ -321,35 +351,16 @@ def _parse_pre_assignments(
 
         date = datetime.date(year, month, day)
 
-        matching_shift = next(
-            (s for s in position.shifts if s.name.lower() == shift_name.lower()),
-            None
+        matching_shift = _resolve_shift_for_pre_assignment(
+            shift_name=shift_name,
+            positions=positions,
+            has_explicit_shifts=has_explicit_shifts,
         )
-
-        if matching_shift is None:
-            if has_explicit_shifts:
-                # Strict validation: admin gave a Shifts sheet, but this shift isn't in it!
-                raise ValueError(
-                    f"Shift '{shift_name}' not defined for position '{position.name}' in Shifts sheet."
-                )
-            else:
-                # Flexible fallback mode: only Doctors sheet was uploaded
-                # If the position has our default single "Duty" shift, rename it to what the user typed:
-                if len(position.shifts) == 1 and position.shifts[0].name == "Duty":
-                    position.shifts[0].name = shift_name
-                    matching_shift = position.shifts[0]
-                else:
-                    # Otherwise create a new Shift and register it in position.shifts
-                    matching_shift = Shift(
-                        name=shift_name,
-                        doctors_per_shift=1,
-                        grants_day_off=True,
-                    )
-                    position.shifts.append(matching_shift)
 
         pre_assignments.append((date, matching_shift))
 
     return pre_assignments
+
 
 
 def parse_excel_schedule_workbook(
@@ -399,11 +410,13 @@ def parse_excel_schedule_workbook(
         )
 
     # 6. Build Positions (Shifts sheet vs fallback)
-    unique_positions = {
-        str(r.get("Position")).strip()
-        for r in doctor_rows
-        if r.get("Position")
-    }
+    unique_positions: set[str] = set()
+    for r in doctor_rows:
+        pos_raw = str(r.get("Position") or "").strip()
+        for p in pos_raw.split(","):
+            p_clean = p.strip()
+            if p_clean:
+                unique_positions.add(p_clean)
 
     if "Shifts" in wb.sheetnames:
         positions_by_name = _parse_shifts_sheet(wb["Shifts"], unique_positions)
@@ -416,8 +429,9 @@ def parse_excel_schedule_workbook(
     all_doctors: list[Doctor] = []
 
     for r in doctor_rows:
-        pos_name = str(r.get("Position")).strip()
-        position = positions_by_name[pos_name]
+        pos_raw = str(r.get("Position") or "").strip()
+        doc_position_names = [p.strip() for p in pos_raw.split(",") if p.strip()]
+        doc_positions = [positions_by_name[p] for p in doc_position_names]
 
         unavailability = _parse_unavailability(
             r.get("Unavailability"),
@@ -431,7 +445,7 @@ def parse_excel_schedule_workbook(
             year,
             month,
             days_in_month,
-            position=position,
+            positions=doc_positions,
             has_explicit_shifts=has_explicit_shifts,
         )
 
@@ -442,7 +456,8 @@ def parse_excel_schedule_workbook(
             pre_assignments=pre_assignments,
         )
 
-        position.eligible_doctors.append(doc)
+        for pos in doc_positions:
+            pos.eligible_doctors.append(doc)
         all_doctors.append(doc)
         # 2. Group into teams
         team_name = f"Team {department_name}" if none_have_teams else str(

@@ -401,3 +401,144 @@ def test_shifts_sheet_invalid_doctors_per_shift_raises_error():
             department_name="Emergency",
             target_month="2026-11",
         )
+
+
+def test_parse_doctor_with_multiple_positions_default_shifts():
+    """Verify that a doctor with comma-separated positions is added to both positions."""
+    doctor_rows = [
+        {
+            "Name": "Dr. Gregory House",
+            "Email": "house@hospital.org",
+            "Position": "ER, ICU",
+        },
+        {
+            "Name": "Dr. James Wilson",
+            "Email": "wilson@hospital.org",
+            "Position": "ER",
+        },
+    ]
+
+    file_bytes = _create_workbook_bytes({"Doctors": doctor_rows})
+
+    dept = parse_excel_schedule_workbook(
+        file_bytes=file_bytes,
+        department_name="Medicine",
+        target_month="2026-11",
+    )
+
+    pos_dict = {p.name: p for p in dept.positions}
+    assert "ER" in pos_dict
+    assert "ICU" in pos_dict
+
+    # Check eligible doctors for ER
+    er_names = [d.name for d in pos_dict["ER"].eligible_doctors]
+    assert "Dr. Gregory House" in er_names
+    assert "Dr. James Wilson" in er_names
+
+    # Check eligible doctors for ICU
+    icu_names = [d.name for d in pos_dict["ICU"].eligible_doctors]
+    assert "Dr. Gregory House" in icu_names
+    assert "Dr. James Wilson" not in icu_names
+
+    # Verify it is the exact same Doctor object reference
+    house_er = next(d for d in pos_dict["ER"].eligible_doctors if d.name == "Dr. Gregory House")
+    house_icu = next(d for d in pos_dict["ICU"].eligible_doctors if d.name == "Dr. Gregory House")
+    assert house_er is house_icu
+
+
+def test_parse_doctor_with_multiple_positions_explicit_shifts_sheet():
+    """Verify that multiple positions work when a Shifts sheet explicitly defines them."""
+    doctor_rows = [
+        {
+            "Name": "Dr. Gregory House",
+            "Email": "house@hospital.org",
+            "Position": "ER, ICU",
+        },
+    ]
+    shift_rows = [
+        {
+            "Position": "ER",
+            "Shift Name": "Day",
+            "Doctors Per Shift": 1,
+            "Duty Days": "Mon-Sun",
+            "Grants Day Off": "No",
+        },
+        {
+            "Position": "ICU",
+            "Shift Name": "Night",
+            "Doctors Per Shift": 1,
+            "Duty Days": "Mon-Sun",
+            "Grants Day Off": "Yes",
+        },
+    ]
+
+    file_bytes = _create_workbook_bytes({
+        "Doctors": doctor_rows,
+        "Shifts": shift_rows,
+    })
+
+    dept = parse_excel_schedule_workbook(
+        file_bytes=file_bytes,
+        department_name="Medicine",
+        target_month="2026-11",
+    )
+
+    pos_dict = {p.name: p for p in dept.positions}
+    assert "ER" in pos_dict
+    assert "ICU" in pos_dict
+    assert len(pos_dict["ER"].shifts) == 1
+    assert pos_dict["ER"].shifts[0].name == "Day"
+    assert len(pos_dict["ICU"].shifts) == 1
+    assert pos_dict["ICU"].shifts[0].name == "Night"
+
+    assert pos_dict["ER"].eligible_doctors[0].name == "Dr. Gregory House"
+    assert pos_dict["ICU"].eligible_doctors[0].name == "Dr. Gregory House"
+    assert pos_dict["ER"].eligible_doctors[0] is pos_dict["ICU"].eligible_doctors[0]
+
+
+def test_parse_doctor_multiple_positions_pre_assignments_cross_position():
+    """Verify that pre-assignments can reference shifts across any of the doctor's eligible positions."""
+    doctor_rows = [
+        {
+            "Name": "Dr. Gregory House",
+            "Email": "house@hospital.org",
+            "Position": "ER, ICU",
+            "Pre-Assignments": "5:Day, 10:Night",
+        },
+    ]
+    shift_rows = [
+        {
+            "Position": "ER",
+            "Shift Name": "Day",
+            "Doctors Per Shift": 1,
+            "Duty Days": "Mon-Sun",
+            "Grants Day Off": "No",
+        },
+        {
+            "Position": "ICU",
+            "Shift Name": "Night",
+            "Doctors Per Shift": 1,
+            "Duty Days": "Mon-Sun",
+            "Grants Day Off": "Yes",
+        },
+    ]
+
+    file_bytes = _create_workbook_bytes({
+        "Doctors": doctor_rows,
+        "Shifts": shift_rows,
+    })
+
+    dept = parse_excel_schedule_workbook(
+        file_bytes=file_bytes,
+        department_name="Medicine",
+        target_month="2026-11",
+    )
+
+    house = dept.positions[0].eligible_doctors[0]
+    assert len(house.pre_assignments) == 2
+
+    day_assignment = next(pa for pa in house.pre_assignments if pa[0] == datetime.date(2026, 11, 5))
+    night_assignment = next(pa for pa in house.pre_assignments if pa[0] == datetime.date(2026, 11, 10))
+
+    assert day_assignment[1].name == "Day"
+    assert night_assignment[1].name == "Night"
