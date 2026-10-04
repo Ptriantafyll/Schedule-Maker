@@ -17,6 +17,7 @@ dependencies = [
     "pyjwt>=2.8.0",
     "python-multipart>=0.0.32",
     "sqlmodel>=0.0.38",
+    "uuid6>=2025.0.1",
     "uvicorn>=0.49.0",
 ]
 

@@ -11,6 +11,7 @@ fully wired up.
 import uuid
 import datetime
 from sqlmodel import SQLModel, Field 
+from uuid6 import uuid7
 
 
 class SyncBase(SQLModel):
@@ -22,7 +23,7 @@ class SyncBase(SQLModel):
     - Soft delete support (is_deleted flag instead of physical row deletion)
     - Sync status tracking (sync_status flag to know what needs to be pushed)
     """
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    id: uuid.UUID = Field(default_factory=uuid7, primary_key=True)
     created_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(datetime.timezone.utc)
     )

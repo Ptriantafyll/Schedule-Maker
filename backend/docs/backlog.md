@@ -239,7 +239,145 @@ Maintaining both files introduces behavioral drift and confusion regarding which
 - Only one CP-SAT model building implementation exists in the codebase.
 - Any CLI workflows run against `ShiftScheduler`.
 
+### BL-011: Configurable Department Schedule Constraint Weights & Solver Settings
+
+**Area:** Solver Engine / Department Preferences / UI  
+**Priority:** Medium
+
+#### Problem
+
+Currently, the solver uses default penalty weights and limits from `ScheduleConfig` (`max_duties_per_month: 8`, `solver_time_limit: 120s`, `w_every_other_penalty: 4`, `w_balance_full_wkends_off: 20`, etc.). Different clinical departments have different operational priorities (e.g., intensive care may strictly penalize short gaps between shifts, while pediatrics may prioritize balanced weekends off). Department administrators need the ability to customize these weights.
+
+#### Required work
+
+1. **Spreadsheet Support**: Support an optional 3rd sheet (`Settings` or `Config`) in the `.xlsx` workbook parsing key-value pairs into `ScheduleConfig`.
+2. **Database Persistence**: Add a `schedule_config: Optional[dict]` JSON column on `DepartmentModel` to store persistent department scheduling preferences.
+3. **API Overrides**: Support an optional `config_override` payload on `POST /api/v1/schedule/generate-from-excel`.
+4. **Frontend UI**: Provide an "Advanced Settings" modal in Flutter with weight sliders allowing administrators to tune penalty weights before triggering generation.
+
+#### Completion criteria
+
+- Admins can customize constraint weights via Excel, API, or UI.
+- The solver optimizes according to the custom weights.
+- When omitted, all flows gracefully fall back to the default `ScheduleConfig()`.
+
+### BL-012: Comprehensive Codebase Docstring Audit & Standardization (PEP 257 / Google Style)
+
+**Area:** Code Quality & Documentation  
+**Priority:** Low
+
+#### Problem
+
+Docstring coverage and formatting vary across different development phases in the codebase. Older modules have brief single-line summaries without parameter specifications, while newer modules follow comprehensive Google-style / PEP 257 format with explicit `Args`, `Returns`, and `Raises` sections. Standardizing all docstrings will improve developer onboarding, IDE auto-complete/hover documentation, and future automated API reference generation.
+
+#### Required work
+
+1. Audit all backend packages: `src/auth`, `src/department`, `src/doctor`, `src/schedule`, `src/shift`, `src/team`, `src/user`, `src/utils`, and `src/scheduler.py`.
+2. Standardize all public functions, classes, and methods to Google-style docstrings.
+3. Ensure all raised exceptions (e.g. `ValueError`, `HTTPException`) are explicitly documented in a `Raises:` section.
+4. Optionally enable docstring linting rules (`ruff` rule group `D` or `pydocstyle`) in development tooling.
+
+#### Completion criteria
+
+- 100% of public functions, methods, and classes possess standardized Google-style docstrings.
+- Docstring linter reports 0 errors across the codebase.
+
+### BL-013: Codebase Complexity & Nesting Audit (DRY & Max 3 Levels of Indentation)
+
+**Area:** Code Architecture & Maintainability  
+**Priority:** Medium
+
+#### Problem
+
+Deeply nested code (such as nested loops with inner `if/else` ladders and `try/except` blocks) increases cognitive complexity, makes unit testing difficult, and increases the likelihood of scoping bugs. Additionally, repeated logic across controllers, services, and utilities violates the DRY (*Don't Repeat Yourself*) principle.
+
+#### Required work
+
+1. **Enforce Maximum 3 Levels of Indentation**:
+   - Audit functions across `src/` (particularly loops in `scheduler.py`, `excel_parser.py`, auth services, and controllers).
+   - Refactor functions exceeding 3 levels of nesting using guard clauses (early returns / `continue`), generator expressions, and focused helper function extractions.
+2. **DRY Review**:
+   - Identify repeated patterns across repositories, controllers, and services (e.g., entity existence checks, tenant isolation filters, and JSON serialization patterns).
+   - Extract duplicated logic into reusable utility functions.
+3. **Automated Enforcement**:
+   - Configure cyclomatic complexity and nesting depth checks in our linter (e.g. `ruff` rule `C901` for cyclomatic complexity and `PLR0912` for branch depth).
+
+#### Completion criteria
+
+- No function in the codebase exceeds 3 levels of nesting/indentation.
+- Duplicated patterns across features are unified into shared helpers.
+- Full test suite passes with zero regressions.
+
+### BL-014: Date-Range Filtering for Department Shift Assignments Query
+
+**Area:** Shift Feature / Performance & Query Optimization  
+**Priority:** Medium
+
+#### Problem
+
+`get_active_shift_assignments_for_department` currently queries all active assignments across all time. As historical data accumulates, fetching an entire department's history to render a single month's calendar will degrade query performance and saturate network bandwidth.
+
+#### Required work
+
+1. Add optional `start_date` and `end_date` parameters to `get_active_shift_assignments_for_department` in `src/shift/repository.py`.
+2. Add corresponding SQL filtering (`ShiftAssignmentModel.date >= start_date`, `ShiftAssignmentModel.date <= end_date`).
+3. Expose optional `start_date` and `end_date` query parameters on `GET /api/v1/shifts/assignments` in `src/shift/routes.py` and `src/shift/controllers.py`.
+4. Add unit and integration tests verifying query filtering within date bounds.
+
+#### Completion criteria
+
+- API efficiently filters assignments within the requested date range (e.g. `2026-11-01` to `2026-11-30`).
+- Query parameters remain optional and backward-compatible.
+
+### BL-015: Idempotent Schedule Publishing with Soft-Delete Cleanup
+
+**Area:** Schedule Feature / Publishing & Data Integrity  
+**Priority:** Medium
+
+#### Problem
+
+When publishing a generated schedule into official `ShiftAssignment` records, regenerating or re-publishing a month would conflict with existing records or violate the unique constraint `uq_shift_assignment_doctor_date` (`doctor_id`, `date`).
+
+#### Required work
+
+1. In the schedule publishing service, atomically soft-delete (`is_deleted = True`) any existing active `ShiftAssignment` records for that department within the target month.
+2. Bulk-insert the newly published assignments within the same database transaction.
+3. Update `ScheduleDraft.status` to `"published"`.
+4. Add automated test coverage verifying idempotent re-publishing.
+
+#### Completion criteria
+
+- An admin can safely re-publish a month without duplicate entries, constraint violations, or orphaned assignments.
+- Previous assignments for that month are cleanly soft-deleted within the same transaction.
+
+### BL-016: PostgreSQL Service & Driver Integration for Docker Compose
+
+**Area:** Database / Infrastructure & Docker Deployment  
+**Priority:** Medium
+
+#### Problem
+
+The initial Docker Compose setup uses SQLite with a mounted volume for simplicity and zero external dependencies. While suitable for desktop, local development, and single-instance deployments, enterprise and cloud deployments require concurrent multi-user write handling and robust clustering, which PostgreSQL provides.
+
+Additionally, `backend/pyproject.toml` does not currently include PostgreSQL drivers (`psycopg2-binary` or `asyncpg`). Attempting to point `DATABASE_URL` to a PostgreSQL instance will result in runtime errors (`ModuleNotFoundError`).
+
+#### Required work
+
+1. Add a PostgreSQL database driver to backend dependencies via `uv add psycopg2-binary`.
+2. Add a `db` service running `postgres:16-alpine` in `docker-compose.yml` with health checks (`pg_isready`).
+3. Configure environment variables (`POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`, `DATABASE_URL=postgresql://user:password@db:5432/schedule_maker`).
+4. Ensure `backend` service in `docker-compose.yml` depends on `db` with `condition: service_healthy`.
+5. Maintain SQLite compatibility as default fallback when `DATABASE_URL` is omitted or points to SQLite.
+6. Add automated integration test verifying connection and table creation against a PostgreSQL instance.
+
+#### Completion criteria
+
+- Backend seamlessly connects to PostgreSQL in Docker without driver errors.
+- Docker Compose can start backend and postgres container with guaranteed ordering and health checks.
+- Standalone local runs still default gracefully to SQLite.
+
 ## Resolved / Closed
+
 
 ### BL-001: Enable SQLite foreign-key enforcement
 

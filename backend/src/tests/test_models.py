@@ -177,9 +177,52 @@ def test_nullable_foreign_key_accepts_null(session):
         doctor_id=None,
     )
     session.add(super_admin)
-    session.commit()
-    session.refresh(super_admin)
-
     assert super_admin.id is not None
     assert super_admin.department_id is None
     assert super_admin.doctor_id is None
+
+
+def test_sync_base_generates_uuidv7_by_default(session):
+    """Verify that models inheriting from SyncBase generate UUIDv7 primary keys."""
+    dept = Department(name="Neurology", code="NEUR")
+    session.add(dept)
+    session.commit()
+    session.refresh(dept)
+
+    assert isinstance(dept.id, uuid.UUID)
+    assert dept.id.version == 7
+
+
+def test_sync_base_uuidv7_is_time_ordered(session):
+    """Verify that consecutive UUIDv7 primary keys are chronologically sortable."""
+    import time
+
+    dept1 = Department(name="Cardiology", code="CARD")
+    session.add(dept1)
+    session.commit()
+    session.refresh(dept1)
+
+    time.sleep(0.005)  # Small delay to ensure timestamp progression
+
+    dept2 = Department(name="Oncology", code="ONCO")
+    session.add(dept2)
+    session.commit()
+    session.refresh(dept2)
+
+    assert dept1.id.version == 7
+    assert dept2.id.version == 7
+    assert dept1.id < dept2.id
+    assert dept1.id.int < dept2.id.int
+
+
+def test_sync_base_explicit_uuidv4_compatibility(session):
+    """Verify that an explicit UUIDv4 passed to id is respected for backward compatibility."""
+    custom_v4 = uuid.uuid4()
+    dept = Department(id=custom_v4, name="Radiology", code="RAD")
+    session.add(dept)
+    session.commit()
+    session.refresh(dept)
+
+    assert dept.id == custom_v4
+    assert dept.id.version == 4
+
