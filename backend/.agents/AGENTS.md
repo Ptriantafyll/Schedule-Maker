@@ -42,4 +42,10 @@ The folder structure is in docs/structure.md
 - Account for platform transport differences and concurrency: Always design networking with dual-transport awareness (Native uses secure hardware storage; Web uses HttpOnly cookies + CSRF). Ensure sensitive asynchronous operations (like token refresh) use single-flight execution (sharing one in-flight Future) to prevent race conditions during concurrent 401 failures
 - Enforce tenant and role boundaries in navigation: Account for role shape differences (e.g. a Super Admin has department_id = null and cannot access departmental rosters or schedules) so routing directs users to their authorized workspace
 - For the presentation layer (UI screens, dialogs, forms, layout widgets), always ask the user for the design first and ask clarifying questions before writing code or proposing UI designs.
+- When naming shared UI components or files in the frontend, do not prefix them with `app_` (e.g., prefer `profile_drawer.dart` and `ProfileDrawer`, `bottom_nav_bar.dart` and `BottomNavBar`).
+- I don't want you to just agree with me; I want you to challenge me if something does not look right.
+- Always ask questions if something is unclear. Do not write if there is any uncertainty.
+- When asked to write code, provide the code directly in the conversation in small, explainable chunks for review rather than writing directly to disk without showing it.
+- Always design database operations for ACID compliance: Service functions represent the Unit of Work. Never commit intermediate state in repository functions during multi-step business transactions. Use flush (or pass commit=False) during intermediate repository writes, staging entities, or soft-deletes, and execute a single atomic commit at the end of the service operation so any failure triggers a clean rollback.
+- In schedule templates and sample datasets, include realistic multi-dimensional complexity: some doctors should have multiple positions (comma-separated, e.g. 'Emergency, ICU') and at least one position should define multiple shifts (e.g. 'Day' and 'Night').
 
