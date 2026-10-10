@@ -28,7 +28,11 @@ def get_active_departments_global(session: Session) -> list[DepartmentModel]:
     ).all())
 
 
-def create_department(session: Session, department_data: DepartmentCreate) -> DepartmentModel:
+def create_department(
+    session: Session,
+    department_data: DepartmentCreate,
+    commit: bool = True
+) -> DepartmentModel:
     """Creates a new department in the database."""
     new_department = DepartmentModel(
         name=department_data.name,
@@ -36,8 +40,11 @@ def create_department(session: Session, department_data: DepartmentCreate) -> De
         backup_department_id=department_data.backup_department_id
     )
     session.add(new_department)
-    session.commit()
-    session.refresh(new_department)
+    if commit:
+        session.commit()
+        session.refresh(new_department)
+    else:
+        session.flush()
     return new_department
 
 
