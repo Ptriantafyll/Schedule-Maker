@@ -376,6 +376,51 @@ Additionally, `backend/pyproject.toml` does not currently include PostgreSQL dri
 - Docker Compose can start backend and postgres container with guaranteed ordering and health checks.
 - Standalone local runs still default gracefully to SQLite.
 
+### BL-017: Evaluate Pre-Existing Doctor Enforcement vs. Auto-Provisioning on Publish
+
+**Area:** Schedule Feature / Onboarding & Data Integrity  
+**Priority:** Low
+
+#### Problem
+
+Currently, publishing an Excel schedule automatically provisions any missing doctors, positions, and shifts into the relational tables to ensure `ShiftAssignment` foreign keys are satisfied. In large hospital networks with formal HR directories, administrators may want strict validation where unknown emails in the Excel sheet are flagged as warnings/errors before publishing to prevent duplicate or typo-ridden doctor records.
+
+#### Required work
+
+1. Evaluate admin preferences for strict vs. relaxed doctor matching during Excel schedule publishing.
+2. If strict mode is selected, add an inspection endpoint returning unmapped doctor emails before publishing.
+3. Allow admin to map unrecognised spreadsheet names to existing registered doctors.
+
+#### Completion criteria
+
+- Clean policy established and documented for handling unrecognized spreadsheet doctors.
+
+### BL-018: Infeasible Schedule Diagnostics & Graceful Admin Feedback
+
+**Area:** Solver Engine & Admin UX / Error Diagnostics  
+**Priority:** Medium
+
+#### Problem
+
+Currently, when the Google OR-Tools CP-SAT solver determines that schedule constraints are mathematically infeasible (e.g., due to insufficient doctors covering required shifts, conflicting fatigue rules, or balanced weekend constraints), the backend throws a generic `ValueError` that triggers an HTTP 400 Bad Request error (`"Unable to generate schedule. Constraints are infeasible (status: INFEASIBLE)"`). In the frontend UI, this simply displays a generic red error SnackBar.
+
+Instead of treating infeasibility as an unhandled crash or hard error, the application should present a structured "Infeasible Schedule" state on the preview canvas, providing detailed diagnostic feedback so the administrator can understand *which* constraints or positions caused the conflict and adjust the roster/shifts accordingly.
+
+#### Required work
+
+1. **Backend Solver Diagnostics**:
+   - Inspect constraint satisfaction and pinpoint bottleneck causes (e.g., total duties required vs. available doctor capacity, weekend duty imbalance across positions, or conflicting pre-assignments/leaves).
+   - Rather than raising an opaque `ValueError`, return a structured response with `solver_status: "INFEASIBLE"`, conflict details, and actionable recommendations.
+2. **Frontend Infeasible State Presentation**:
+   - Update `ScheduleGenerationState` and `DraftPreviewCanvas` to render an informative "Infeasible Schedule" review state instead of a generic error.
+   - Highlight the conflicting positions, days, or doctors (e.g., "Emergency requires 34 shifts across 8 doctors, but max balanced limit is 32. Consider adding 2 more doctors or adjusting duty days").
+   - Provide an action button for the administrator to edit parameters or re-upload an adjusted spreadsheet directly.
+
+#### Completion criteria
+
+- Infeasible schedules return structured diagnostic responses instead of generic HTTP 400 exceptions.
+- Admin dashboard displays clear, actionable feedback explaining why the schedule was infeasible and how to resolve it.
+
 ## Resolved / Closed
 
 
