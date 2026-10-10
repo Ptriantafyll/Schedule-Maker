@@ -28,7 +28,7 @@ class DraftPreviewCanvas extends StatefulWidget {
 }
 
 class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
-  CanvasViewMode _viewMode = CanvasViewMode.table;
+  CanvasViewMode _viewMode = CanvasViewMode.calendar;
   int _selectedDay = 1;
 
   Widget _buildPublishButton({bool isCompact = false}) {
