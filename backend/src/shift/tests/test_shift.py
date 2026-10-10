@@ -578,6 +578,284 @@ def test_soft_deleted_shift_name_remains_reserved_within_position(
     assert shift.is_deleted is True
 
 
+def test_get_latest_shift_assignment_date_for_department_returns_max_date(
+    session,
+    new_doctor,
+    shift,
+    department,
+):
+    """Verifies that the repository returns the latest date among active assignments."""
+    create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 10, 5)
+    )
+    create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 10, 28)
+    )
+    create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 10, 15)
+    )
+
+    latest_date = shift_repository.get_latest_shift_assignment_date_for_department(
+        session=session,
+        department_id=department.id,
+    )
+
+    assert latest_date == datetime.date(2026, 10, 28)
+
+
+def test_get_latest_shift_assignment_date_excludes_deleted_and_foreign_records(
+    session,
+    department,
+    shift,
+    new_doctor,
+    department_b,
+    shift_b,
+    doctor_b,
+):
+    """Verifies that soft-deleted assignments and assignments from another department are excluded."""
+    # Active assignment for department A on Oct 10
+    create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 10, 10)
+    )
+
+    # Soft-deleted assignment for department A with a later date (Nov 15)
+    deleted_assignment = create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 11, 15)
+    )
+    deleted_assignment.is_deleted = True
+    session.add(deleted_assignment)
+    session.commit()
+
+    # Foreign assignment for department B on Dec 1
+    create_new_shift_assignment(
+        session, doctor_b.id, shift_b.id, datetime.date(2026, 12, 1)
+    )
+
+    latest_date = shift_repository.get_latest_shift_assignment_date_for_department(
+        session=session,
+        department_id=department.id,
+    )
+
+    # Should resolve to Oct 10, ignoring the soft-deleted Nov 15 and foreign Dec 1
+    assert latest_date == datetime.date(2026, 10, 10)
+
+
+def test_get_latest_shift_assignment_date_empty_department_returns_none(
+    session,
+    department,
+):
+    """Verifies that None is returned when a department has no shift assignments."""
+    latest_date = shift_repository.get_latest_shift_assignment_date_for_department(
+        session=session,
+        department_id=department.id,
+    )
+    assert latest_date is None
+
+
+def test_soft_delete_shift_assignments_for_department_month(
+    session,
+    department,
+    position,
+    shift,
+    new_doctor,
+    department_b,
+    shift_b,
+    doctor_b,
+):
+    """Verifies that soft-delete scoped to department and month only affects target records."""
+    # 1. Target assignments in Department A for November 2026
+    target_1 = create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 11, 2)
+    )
+    target_2 = create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 11, 25)
+    )
+
+    # 2. Assignment in Department A for a DIFFERENT month (December 2026)
+    other_month = create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 12, 5)
+    )
+
+    # 3. Assignment in Department B for November 2026 (Foreign Department)
+    foreign_dept = create_new_shift_assignment(
+        session, doctor_b.id, shift_b.id, datetime.date(2026, 11, 2)
+    )
+
+    deleted_count = shift_repository.soft_delete_shift_assignments_for_department_month(
+        session=session,
+        department_id=department.id,
+        year=2026,
+        month=11,
+    )
+
+    assert deleted_count == 2
+
+    session.refresh(target_1)
+    session.refresh(target_2)
+    session.refresh(other_month)
+    session.refresh(foreign_dept)
+
+    # Target records must be soft-deleted
+    assert target_1.is_deleted is True
+    assert target_2.is_deleted is True
+
+    # Other month and foreign department records must remain active
+    assert other_month.is_deleted is False
+    assert foreign_dept.is_deleted is False
+
+
+def test_bulk_create_shift_assignments(
+    session,
+    new_doctor,
+    shift,
+):
+    """Verifies that multiple ShiftAssignment rows are created in a single batch."""
+    assignments = [
+        ShiftAssignmentModel(
+            doctor_id=new_doctor.id,
+            shift_id=shift.id,
+            date=datetime.date(2026, 11, 1),
+        ),
+        ShiftAssignmentModel(
+            doctor_id=new_doctor.id,
+            shift_id=shift.id,
+            date=datetime.date(2026, 11, 2),
+        ),
+    ]
+
+    created = shift_repository.bulk_create_shift_assignments(
+        session=session,
+        assignments=assignments,
+    )
+
+    assert len(created) == 2
+    assert all(a.id is not None for a in created)
+    assert all(a.is_deleted is False for a in created)
+
+
+def test_soft_delete_shift_assignments_empty_month_returns_zero(
+    session,
+    department,
+):
+    """Verifies that soft-deleting a month with zero assignments returns 0."""
+    deleted_count = shift_repository.soft_delete_shift_assignments_for_department_month(
+        session=session,
+        department_id=department.id,
+        year=2026,
+        month=11,
+    )
+    assert deleted_count == 0
+
+
+def test_soft_delete_shift_assignments_ignores_already_deleted(
+    session,
+    department,
+    shift,
+    new_doctor,
+):
+    """Verifies that already soft-deleted assignments are not re-processed or counted."""
+    assignment = create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 11, 10)
+    )
+    assignment.is_deleted = True
+    session.add(assignment)
+    session.commit()
+
+    deleted_count = shift_repository.soft_delete_shift_assignments_for_department_month(
+        session=session,
+        department_id=department.id,
+        year=2026,
+        month=11,
+    )
+    assert deleted_count == 0
+
+
+def test_bulk_create_shift_assignments_empty_list(session):
+    """Verifies that passing an empty list to bulk_create returns an empty list without error."""
+    created = shift_repository.bulk_create_shift_assignments(
+        session=session,
+        assignments=[],
+    )
+    assert created == []
+
+
+def test_soft_delete_shift_assignments_commit_false_can_be_rolled_back(
+    session,
+    department,
+    shift,
+    new_doctor,
+):
+    """Verifies that commit=False allows rolling back the soft-delete transaction."""
+    assignment = create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 11, 10)
+    )
+
+    deleted_count = shift_repository.soft_delete_shift_assignments_for_department_month(
+        session=session,
+        department_id=department.id,
+        year=2026,
+        month=11,
+        commit=False,
+    )
+    assert deleted_count == 1
+
+    # Roll back the transaction
+    session.rollback()
+    session.refresh(assignment)
+
+    # Must NOT be deleted because commit=False didn't make it permanent
+    assert assignment.is_deleted is False
+
+
+def test_bulk_create_shift_assignments_commit_false_can_be_rolled_back(
+    session,
+    new_doctor,
+    shift,
+):
+    """Verifies that commit=False allows rolling back bulk-created assignments."""
+    assignment = ShiftAssignmentModel(
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 11, 1),
+    )
+
+    created = shift_repository.bulk_create_shift_assignments(
+        session=session,
+        assignments=[assignment],
+        commit=False,
+    )
+    created_id = created[0].id
+
+    # Roll back the transaction
+    session.rollback()
+
+    assert session.get(ShiftAssignmentModel, created_id) is None
+
+
+def test_stage_shift_flushes_without_committing(session, position):
+    """Verify stage_shift creates a shift queryable in-session that rolls back cleanly."""
+    shift_data = ShiftCreate(
+        name="Staged Shift",
+        doctors_per_shift=2,
+        grants_day_off=True,
+        position_id=position.id,
+    )
+    staged = shift_repository.stage_shift(
+        session=session,
+        shift_data=shift_data,
+    )
+
+    assert staged.id is not None
+    assert staged.name == "Staged Shift"
+    assert staged.position_id == position.id
+
+    fetched = session.get(ShiftModel, staged.id)
+    assert fetched is not None
+
+    session.rollback()
+    assert session.get(ShiftModel, staged.id) is None
+
+
 #####################
 # Controller Tests
 #####################

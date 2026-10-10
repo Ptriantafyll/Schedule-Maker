@@ -11,6 +11,8 @@ class DraftPreviewCanvas extends StatefulWidget {
     this.isExporting = false,
     this.onExportPressed,
     this.generatedContent,
+    this.isPublishing = false,
+    this.onPublishPressed,
   });
 
   final bool isGenerated;
@@ -18,6 +20,8 @@ class DraftPreviewCanvas extends StatefulWidget {
   final bool isExporting;
   final VoidCallback? onExportPressed;
   final Widget? generatedContent;
+  final bool isPublishing;
+  final VoidCallback? onPublishPressed;
 
   @override
   State<DraftPreviewCanvas> createState() => _DraftPreviewCanvasState();
@@ -26,6 +30,42 @@ class DraftPreviewCanvas extends StatefulWidget {
 class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
   CanvasViewMode _viewMode = CanvasViewMode.table;
   int _selectedDay = 1;
+
+  Widget _buildPublishButton({bool isCompact = false}) {
+    final isAlreadyPublished = widget.draft?.isPublished ?? false;
+    final isEnabled = !widget.isPublishing && !isAlreadyPublished;
+    final onPressed = isEnabled ? widget.onPublishPressed : null;
+
+    if (isCompact) {
+      if (widget.isPublishing) {
+        return const SizedBox(
+          width: 24,
+          height: 24,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        );
+      }
+      return IconButton(
+        onPressed: onPressed,
+        tooltip: 'Publish Schedule',
+        icon: const Icon(Icons.cloud_upload_outlined),
+      );
+    }
+
+    return FilledButton.icon(
+      icon: widget.isPublishing
+          ? const SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.cloud_upload_outlined, size: 18),
+      onPressed: onPressed,
+      label: const Text('Publish Schedule'),
+    );
+  }
 
   Widget _buildExportButton({bool isCompact = false}) {
     if (isCompact) {
@@ -452,6 +492,8 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
                           if (hasDraft) ...[
                             _buildExportButton(isCompact: isCompact),
                             const SizedBox(width: 4),
+                            _buildPublishButton(isCompact: isCompact),
+                            const SizedBox(width: 4),
                           ],
                           IconButton(
                             isSelected: _viewMode == CanvasViewMode.calendar,
@@ -493,7 +535,8 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
             else
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: widget.generatedContent ??
+                child:
+                    widget.generatedContent ??
                     const Center(child: Text('Draft Schedule Generated')),
               ),
           ],

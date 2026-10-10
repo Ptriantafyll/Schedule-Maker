@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
+import 'package:frontend/features/admin/domain/models/target_month_info.dart';
 
 enum GenerationStatus { idle, solving, success, error }
 
@@ -10,6 +13,10 @@ class ScheduleGenerationState {
     this.generatedAt,
     this.draft,
     this.isExporting = false,
+    this.selectedMonth = '',
+    this.targetMonthInfo,
+    this.scheduleHistory = const [],
+    this.isPublishing = false,
   });
 
   final GenerationStatus status;
@@ -18,9 +25,14 @@ class ScheduleGenerationState {
   final DateTime? generatedAt;
   final ScheduleDraft? draft;
   final bool isExporting;
+  final String selectedMonth;
+  final TargetMonthInfo? targetMonthInfo;
+  final List<ScheduleSummary> scheduleHistory;
+  final bool isPublishing;
 
   bool get isGenerated => status == GenerationStatus.success;
   bool get isSolving => status == GenerationStatus.solving;
+  bool get isPublished => draft?.isPublished ?? false;
 
   ScheduleGenerationState copyWith({
     GenerationStatus? status,
@@ -31,6 +43,10 @@ class ScheduleGenerationState {
     bool? isExporting,
     bool clearError = false,
     bool clearDraft = false,
+    String? selectedMonth,
+    TargetMonthInfo? targetMonthInfo,
+    List<ScheduleSummary>? scheduleHistory,
+    bool? isPublishing,
   }) {
     return ScheduleGenerationState(
       status: status ?? this.status,
@@ -39,6 +55,10 @@ class ScheduleGenerationState {
       generatedAt: generatedAt ?? this.generatedAt,
       draft: clearDraft ? null : (draft ?? this.draft),
       isExporting: isExporting ?? this.isExporting,
+      selectedMonth: selectedMonth ?? this.selectedMonth,
+      targetMonthInfo: targetMonthInfo ?? this.targetMonthInfo,
+      scheduleHistory: scheduleHistory ?? this.scheduleHistory,
+      isPublishing: isPublishing ?? this.isPublishing,
     );
   }
 
@@ -52,7 +72,11 @@ class ScheduleGenerationState {
         other.errorMessage == errorMessage &&
         other.generatedAt == generatedAt &&
         other.draft == draft &&
-        other.isExporting == isExporting;
+        other.isExporting == isExporting &&
+        other.selectedMonth == selectedMonth &&
+        other.targetMonthInfo == targetMonthInfo &&
+        listEquals(other.scheduleHistory, scheduleHistory) &&
+        other.isPublishing == isPublishing;
   }
 
   @override
@@ -63,5 +87,9 @@ class ScheduleGenerationState {
     generatedAt,
     draft,
     isExporting,
+    selectedMonth,
+    targetMonthInfo,
+    Object.hashAll(scheduleHistory),
+    isPublishing,
   );
 }

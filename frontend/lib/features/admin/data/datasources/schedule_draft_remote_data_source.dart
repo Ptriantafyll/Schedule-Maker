@@ -5,6 +5,10 @@ import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/network/api_exception.dart';
 import 'package:frontend/features/admin/data/dtos/schedule_draft_dto.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+import 'package:frontend/features/admin/data/dtos/schedule_summary_dto.dart';
+import 'package:frontend/features/admin/data/dtos/target_month_info_dto.dart';
+import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
+import 'package:frontend/features/admin/domain/models/target_month_info.dart';
 
 final scheduleDraftRemoteDataSourceProvider =
     Provider<ScheduleDraftRemoteDataSource>((ref) {
@@ -66,12 +70,8 @@ class ScheduleDraftRemoteDataSource {
     }
   }
 
-  Future<List<int>> exportExcel({
-    required String draftId,
-  }) async {
-    final queryParams = <String, dynamic>{
-      'draft_id': draftId,
-    };
+  Future<List<int>> exportExcel({required String draftId}) async {
+    final queryParams = <String, dynamic>{'draft_id': draftId};
 
     final response = await _apiClient.get<List<int>>(
       '/api/v1/schedules/export-excel',
@@ -80,5 +80,44 @@ class ScheduleDraftRemoteDataSource {
     );
 
     return response.data ?? const <int>[];
+  }
+
+  Future<List<ScheduleSummary>> fetchScheduleHistory({
+    String? departmentId,
+  }) async {
+    final queryParams = <String, dynamic>{'department_id': ?departmentId};
+
+    final response = await _apiClient.get<List<dynamic>>(
+      '/api/v1/schedules',
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    );
+
+    final rawList = response.data ?? const <dynamic>[];
+    return rawList
+        .map(
+          (item) => ScheduleSummaryDto.fromJson(
+            item as Map<String, dynamic>,
+          ).toDomain(),
+        )
+        .toList();
+  }
+
+  Future<TargetMonthInfo> fetchTargetMonthInfo({String? departmentId}) async {
+    final queryParams = <String, dynamic>{'department_id': ?departmentId};
+
+    final response = await _apiClient.get<Map<String, dynamic>>(
+      '/api/v1/schedules/target-month',
+      queryParameters: queryParams.isEmpty ? null : queryParams,
+    );
+
+    return TargetMonthInfoDto.fromJson(response.data!).toDomain();
+  }
+
+  Future<ScheduleDraft> publishScheduleDraft({required String draftId}) async {
+    final response = await _apiClient.post<Map<String, dynamic>>(
+      '/api/v1/schedules/$draftId/publish',
+    );
+
+    return ScheduleDraftDto.fromJson(response.data!).toDomain();
   }
 }

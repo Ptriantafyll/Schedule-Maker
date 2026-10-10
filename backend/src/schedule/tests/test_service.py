@@ -2,6 +2,7 @@
 
 import io
 import uuid
+import datetime
 import openpyxl
 import pytest
 from openpyxl import Workbook
@@ -356,4 +357,312 @@ def test_export_schedule_draft_invalid_target_month_raises_value_error():
         export_schedule_draft_to_excel(draft)
 
     assert "Invalid target_month format" in str(exc_info.value)
+
+
+def test_resolve_next_target_month_advances_following_month(session):
+    """Verify that target month advances to the month following the latest shift assignment."""
+    from src.doctor.models import Doctor as DoctorModel
+    from src.position.models import Position as PositionModel
+    from src.shift.models import Shift as ShiftModel, ShiftAssignment as ShiftAssignmentModel
+    from src.schedule.service import resolve_next_target_month
+
+    dept = DepartmentModel(name="Cardiology", code="CARD")
+    session.add(dept)
+    session.commit()
+
+    pos = PositionModel(name="Cardio Ward", department_id=dept.id)
+    session.add(pos)
+    session.commit()
+
+    shift = ShiftModel(name="Morning", position_id=pos.id)
+    doc = DoctorModel(name="Dr. Adams", department_id=dept.id)
+    session.add(shift)
+    session.add(doc)
+    session.commit()
+
+    # Latest assignment on May 31, 2026
+    assignment = ShiftAssignmentModel(
+        doctor_id=doc.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 5, 31),
+    )
+    session.add(assignment)
+    session.commit()
+
+    result = resolve_next_target_month(session=session, department_id=dept.id)
+
+    assert result["last_published_month"] == "2026-05"
+    assert result["next_target_month"] == "2026-06"
+
+
+def test_resolve_next_target_month_handles_december_year_rollover(session):
+    """Verify that target month rolls over from December to January of the following year."""
+    from src.doctor.models import Doctor as DoctorModel
+    from src.position.models import Position as PositionModel
+    from src.shift.models import Shift as ShiftModel, ShiftAssignment as ShiftAssignmentModel
+    from src.schedule.service import resolve_next_target_month
+
+    dept = DepartmentModel(name="Neurology", code="NEURO")
+    session.add(dept)
+    session.commit()
+
+    pos = PositionModel(name="Neuro Ward", department_id=dept.id)
+    session.add(pos)
+    session.commit()
+
+    shift = ShiftModel(name="Night", position_id=pos.id)
+    doc = DoctorModel(name="Dr. Cuddy", department_id=dept.id)
+    session.add(shift)
+    session.add(doc)
+    session.commit()
+
+    # Assignment on Dec 25, 2026 -> should roll to 2027-01
+    assignment = ShiftAssignmentModel(
+        doctor_id=doc.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 12, 25),
+    )
+    session.add(assignment)
+    session.commit()
+
+    result = resolve_next_target_month(session=session, department_id=dept.id)
+
+    assert result["last_published_month"] == "2026-12"
+    assert result["next_target_month"] == "2027-01"
+
+
+def test_resolve_next_target_month_empty_department_falls_back_to_next_calendar_month(session):
+    """Verify that an empty department defaults to next calendar month from today with last_published=None."""
+    from src.schedule.service import resolve_next_target_month
+
+    dept = DepartmentModel(name="Pediatrics", code="PED")
+    session.add(dept)
+    session.commit()
+
+    result = resolve_next_target_month(session=session, department_id=dept.id)
+
+    # Compute expected next calendar month relative to date.today()
+    today = datetime.date.today()
+    expected_year = today.year if today.month < 12 else today.year + 1
+    expected_month = today.month + 1 if today.month < 12 else 1
+    expected_target = f"{expected_year:04d}-{expected_month:02d}"
+
+    assert result["last_published_month"] is None
+    assert result["next_target_month"] == expected_target
+
+
+def test_resolve_next_target_month_ignores_soft_deleted_assignments(session):
+    """Verify that soft-deleted assignments are ignored during target month calculation."""
+    from src.doctor.models import Doctor as DoctorModel
+    from src.position.models import Position as PositionModel
+    from src.shift.models import Shift as ShiftModel, ShiftAssignment as ShiftAssignmentModel
+    from src.schedule.service import resolve_next_target_month
+
+    dept = DepartmentModel(name="Orthopedics", code="ORTHO")
+    session.add(dept)
+    session.commit()
+
+    pos = PositionModel(name="Ortho Ward", department_id=dept.id)
+    session.add(pos)
+    session.commit()
+
+    shift = ShiftModel(name="Duty", position_id=pos.id)
+    doc = DoctorModel(name="Dr. Wilson", department_id=dept.id)
+    session.add(shift)
+    session.add(doc)
+    session.commit()
+
+    deleted_assignment = ShiftAssignmentModel(
+        doctor_id=doc.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 10, 15),
+        is_deleted=True,
+    )
+    session.add(deleted_assignment)
+    session.commit()
+
+    result = resolve_next_target_month(session=session, department_id=dept.id)
+
+    # Soft-deleted assignment should not count as published
+    assert result["last_published_month"] is None
+
+
+def test_publish_schedule_draft_success(session):
+    """Verify publishing a draft materializes ShiftAssignments and marks draft published."""
+    from src.schedule.service import publish_schedule_draft
+    from src.shift.models import ShiftAssignment as ShiftAssignmentModel
+
+    dept = DepartmentModel(name="General Medicine", code="GEN")
+    session.add(dept)
+    session.commit()
+
+    draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="november_roster.xlsx",
+        total_duties=2,
+        solver_status="OPTIMAL",
+        status="draft",
+        assignments=[
+            {
+                "date": "2026-11-01",
+                "day_name": "Sunday",
+                "doctor_name": "Dr. Gregory House",
+                "doctor_email": "house@hospital.org",
+                "position": "ER",
+                "shift": "Duty",
+            },
+            {
+                "date": "2026-11-02",
+                "day_name": "Monday",
+                "doctor_name": "Dr. Allison Cameron",
+                "doctor_email": "cameron@hospital.org",
+                "position": "ER",
+                "shift": "Duty",
+            },
+        ],
+    )
+    session.add(draft)
+    session.commit()
+
+    published_draft = publish_schedule_draft(
+        session=session,
+        draft_id=draft.id,
+        department_id=dept.id,
+    )
+
+    assert published_draft.status == "published"
+
+    # Verify ShiftAssignment rows created in database
+    assignments_in_db = session.query(ShiftAssignmentModel).filter(
+        ShiftAssignmentModel.is_deleted == False
+    ).all()
+    assert len(assignments_in_db) == 2
+    dates = {str(a.date) for a in assignments_in_db}
+    assert dates == {"2026-11-01", "2026-11-02"}
+
+
+def test_publish_schedule_draft_already_published_raises_error(session):
+    """Verify attempting to publish an already published draft raises ValueError."""
+    from src.schedule.service import publish_schedule_draft
+
+    dept = DepartmentModel(name="Surgery", code="SURG")
+    session.add(dept)
+    session.commit()
+
+    draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="november_roster.xlsx",
+        status="published",
+        assignments=[],
+    )
+    session.add(draft)
+    session.commit()
+
+    with pytest.raises(ValueError, match="already published"):
+        publish_schedule_draft(
+            session=session,
+            draft_id=draft.id,
+            department_id=dept.id,
+        )
+
+
+def test_publish_schedule_draft_nonexistent_or_foreign_raises_error(session):
+    """Verify attempting to publish a nonexistent or foreign draft raises ValueError."""
+    from src.schedule.service import publish_schedule_draft
+
+    dept_a = DepartmentModel(name="Dept A", code="DA")
+    dept_b = DepartmentModel(name="Dept B", code="DB")
+    session.add_all([dept_a, dept_b])
+    session.commit()
+
+    draft = ScheduleDraft(
+        department_id=dept_a.id,
+        target_month="2026-11",
+        source_filename="test.xlsx",
+        status="draft",
+        assignments=[],
+    )
+    session.add(draft)
+    session.commit()
+
+    # Nonexistent draft ID
+    with pytest.raises(ValueError, match="not found"):
+        publish_schedule_draft(
+            session=session,
+            draft_id=uuid.uuid4(),
+            department_id=dept_a.id,
+        )
+
+    # Department mismatch (caller is dept_b, draft belongs to dept_a)
+    with pytest.raises(ValueError, match="not found"):
+        publish_schedule_draft(
+            session=session,
+            draft_id=draft.id,
+            department_id=dept_b.id,
+        )
+
+
+def test_publish_schedule_draft_idempotency_cleans_prior_assignments(session):
+    """Verify publishing replaces existing assignments for that month (BL-015)."""
+    from src.schedule.service import publish_schedule_draft
+    from src.doctor.models import Doctor as DoctorModel
+    from src.position.models import Position as PositionModel
+    from src.shift.models import Shift as ShiftModel, ShiftAssignment as ShiftAssignmentModel
+
+    dept = DepartmentModel(name="ICU Dept", code="ICU")
+    session.add(dept)
+    session.commit()
+
+    pos = PositionModel(name="ICU", department_id=dept.id)
+    session.add(pos)
+    session.commit()
+
+    shift = ShiftModel(name="Night", position_id=pos.id)
+    doc = DoctorModel(name="Dr. Old", email="old@hospital.org", department_id=dept.id)
+    session.add(shift)
+    session.add(doc)
+    session.commit()
+
+    # Existing assignment in November 2026
+    old_assignment = ShiftAssignmentModel(
+        doctor_id=doc.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 11, 15),
+    )
+    session.add(old_assignment)
+    session.commit()
+
+    # Draft with new assignment on Nov 1
+    draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="new_nov.xlsx",
+        status="draft",
+        assignments=[
+            {
+                "date": "2026-11-01",
+                "doctor_name": "Dr. New",
+                "doctor_email": "new@hospital.org",
+                "position": "ICU",
+                "shift": "Night",
+            }
+        ],
+    )
+    session.add(draft)
+    session.commit()
+
+    publish_schedule_draft(session=session, draft_id=draft.id, department_id=dept.id)
+
+    session.refresh(old_assignment)
+    assert old_assignment.is_deleted is True
+
+    active_assignments = session.query(ShiftAssignmentModel).filter(
+        ShiftAssignmentModel.is_deleted == False
+    ).all()
+    assert len(active_assignments) == 1
+    assert str(active_assignments[0].date) == "2026-11-01"
+
+
 

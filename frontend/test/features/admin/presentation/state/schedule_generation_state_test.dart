@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
+import 'package:frontend/features/admin/domain/models/target_month_info.dart';
 import 'package:frontend/features/admin/presentation/state/schedule_generation_state.dart';
 
 void main() {
@@ -17,6 +19,23 @@ void main() {
     updatedAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
   );
 
+  final sampleSummary = ScheduleSummary(
+    id: 'summary-1',
+    departmentId: 'dept-1',
+    targetMonth: '2026-11',
+    sourceFilename: 'nov.xlsx',
+    totalDuties: 28,
+    solverStatus: 'OPTIMAL',
+    status: 'published',
+    createdAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
+    updatedAt: DateTime.parse('2026-11-01T08:30:00.000Z'),
+  );
+
+  const sampleTargetMonthInfo = TargetMonthInfo(
+    nextTargetMonth: '2026-12',
+    lastPublishedMonth: '2026-11',
+  );
+
   group('ScheduleGenerationState Tests', () {
     test('initial state has correct default values', () {
       const state = ScheduleGenerationState();
@@ -29,6 +48,11 @@ void main() {
       expect(state.isExporting, isFalse);
       expect(state.isGenerated, isFalse);
       expect(state.isSolving, isFalse);
+      expect(state.selectedMonth, isEmpty);
+      expect(state.targetMonthInfo, isNull);
+      expect(state.scheduleHistory, isEmpty);
+      expect(state.isPublishing, isFalse);
+      expect(state.isPublished, isFalse);
     });
 
     test('computed getters reflect current status accurately', () {
@@ -43,6 +67,22 @@ void main() {
       );
       expect(successState.isSolving, isFalse);
       expect(successState.isGenerated, isTrue);
+
+      final publishedDraft = ScheduleDraft(
+        id: 'draft-1',
+        departmentId: 'dept-1',
+        targetMonth: '2026-11',
+        sourceFilename: 'nov.xlsx',
+        totalDuties: 28,
+        solverStatus: 'OPTIMAL',
+        status: 'published',
+        assignments: const [],
+        unavailabilities: const {},
+        createdAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
+        updatedAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
+      );
+      final publishedState = ScheduleGenerationState(draft: publishedDraft);
+      expect(publishedState.isPublished, isTrue);
     });
 
     test('copyWith updates specified fields and preserves others', () {
@@ -53,12 +93,20 @@ void main() {
         source: 'nov.xlsx',
         draft: sampleDraft,
         isExporting: true,
+        selectedMonth: '2026-12',
+        targetMonthInfo: sampleTargetMonthInfo,
+        scheduleHistory: [sampleSummary],
+        isPublishing: true,
       );
 
       expect(updated.status, equals(GenerationStatus.success));
       expect(updated.source, equals('nov.xlsx'));
       expect(updated.draft, equals(sampleDraft));
       expect(updated.isExporting, isTrue);
+      expect(updated.selectedMonth, equals('2026-12'));
+      expect(updated.targetMonthInfo, equals(sampleTargetMonthInfo));
+      expect(updated.scheduleHistory, equals([sampleSummary]));
+      expect(updated.isPublishing, isTrue);
       expect(updated.errorMessage, isNull);
     });
 
@@ -88,12 +136,20 @@ void main() {
       final stateA = ScheduleGenerationState(
         status: GenerationStatus.success,
         draft: sampleDraft,
+        selectedMonth: '2026-12',
+        targetMonthInfo: sampleTargetMonthInfo,
+        scheduleHistory: [sampleSummary],
+        isPublishing: false,
       );
       final stateB = ScheduleGenerationState(
         status: GenerationStatus.success,
         draft: sampleDraft,
+        selectedMonth: '2026-12',
+        targetMonthInfo: sampleTargetMonthInfo,
+        scheduleHistory: [sampleSummary],
+        isPublishing: false,
       );
-      final stateC = const ScheduleGenerationState();
+      const stateC = ScheduleGenerationState();
 
       expect(stateA, equals(stateB));
       expect(stateA.hashCode, equals(stateB.hashCode));

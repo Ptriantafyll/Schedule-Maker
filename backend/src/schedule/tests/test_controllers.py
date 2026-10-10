@@ -310,3 +310,82 @@ def test_export_schedule_draft_controller_rejects_cross_department_access(
     assert "Cannot access schedules for another department" in exc_info.value.detail
 
 
+def test_list_schedules_for_department_repository_sorting_and_filtering(session, department_factory):
+    """Verify repository lists non-deleted drafts sorted newest target_month first."""
+    dept_a = department_factory()
+    dept_b = department_factory()
+
+    draft_oct = ScheduleDraft(
+        department_id=dept_a.id,
+        target_month="2026-10",
+        source_filename="oct.xlsx",
+        status="published",
+    )
+    draft_nov = ScheduleDraft(
+        department_id=dept_a.id,
+        target_month="2026-11",
+        source_filename="nov.xlsx",
+        status="draft",
+    )
+    draft_deleted = ScheduleDraft(
+        department_id=dept_a.id,
+        target_month="2026-12",
+        source_filename="dec.xlsx",
+        is_deleted=True,
+    )
+    draft_other_dept = ScheduleDraft(
+        department_id=dept_b.id,
+        target_month="2026-11",
+        source_filename="dept_b.xlsx",
+    )
+
+    for d in [draft_oct, draft_nov, draft_deleted, draft_other_dept]:
+        schedule_repository.create_schedule_draft(session, d)
+
+    results = schedule_repository.list_schedules_for_department(session, dept_a.id)
+
+    assert len(results) == 2
+    assert results[0].target_month == "2026-11"
+    assert results[1].target_month == "2026-10"
+
+
+def test_list_schedules_controller_rejects_cross_department_access(session, department_factory, user_factory):
+    """Verify controller enforces department boundary."""
+    from src.schedule.controllers import list_schedules_controller
+
+    dept_a = department_factory()
+    dept_b = department_factory()
+    user_a = user_factory(role=UserRole.VIEWER, department_id=dept_a.id)
+
+    with pytest.raises(HTTPException) as exc_info:
+        list_schedules_controller(
+            session=session,
+            department_id=dept_b.id,
+            current_user=user_a,
+        )
+    assert exc_info.value.status_code == 403
+
+
+def test_get_target_month_controller_rejects_cross_department_access(
+    session,
+    department_factory,
+    user_factory,
+):
+    """Verify controller enforces department boundary."""
+    from src.schedule.controllers import get_target_month_controller
+
+    dept_a = department_factory()
+    dept_b = department_factory()
+    user_a = user_factory(role=UserRole.VIEWER, department_id=dept_a.id)
+
+    with pytest.raises(HTTPException) as exc_info:
+        get_target_month_controller(
+            session=session,
+            department_id=dept_b.id,
+            current_user=user_a,
+        )
+    assert exc_info.value.status_code == 403
+
+
+
+

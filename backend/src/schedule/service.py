@@ -12,6 +12,7 @@ import openpyxl
 from openpyxl.styles import PatternFill, Font
 from sqlmodel import Session
 from ortools.sat.python import cp_model
+from sqlmodel import Session
 
 from src.department import repository as department_repository
 from src.models import ScheduleConfig
@@ -19,6 +20,14 @@ from src.scheduler import ShiftScheduler
 from src.schedule.models import ScheduleDraft
 from src.schedule.excel_parser import parse_excel_schedule_workbook
 from src.schedule import repository as schedule_repository
+from src.shift import repository as shift_repository
+
+from src.doctor import repository as doctor_repository
+from src.doctor.models import Doctor as DoctorModel
+from src.position import repository as position_repository
+from src.position.models import Position as PositionModel
+from src.shift.models import Shift as ShiftModel, ShiftAssignment as ShiftAssignmentModel
+from src.shift.schemas import ShiftCreate
 
 
 def generate_schedule_from_excel(
@@ -233,3 +242,144 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft) -> bytes:
     output = io.BytesIO()
     wb.save(output)
     return output.getvalue()
+
+
+def _compute_next_month_str(year: int, month: int) -> str:
+    """Computes the subsequent calendar month string in YYYY-MM format."""
+    if month == 12:
+        return f"{year + 1:04d}-01"
+    return f"{year:04d}-{month + 1:02d}"
+
+
+def resolve_next_target_month(
+    session: Session,
+    department_id: uuid.UUID,
+) -> dict[str, str | None]:
+    """
+    Resolves the target month for schedule generation based on the department's
+    latest active ShiftAssignment date. Falls back to next calendar month from today
+    if no assignments exist.
+    """
+    latest_date = shift_repository.get_latest_shift_assignment_date_for_department(
+        session=session,
+        department_id=department_id,
+    )
+
+    if latest_date is not None:
+        return {
+            "next_target_month": _compute_next_month_str(latest_date.year, latest_date.month),
+            "last_published_month": f"{latest_date.year:04d}-{latest_date.month:02d}",
+        }
+
+    today = datetime.date.today()
+    return {
+        "next_target_month": _compute_next_month_str(today.year, today.month),
+        "last_published_month": None,
+    }
+
+
+def publish_schedule_draft(
+    session: Session,
+    draft_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> ScheduleDraft:
+    """Finalizes a schedule draft and publishes it to the db."""
+    draft = schedule_repository.get_schedule_draft_by_id(session, draft_id)
+    if draft is None or draft.is_deleted or draft.department_id != department_id:
+        raise ValueError(f"Schedule draft not found: {draft_id}.")
+
+    if draft.status == "published":
+        raise ValueError(f"Schedule draft {draft_id} is already published.")
+
+    year, month = map(int, draft.target_month.split("-"))
+
+    # 1. Soft-delete prior month assignments (uncommitted flush)
+    shift_repository.soft_delete_shift_assignments_for_department_month(
+        session=session,
+        department_id=department_id,
+        year=year,
+        month=month,
+        commit=False
+    )
+
+    # 2. Pre-fetch existing entities to eliminate N+1 database queries
+    doc_cache: dict[str, DoctorModel] = {
+        d.name: d for d in doctor_repository.get_active_doctors_for_department(session, department_id)
+    }
+    pos_cache: dict[str, PositionModel] = {
+        p.name: p for p in position_repository.get_active_positions_for_department(session, department_id)
+    }
+    shift_cache: dict[tuple[uuid.UUID, str], ShiftModel] = {
+        (s.position_id, s.name): s for s in shift_repository.get_active_shifts_for_department(session, department_id)
+    }
+
+    new_assignments: list[ShiftAssignmentModel] = []
+    for item in draft.assignments:
+        pos_name = item.get("position", "General")
+        shift_name = item.get("shift", "Duty")
+        doc_name = item.get("doctor_name") or item.get(
+            "doctor") or "Unknown Doctor"
+        assignment_date = datetime.date.fromisoformat(item["date"])
+
+        # Resolve or auto-provision Position
+        if pos_name not in pos_cache:
+            pos = position_repository.stage_position(
+                session=session,
+                position_name=pos_name,
+                duty_days=[1, 2, 3, 4, 5, 6, 7],
+                department_id=department_id
+            )
+            pos_cache[pos_name] = pos
+        else:
+            pos = pos_cache[pos_name]
+
+        # Resolve or auto-provision Shift
+        shift_key = (pos.id, shift_name)
+        if shift_key not in shift_cache:
+            shift = shift_repository.stage_shift(
+                session=session,
+                shift_data=ShiftCreate(
+                    name=shift_name,
+                    doctors_per_shift=1,
+                    grants_day_off=True,
+                    position_id=pos.id
+                )
+            )
+            shift_cache[shift_key] = shift
+        else:
+            shift = shift_cache[shift_key]
+
+        # Resolve or auto-provision Doctor
+        if doc_name not in doc_cache:
+            doc = doctor_repository.stage_doctor(
+                session=session,
+                name=doc_name,
+                department_id=department_id,
+            )
+            doc_cache[doc_name] = doc
+        else:
+            doc = doc_cache[doc_name]
+
+        new_assignments.append(
+            ShiftAssignmentModel(
+                doctor_id=doc.id,
+                shift_id=shift.id,
+                date=assignment_date
+            )
+        )
+
+    # 3. Bulk insert all assignments (uncommitted flush)
+    shift_repository.bulk_create_shift_assignments(
+        session=session,
+        assignments=new_assignments,
+        commit=False,
+    )
+
+    draft = schedule_repository.update_schedule_draft_status(
+        session=session,
+        draft=draft,
+        status="published",
+        commit=True
+    )
+
+    return draft

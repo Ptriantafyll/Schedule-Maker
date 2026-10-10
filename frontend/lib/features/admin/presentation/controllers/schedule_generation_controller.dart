@@ -42,10 +42,7 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
 
   void _applyLoadedDraft(ScheduleDraft? draft) {
     if (draft == null) {
-      state = state.copyWith(
-        status: GenerationStatus.idle,
-        clearDraft: true,
-      );
+      state = state.copyWith(status: GenerationStatus.idle, clearDraft: true);
       return;
     }
 
@@ -61,19 +58,20 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
 
   Future<void> generateFromExcel(
     PlatformFile file, {
-    String targetMonth = '2026-11',
+    String? targetMonth,
     String? departmentId,
   }) async {
-    state = state.copyWith(
-      status: GenerationStatus.solving,
-      clearError: true,
-    );
+    state = state.copyWith(status: GenerationStatus.solving, clearError: true);
+
+    final effectiveTargetMonth = (targetMonth != null && targetMonth.isNotEmpty)
+        ? targetMonth
+        : (state.selectedMonth.isNotEmpty ? state.selectedMonth : '2026-11');
 
     try {
       final repository = ref.read(scheduleDraftRepositoryProvider);
       final draft = await repository.generateFromExcel(
         file: file,
-        targetMonth: targetMonth,
+        targetMonth: effectiveTargetMonth,
         departmentId: departmentId,
       );
       state = state.copyWith(
@@ -105,16 +103,11 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
       return null;
     }
 
-    state = state.copyWith(
-      isExporting: true,
-      clearError: true,
-    );
+    state = state.copyWith(isExporting: true, clearError: true);
 
     try {
       final repository = ref.read(scheduleDraftRepositoryProvider);
-      return await repository.exportExcel(
-        draftId: effectiveDraftId,
-      );
+      return await repository.exportExcel(draftId: effectiveDraftId);
     } catch (e) {
       state = state.copyWith(
         status: GenerationStatus.error,
@@ -127,10 +120,7 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
   }
 
   Future<void> generateFromCurrentRoster({String month = 'November'}) async {
-    state = state.copyWith(
-      status: GenerationStatus.solving,
-      clearError: true,
-    );
+    state = state.copyWith(status: GenerationStatus.solving, clearError: true);
 
     try {
       final repository = ref.read(scheduleDraftRepositoryProvider);
@@ -146,6 +136,79 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
         errorMessage: _extractErrorMessage(e),
       );
     }
+  }
+
+  Future<void> initializeDashboard({String? departmentId}) async {
+    state = state.copyWith(clearError: true);
+    try {
+      final repository = ref.read(scheduleDraftRepositoryProvider);
+      final targetMonthInfo = await repository.fetchTargetMonthInfo(
+        departmentId: departmentId,
+      );
+      final history = await repository.fetchScheduleHistory(
+        departmentId: departmentId,
+      );
+
+      state = state.copyWith(
+        targetMonthInfo: targetMonthInfo,
+        selectedMonth: targetMonthInfo.nextTargetMonth,
+        scheduleHistory: history,
+      );
+
+      await loadActiveDraft(
+        targetMonth: targetMonthInfo.nextTargetMonth,
+        departmentId: departmentId,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: GenerationStatus.error,
+        errorMessage: _extractErrorMessage(e),
+      );
+    }
+  }
+
+  Future<void> publishCurrentDraft({String? departmentId}) async {
+    final draftId = state.draft?.id;
+    if (draftId == null) {
+      state = state.copyWith(
+        status: GenerationStatus.error,
+        errorMessage: 'No active schedule draft to publish.',
+      );
+      return;
+    }
+
+    state = state.copyWith(isPublishing: true, clearError: true);
+
+    try {
+      final repository = ref.read(scheduleDraftRepositoryProvider);
+      final publishedDraft = await repository.publishScheduleDraft(
+        draftId: draftId,
+      );
+      state = state.copyWith(draft: publishedDraft);
+
+      final targetMonthInfo = await repository.fetchTargetMonthInfo(
+        departmentId: departmentId,
+      );
+      final history = await repository.fetchScheduleHistory(
+        departmentId: departmentId,
+      );
+      state = state.copyWith(
+        targetMonthInfo: targetMonthInfo,
+        scheduleHistory: history,
+      );
+    } catch (e) {
+      state = state.copyWith(
+        status: GenerationStatus.error,
+        errorMessage: _extractErrorMessage(e),
+      );
+    } finally {
+      state = state.copyWith(isPublishing: false);
+    }
+  }
+
+  Future<void> selectMonth(String targetMonth, {String? departmentId}) async {
+    state = state.copyWith(selectedMonth: targetMonth);
+    await loadActiveDraft(targetMonth: targetMonth, departmentId: departmentId);
   }
 
   void reset() {

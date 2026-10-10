@@ -28,6 +28,24 @@ def create_position(
     return new_position
 
 
+def stage_position(
+    session: Session,
+    position_name: str,
+    duty_days: list[int],
+    department_id: uuid.UUID
+) -> PositionModel:
+    """Stages a new position, but does not commit in the db"""
+    new_position = PositionModel(
+        name=position_name,
+        department_id=department_id,
+        duty_days=duty_days
+    )
+
+    session.add(new_position)
+    session.flush()
+    return new_position
+
+
 def get_position_by_id_for_department(
     session: Session,
     position_id: uuid.UUID,

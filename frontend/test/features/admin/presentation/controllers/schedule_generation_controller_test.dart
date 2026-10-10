@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/data/repositories/schedule_draft_repository.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
+import 'package:frontend/features/admin/domain/models/target_month_info.dart';
 import 'package:frontend/features/admin/presentation/controllers/schedule_generation_controller.dart';
 
 base class FakePlatformFile extends PlatformFile {
@@ -42,6 +44,9 @@ class FakeScheduleDraftRepository implements ScheduleDraftRepository {
   int getActiveDraftCallCount = 0;
   int exportExcelCallCount = 0;
   int generateFromRosterCallCount = 0;
+  int fetchScheduleHistoryCallCount = 0;
+  int fetchTargetMonthInfoCallCount = 0;
+  int publishScheduleDraftCallCount = 0;
 
   PlatformFile? capturedFile;
   String? capturedTargetMonth;
@@ -49,6 +54,9 @@ class FakeScheduleDraftRepository implements ScheduleDraftRepository {
 
   ScheduleDraft? scheduleDraftToReturn;
   List<int> exportBytesToReturn = [1, 2, 3];
+  List<ScheduleSummary> historyToReturn = const [];
+  TargetMonthInfo targetMonthInfoToReturn = const TargetMonthInfo(nextTargetMonth: '2026-12');
+  ScheduleDraft? publishDraftToReturn;
   Exception? exceptionToThrow;
 
   @override
@@ -93,6 +101,30 @@ class FakeScheduleDraftRepository implements ScheduleDraftRepository {
   Future<void> generateFromRoster({required String month}) async {
     generateFromRosterCallCount++;
     if (exceptionToThrow != null) throw exceptionToThrow!;
+  }
+
+  @override
+  Future<List<ScheduleSummary>> fetchScheduleHistory({String? departmentId}) async {
+    fetchScheduleHistoryCallCount++;
+    capturedDepartmentId = departmentId;
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return historyToReturn;
+  }
+
+  @override
+  Future<TargetMonthInfo> fetchTargetMonthInfo({String? departmentId}) async {
+    fetchTargetMonthInfoCallCount++;
+    capturedDepartmentId = departmentId;
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return targetMonthInfoToReturn;
+  }
+
+  @override
+  Future<ScheduleDraft> publishScheduleDraft({required String draftId}) async {
+    publishScheduleDraftCallCount++;
+    capturedDraftId = draftId;
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return publishDraftToReturn ?? scheduleDraftToReturn ?? _createDummyDraft();
   }
 
   static ScheduleDraft _createDummyDraft() {
@@ -312,6 +344,139 @@ void main() {
       expect(state.draft, isNull);
       expect(state.errorMessage, isNull);
       expect(state.source, isEmpty);
+    });
+
+    final sampleSummary = ScheduleSummary(
+      id: 'summary-1',
+      departmentId: 'dept-1',
+      targetMonth: '2026-11',
+      sourceFilename: 'nov.xlsx',
+      totalDuties: 28,
+      solverStatus: 'OPTIMAL',
+      status: 'published',
+      createdAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
+      updatedAt: DateTime.parse('2026-11-01T08:30:00.000Z'),
+    );
+
+    test('initializeDashboard fetches targetMonthInfo and history, sets selectedMonth, and loads active draft', () async {
+      final dummyDraft = FakeScheduleDraftRepository._createDummyDraft();
+      fakeRepository.targetMonthInfoToReturn = const TargetMonthInfo(
+        nextTargetMonth: '2026-12',
+        lastPublishedMonth: '2026-11',
+      );
+      fakeRepository.historyToReturn = [sampleSummary];
+      fakeRepository.scheduleDraftToReturn = dummyDraft;
+
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+      await controller.initializeDashboard(departmentId: 'dept-1');
+
+      final state = container.read(scheduleGenerationControllerProvider);
+      expect(fakeRepository.fetchTargetMonthInfoCallCount, equals(1));
+      expect(fakeRepository.fetchScheduleHistoryCallCount, equals(1));
+      expect(fakeRepository.getActiveDraftCallCount, equals(1));
+      expect(fakeRepository.capturedTargetMonth, equals('2026-12'));
+      expect(fakeRepository.capturedDepartmentId, equals('dept-1'));
+      expect(state.selectedMonth, equals('2026-12'));
+      expect(state.targetMonthInfo?.nextTargetMonth, equals('2026-12'));
+      expect(state.scheduleHistory, equals([sampleSummary]));
+      expect(state.draft, equals(dummyDraft));
+      expect(state.isGenerated, isTrue);
+    });
+
+    test('initializeDashboard sets error state when repository throws', () async {
+      fakeRepository.exceptionToThrow = Exception('Dashboard init failed');
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+
+      await controller.initializeDashboard(departmentId: 'dept-1');
+
+      final state = container.read(scheduleGenerationControllerProvider);
+      expect(state.status, equals(GenerationStatus.error));
+      expect(state.errorMessage, contains('Dashboard init failed'));
+    });
+
+    test('selectMonth updates selectedMonth and loads active draft for that month', () async {
+      final dummyDraft = FakeScheduleDraftRepository._createDummyDraft();
+      fakeRepository.scheduleDraftToReturn = dummyDraft;
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+
+      await controller.selectMonth('2027-01', departmentId: 'dept-1');
+
+      final state = container.read(scheduleGenerationControllerProvider);
+      expect(fakeRepository.getActiveDraftCallCount, equals(1));
+      expect(fakeRepository.capturedTargetMonth, equals('2027-01'));
+      expect(state.selectedMonth, equals('2027-01'));
+      expect(state.draft, equals(dummyDraft));
+    });
+
+    test('generateFromExcel uses state.selectedMonth when targetMonth is not explicitly passed', () async {
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+      await controller.selectMonth('2027-02');
+
+      final testFile = FakePlatformFile(name: 'feb.xlsx');
+      await controller.generateFromExcel(testFile);
+
+      expect(fakeRepository.capturedTargetMonth, equals('2027-02'));
+    });
+
+    test('publishCurrentDraft publishes active draft and refreshes target info and history', () async {
+      final dummyDraft = FakeScheduleDraftRepository._createDummyDraft();
+      fakeRepository.scheduleDraftToReturn = dummyDraft;
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+
+      await controller.loadActiveDraft(targetMonth: '2026-11');
+
+      final publishedDraft = ScheduleDraft(
+        id: dummyDraft.id,
+        departmentId: dummyDraft.departmentId,
+        targetMonth: dummyDraft.targetMonth,
+        sourceFilename: dummyDraft.sourceFilename,
+        totalDuties: dummyDraft.totalDuties,
+        solverStatus: dummyDraft.solverStatus,
+        status: 'published',
+        assignments: dummyDraft.assignments,
+        unavailabilities: dummyDraft.unavailabilities,
+        createdAt: dummyDraft.createdAt,
+        updatedAt: DateTime.parse('2026-11-01T09:00:00.000Z'),
+      );
+      fakeRepository.publishDraftToReturn = publishedDraft;
+
+      await controller.publishCurrentDraft(departmentId: 'dept-1');
+
+      final state = container.read(scheduleGenerationControllerProvider);
+      expect(fakeRepository.publishScheduleDraftCallCount, equals(1));
+      expect(fakeRepository.capturedDraftId, equals('draft-1'));
+      expect(state.draft?.status, equals('published'));
+      expect(state.isPublished, isTrue);
+      expect(state.isPublishing, isFalse);
+      expect(fakeRepository.fetchTargetMonthInfoCallCount, equals(1));
+      expect(fakeRepository.fetchScheduleHistoryCallCount, equals(1));
+    });
+
+    test('publishCurrentDraft sets error when no active draft is loaded', () async {
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+
+      await controller.publishCurrentDraft();
+
+      final state = container.read(scheduleGenerationControllerProvider);
+      expect(state.status, equals(GenerationStatus.error));
+      expect(state.errorMessage, equals('No active schedule draft to publish.'));
+      expect(fakeRepository.publishScheduleDraftCallCount, equals(0));
+    });
+
+    test('publishCurrentDraft resets isPublishing and sets error when repository throws', () async {
+      final dummyDraft = FakeScheduleDraftRepository._createDummyDraft();
+      fakeRepository.scheduleDraftToReturn = dummyDraft;
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+      await controller.loadActiveDraft(targetMonth: '2026-11');
+
+      fakeRepository.exceptionToThrow = Exception('Publish conflict');
+
+      await controller.publishCurrentDraft();
+
+      final state = container.read(scheduleGenerationControllerProvider);
+      expect(state.isPublishing, isFalse);
+      expect(state.status, equals(GenerationStatus.error));
+      expect(state.errorMessage, contains('Publish conflict'));
     });
   });
 }

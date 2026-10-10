@@ -76,5 +76,91 @@ void main() {
       expect(button.onPressed, isNull);
       expect(wasPressed, isFalse);
     });
+
+    testWidgets('renders Published badge when isPublished is true', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminHeroCard(
+              targetMonth: '2026-11',
+              isPublished: true,
+              onGeneratePressed: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Published'), findsOneWidget);
+    });
+
+    testWidgets('renders Draft badge when isPublished is false', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminHeroCard(
+              targetMonth: '2026-11',
+              isPublished: false,
+              onGeneratePressed: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Draft'), findsOneWidget);
+    });
+
+    testWidgets('renders popup menu and invokes onMonthSelected when an item is selected', (tester) async {
+      String? selectedMonth;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminHeroCard(
+              targetMonth: '2026-11',
+              availableMonths: const ['2026-11', '2026-10'],
+              onMonthSelected: (month) => selectedMonth = month,
+              onGeneratePressed: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Verify dropdown indicator exists
+      expect(find.byIcon(Icons.arrow_drop_down), findsOneWidget);
+
+      // Open popup menu
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+
+      // Find and tap previous month in popup
+      final itemFinder = find.text('2026-10');
+      expect(itemFinder, findsOneWidget);
+
+      await tester.tap(itemFinder);
+      await tester.pumpAndSettle();
+
+      expect(selectedMonth, '2026-10');
+    });
+
+    testWidgets('does not render popup button when availableMonths is empty', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminHeroCard(
+              targetMonth: '2026-11',
+              availableMonths: const [],
+              onGeneratePressed: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(PopupMenuButton<String>), findsNothing);
+      expect(find.text('2026-11'), findsOneWidget);
+    });
   });
 }

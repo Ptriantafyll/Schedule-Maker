@@ -13,7 +13,7 @@ from fastapi import (
 )
 from sqlmodel import Session
 from src.db.connection import get_session
-from src.schedule.schemas import ScheduleDraftRead
+from src.schedule.schemas import ScheduleDraftRead, ScheduleSummaryRead, TargetMonthResponse
 from src.schedule import controllers as schedule_controllers
 from src.user.models import User as UserModel
 from src.auth.dependencies import (
@@ -25,6 +25,24 @@ router = APIRouter(
     prefix="/schedules",
     tags=["Schedules"],
 )
+
+
+@router.get(
+    "/",
+    response_model=list[ScheduleSummaryRead],
+    status_code=status.HTTP_200_OK
+)
+def list_schedules(
+    department_id: uuid.UUID | None = Query(None),
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
+    """Retrieve all schedule summaries for a department."""
+    return schedule_controllers.list_schedules_controller(
+        session=session,
+        department_id=department_id,
+        current_user=current_user,
+    )
 
 
 @router.post(
@@ -88,4 +106,40 @@ def export_schedule_draft(
         content=file_bytes,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/target-month",
+    response_model=TargetMonthResponse,
+    status_code=status.HTTP_200_OK,
+)
+def get_target_month(
+    department_id: uuid.UUID | None = Query(None),
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_member),
+):
+    """Get the target month for the next schedule."""
+    return schedule_controllers.get_target_month_controller(
+        session=session,
+        department_id=department_id,
+        current_user=current_user,
+    )
+
+
+@router.post(
+    "/{draft_id}/publish",
+    response_model=ScheduleDraftRead,
+    status_code=status.HTTP_200_OK,
+)
+def publish_schedule_draft(
+    draft_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin),
+):
+    "Publishes a schedule draft."
+    return schedule_controllers.publish_schedule_draft_controller(
+        session=session,
+        draft_id=draft_id,
+        current_user=current_user,
     )

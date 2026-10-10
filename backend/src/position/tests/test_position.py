@@ -8,6 +8,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
+from src.position.models import Position as PositionModel
 from src.position.schemas import PositionCreate
 from src.position import repository as position_repository
 from src.doctor import repository as doctor_repository
@@ -114,6 +115,26 @@ def test_create_position(position):
     assert position.sync_status is False
     assert isinstance(position.created_at, datetime.datetime)
     assert isinstance(position.updated_at, datetime.datetime)
+
+
+def test_stage_position_flushes_without_committing(session, department):
+    """Verify stage_position creates a position queryable in-session that rolls back cleanly."""
+    staged = position_repository.stage_position(
+        session=session,
+        position_name="Staged Position",
+        duty_days=[1, 2, 3],
+        department_id=department.id,
+    )
+
+    assert staged.id is not None
+    assert staged.name == "Staged Position"
+    assert staged.duty_days == [1, 2, 3]
+
+    fetched = session.get(PositionModel, staged.id)
+    assert fetched is not None
+
+    session.rollback()
+    assert session.get(PositionModel, staged.id) is None
 
 
 def test_get_position_by_id_for_department_returns_own_active_position(

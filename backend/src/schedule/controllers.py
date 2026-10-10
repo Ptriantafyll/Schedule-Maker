@@ -157,3 +157,68 @@ def export_schedule_draft_controller(
     filename = f"schedule_{draft.target_month}.xlsx"
 
     return (file_bytes, filename)
+
+
+def list_schedules_controller(
+    session: Session,
+    department_id: uuid.UUID | None = None,
+    current_user: UserModel | None = None,
+) -> list[ScheduleDraft]:
+    """Retrieve all schedule summaries for an authorized department."""
+    target_dept_id = _resolve_and_verify_department(
+        current_user=current_user,
+        requested_department_id=department_id,
+    )
+
+    return schedule_repository.list_schedules_for_department(
+        session=session,
+        department_id=target_dept_id,
+    )
+
+
+def get_target_month_controller(
+    session: Session,
+    department_id: uuid.UUID | None = None,
+    current_user: UserModel | None = None,
+) -> dict[str, str | None]:
+    """Retrieve the target month for the next schedule"""
+    target_dept_id = _resolve_and_verify_department(
+        current_user=current_user,
+        requested_department_id=department_id,
+    )
+    return schedule_service.resolve_next_target_month(
+        session=session,
+        department_id=target_dept_id,
+    )
+
+
+def publish_schedule_draft_controller(
+    session: Session,
+    draft_id: uuid.UUID,
+    current_user: UserModel | None = None
+) -> ScheduleDraft:
+    """Publishes a schedule draft"""
+    draft = schedule_repository.get_schedule_draft_by_id(session, draft_id)
+    if not draft or draft.is_deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Schedule draft not found.",
+        )
+
+    department_id = _resolve_and_verify_department(
+        current_user=current_user,
+        requested_department_id=draft.department_id
+    )
+
+    try:
+        return schedule_service.publish_schedule_draft(
+            session=session,
+            draft_id=draft_id,
+            department_id=department_id
+        )
+
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc)
+        )

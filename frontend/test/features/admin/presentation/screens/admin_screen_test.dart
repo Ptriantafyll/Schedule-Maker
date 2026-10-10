@@ -11,6 +11,8 @@ import 'package:frontend/features/auth/presentation/controllers/auth_controller.
 import 'package:frontend/features/admin/presentation/widgets/excel_upload_dialog.dart';
 import 'package:frontend/features/admin/presentation/widgets/generation_mode_dialog.dart';
 import 'package:frontend/core/network/api_exception.dart';
+import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
+import 'package:frontend/features/admin/domain/models/target_month_info.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
 
@@ -22,6 +24,8 @@ class FakeAdminScheduleDraftRepository implements ScheduleDraftRepository {
   int exportExcelCallCount = 0;
   int generateFromExcelCallCount = 0;
   int generateFromRosterCallCount = 0;
+  int publishScheduleDraftCallCount = 0;
+  List<ScheduleSummary> historyToReturn = const [];
 
   @override
   Future<ScheduleDraft> generateFromExcel({
@@ -58,6 +62,23 @@ class FakeAdminScheduleDraftRepository implements ScheduleDraftRepository {
   @override
   Future<void> generateFromRoster({required String month}) async {
     generateFromRosterCallCount++;
+  }
+
+  @override
+  Future<List<ScheduleSummary>> fetchScheduleHistory({String? departmentId}) async {
+    return historyToReturn;
+  }
+
+  @override
+  Future<TargetMonthInfo> fetchTargetMonthInfo({String? departmentId}) async {
+    return const TargetMonthInfo(nextTargetMonth: '2026-11');
+  }
+
+  @override
+  Future<ScheduleDraft> publishScheduleDraft({required String draftId}) async {
+    publishScheduleDraftCallCount++;
+    if (errorToThrow != null) throw errorToThrow!;
+    return draftToReturn ?? _createSampleDraft();
   }
 
   static ScheduleDraft _createSampleDraft() {
@@ -294,6 +315,75 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Internal server error occurred'), findsOneWidget);
+    });
+
+    testWidgets('selecting month from popup menu loads draft for selected month', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      fakeRepo.historyToReturn = [
+        ScheduleSummary(
+          id: 's-100',
+          departmentId: 'dept-er',
+          targetMonth: '2026-10',
+          status: 'published',
+          totalDuties: 28,
+          solverStatus: 'OPTIMAL',
+          sourceFilename: 'oct.xlsx',
+          createdAt: DateTime.parse('2026-10-01T00:00:00Z'),
+          updatedAt: DateTime.parse('2026-10-01T00:00:00Z'),
+        ),
+      ];
+
+      await tester.pumpWidget(createWidgetUnderTest(repository: fakeRepo));
+      await tester.pumpAndSettle();
+
+      // Open popup menu on Hero Card
+      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.pumpAndSettle();
+
+      // Tap October in popup
+      await tester.tap(find.text('2026-10'));
+      await tester.pumpAndSettle();
+
+      // getActiveDraft should have been called twice (startup + October selection)
+      expect(fakeRepo.getActiveDraftCallCount, equals(2));
+    });
+
+    testWidgets('tapping Publish Schedule shows confirmation dialog and publishes on confirm', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      fakeRepo.draftToReturn = FakeAdminScheduleDraftRepository._createSampleDraft();
+
+      await tester.pumpWidget(createWidgetUnderTest(repository: fakeRepo));
+      await tester.pumpAndSettle();
+
+      final publishButtonFinder = find.widgetWithText(FilledButton, 'Publish Schedule');
+      expect(publishButtonFinder, findsOneWidget);
+
+      await tester.ensureVisible(publishButtonFinder);
+      await tester.tap(publishButtonFinder);
+      await tester.pumpAndSettle();
+
+      // Dialog should be visible
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('Publish Schedule'), findsNWidgets(2)); // Button + Dialog Title
+
+      // Tap Cancel first
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+      expect(fakeRepo.publishScheduleDraftCallCount, equals(0));
+
+      // Tap Publish button again, then Confirm
+      await tester.tap(publishButtonFinder);
+      await tester.pumpAndSettle();
+
+      final confirmButtonFinder = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Publish'),
+      );
+      await tester.tap(confirmButtonFinder);
+      await tester.pumpAndSettle();
+
+      expect(fakeRepo.publishScheduleDraftCallCount, equals(1));
+      expect(find.textContaining('published successfully'), findsOneWidget);
     });
   });
 }

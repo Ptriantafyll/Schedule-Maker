@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/data/datasources/schedule_draft_remote_data_source.dart';
 import 'package:frontend/features/admin/data/repositories/schedule_draft_repository.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
+import 'package:frontend/features/admin/domain/models/target_month_info.dart';
 
 base class FakePlatformFile extends PlatformFile {
   FakePlatformFile({
@@ -44,6 +46,8 @@ class FakeScheduleDraftRemoteDataSource implements ScheduleDraftRemoteDataSource
 
   ScheduleDraft? draftToReturn;
   List<int>? bytesToReturn;
+  List<ScheduleSummary>? historyToReturn;
+  TargetMonthInfo? targetMonthInfoToReturn;
   Exception? exceptionToThrow;
 
   @override
@@ -83,6 +87,36 @@ class FakeScheduleDraftRemoteDataSource implements ScheduleDraftRemoteDataSource
     if (exceptionToThrow != null) throw exceptionToThrow!;
     return bytesToReturn ?? const <int>[];
   }
+
+  @override
+  Future<List<ScheduleSummary>> fetchScheduleHistory({
+    String? departmentId,
+  }) async {
+    capturedDepartmentId = departmentId;
+
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return historyToReturn ?? const <ScheduleSummary>[];
+  }
+
+  @override
+  Future<TargetMonthInfo> fetchTargetMonthInfo({
+    String? departmentId,
+  }) async {
+    capturedDepartmentId = departmentId;
+
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return targetMonthInfoToReturn!;
+  }
+
+  @override
+  Future<ScheduleDraft> publishScheduleDraft({
+    required String draftId,
+  }) async {
+    capturedDraftId = draftId;
+
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return draftToReturn!;
+  }
 }
 
 void main() {
@@ -110,6 +144,23 @@ void main() {
     unavailabilities: const {},
     createdAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
     updatedAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
+  );
+
+  final sampleSummary = ScheduleSummary(
+    id: 'summary-1',
+    departmentId: 'dept-1',
+    targetMonth: '2026-11',
+    sourceFilename: 'nov.xlsx',
+    totalDuties: 28,
+    solverStatus: 'OPTIMAL',
+    status: 'published',
+    createdAt: DateTime.parse('2026-11-01T08:00:00.000Z'),
+    updatedAt: DateTime.parse('2026-11-01T08:30:00.000Z'),
+  );
+
+  final sampleTargetMonthInfo = const TargetMonthInfo(
+    nextTargetMonth: '2026-12',
+    lastPublishedMonth: '2026-11',
   );
 
   final testFile = FakePlatformFile(name: 'nov.xlsx', fileSize: 500);
@@ -186,6 +237,66 @@ void main() {
       await expectLater(
         repository.generateFromRoster(month: 'November'),
         completes,
+      );
+    });
+  });
+
+  group('ScheduleDraftRepositoryImpl.fetchScheduleHistory', () {
+    test('delegates to remoteDataSource and passes departmentId', () async {
+      fakeRemoteDataSource.historyToReturn = [sampleSummary];
+
+      final result = await repository.fetchScheduleHistory(departmentId: 'dept-1');
+
+      expect(fakeRemoteDataSource.capturedDepartmentId, equals('dept-1'));
+      expect(result, equals([sampleSummary]));
+    });
+
+    test('propagates exception when remoteDataSource throws', () async {
+      fakeRemoteDataSource.exceptionToThrow = Exception('Network error');
+
+      expect(
+        () => repository.fetchScheduleHistory(departmentId: 'dept-1'),
+        throwsException,
+      );
+    });
+  });
+
+  group('ScheduleDraftRepositoryImpl.fetchTargetMonthInfo', () {
+    test('delegates to remoteDataSource and passes departmentId', () async {
+      fakeRemoteDataSource.targetMonthInfoToReturn = sampleTargetMonthInfo;
+
+      final result = await repository.fetchTargetMonthInfo(departmentId: 'dept-1');
+
+      expect(fakeRemoteDataSource.capturedDepartmentId, equals('dept-1'));
+      expect(result, equals(sampleTargetMonthInfo));
+    });
+
+    test('propagates exception when remoteDataSource throws', () async {
+      fakeRemoteDataSource.exceptionToThrow = Exception('Network error');
+
+      expect(
+        () => repository.fetchTargetMonthInfo(departmentId: 'dept-1'),
+        throwsException,
+      );
+    });
+  });
+
+  group('ScheduleDraftRepositoryImpl.publishScheduleDraft', () {
+    test('delegates to remoteDataSource and passes draftId', () async {
+      fakeRemoteDataSource.draftToReturn = sampleDraft;
+
+      final result = await repository.publishScheduleDraft(draftId: 'draft-1');
+
+      expect(fakeRemoteDataSource.capturedDraftId, equals('draft-1'));
+      expect(result, equals(sampleDraft));
+    });
+
+    test('propagates exception when remoteDataSource throws', () async {
+      fakeRemoteDataSource.exceptionToThrow = Exception('Conflict error');
+
+      expect(
+        () => repository.publishScheduleDraft(draftId: 'draft-1'),
+        throwsException,
       );
     });
   });

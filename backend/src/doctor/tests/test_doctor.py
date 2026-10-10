@@ -288,6 +288,26 @@ def test_create_doctor(department, team, new_doctor):
     assert isinstance(new_doctor.updated_at, datetime.datetime)
 
 
+def test_stage_doctor_flushes_without_committing(session, department):
+    """Verify that stage_doctor flushes in-session but rolls back cleanly."""
+    staged = doctor_repository.stage_doctor(
+        session=session,
+        name="Dr. Staged",
+        department_id=department.id,
+    )
+
+    assert staged.id is not None
+    assert staged.name == "Dr. Staged"
+    assert staged.department_id == department.id
+
+    fetched = session.get(DoctorModel, staged.id)
+    assert fetched is not None
+    assert fetched.name == "Dr. Staged"
+
+    session.rollback()
+    assert session.get(DoctorModel, staged.id) is None
+
+
 def test_get_doctor_by_email(session, new_doctor):
     """Test retrieving a doctor by linked user email"""
     from src.user.models import User as UserModel

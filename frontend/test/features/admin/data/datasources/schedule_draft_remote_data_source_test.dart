@@ -8,6 +8,8 @@ import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/network/api_exception.dart';
 import 'package:frontend/features/admin/data/datasources/schedule_draft_remote_data_source.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
+import 'package:frontend/features/admin/domain/models/target_month_info.dart';
 
 base class FakePlatformFile extends PlatformFile {
   FakePlatformFile({
@@ -244,6 +246,131 @@ void main() {
       expect(fakeApiClient.capturedQueryParams?['draft_id'], equals('draft-uuid-1'));
       expect(fakeApiClient.capturedResponseType, equals(ResponseType.bytes));
       expect(result, equals(sampleBytes));
+    });
+  });
+
+  group('ScheduleDraftRemoteDataSource.fetchScheduleHistory', () {
+    test('sends GET /api/v1/schedules with department_id and parses list of ScheduleSummary', () async {
+      final sampleList = [
+        {
+          'id': 'summary-1',
+          'department_id': 'dept-1',
+          'target_month': '2026-11',
+          'source_filename': 'nov.xlsx',
+          'total_duties': 28,
+          'solver_status': 'OPTIMAL',
+          'status': 'published',
+          'created_at': '2026-11-01T08:00:00.000Z',
+          'updated_at': '2026-11-01T08:30:00.000Z',
+        },
+      ];
+
+      fakeApiClient.responseToReturn = Response<List<dynamic>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules'),
+        statusCode: 200,
+        data: sampleList,
+      );
+
+      final result = await dataSource.fetchScheduleHistory(departmentId: 'dept-1');
+
+      expect(fakeApiClient.capturedPath, equals('/api/v1/schedules'));
+      expect(fakeApiClient.capturedQueryParams?['department_id'], equals('dept-1'));
+      expect(result.length, equals(1));
+      expect(result.first.id, equals('summary-1'));
+      expect(result.first.isPublished, isTrue);
+    });
+
+    test('omits department_id query parameter when null', () async {
+      fakeApiClient.responseToReturn = Response<List<dynamic>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules'),
+        statusCode: 200,
+        data: const [],
+      );
+
+      final result = await dataSource.fetchScheduleHistory();
+
+      expect(fakeApiClient.capturedPath, equals('/api/v1/schedules'));
+      expect(fakeApiClient.capturedQueryParams?['department_id'], isNull);
+      expect(result, isEmpty);
+    });
+
+    test('propagates ApiException on server error', () async {
+      fakeApiClient.exceptionToThrow = const ApiException(
+        type: ApiErrorType.server,
+        statusCode: 500,
+        message: 'Internal server error',
+      );
+
+      expect(
+        () => dataSource.fetchScheduleHistory(),
+        throwsA(isA<ApiException>()),
+      );
+    });
+  });
+
+  group('ScheduleDraftRemoteDataSource.fetchTargetMonthInfo', () {
+    test('sends GET /api/v1/schedules/target-month and parses TargetMonthInfo', () async {
+      fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules/target-month'),
+        statusCode: 200,
+        data: {
+          'next_target_month': '2026-12',
+          'last_published_month': '2026-11',
+        },
+      );
+
+      final result = await dataSource.fetchTargetMonthInfo(departmentId: 'dept-1');
+
+      expect(fakeApiClient.capturedPath, equals('/api/v1/schedules/target-month'));
+      expect(fakeApiClient.capturedQueryParams?['department_id'], equals('dept-1'));
+      expect(result.nextTargetMonth, equals('2026-12'));
+      expect(result.lastPublishedMonth, equals('2026-11'));
+      expect(result.hasPublishedSchedules, isTrue);
+    });
+
+    test('propagates ApiException on error', () async {
+      fakeApiClient.exceptionToThrow = const ApiException(
+        type: ApiErrorType.unauthorized,
+        statusCode: 401,
+        message: 'Unauthorized',
+      );
+
+      expect(
+        () => dataSource.fetchTargetMonthInfo(),
+        throwsA(isA<ApiException>()),
+      );
+    });
+  });
+
+  group('ScheduleDraftRemoteDataSource.publishScheduleDraft', () {
+    test('sends POST /api/v1/schedules/{id}/publish and parses updated draft', () async {
+      final publishedDraftPayload = Map<String, dynamic>.from(sampleDraftPayload)
+        ..['status'] = 'published';
+
+      fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules/draft-uuid-1/publish'),
+        statusCode: 200,
+        data: publishedDraftPayload,
+      );
+
+      final result = await dataSource.publishScheduleDraft(draftId: 'draft-uuid-1');
+
+      expect(fakeApiClient.capturedPath, equals('/api/v1/schedules/draft-uuid-1/publish'));
+      expect(result.status, equals('published'));
+      expect(result.isPublished, isTrue);
+    });
+
+    test('propagates ApiException when draft is already published (HTTP 400)', () async {
+      fakeApiClient.exceptionToThrow = const ApiException(
+        type: ApiErrorType.validation,
+        statusCode: 400,
+        message: 'Schedule draft is already published',
+      );
+
+      expect(
+        () => dataSource.publishScheduleDraft(draftId: 'draft-uuid-1'),
+        throwsA(isA<ApiException>()),
+      );
     });
   });
 }

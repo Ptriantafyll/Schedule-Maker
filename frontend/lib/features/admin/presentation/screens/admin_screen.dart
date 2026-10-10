@@ -32,18 +32,60 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadActiveDraft();
+      _initializeDashboard();
     });
   }
 
-  void _loadActiveDraft() {
+  void _initializeDashboard() {
     final user = ref.read(currentUserProvider);
     ref
         .read(scheduleGenerationControllerProvider.notifier)
-        .loadActiveDraft(
-          targetMonth: '2026-11',
-          departmentId: user?.departmentId,
+        .initializeDashboard(departmentId: user?.departmentId);
+  }
+
+  Future<void> _handlePublishPressed() async {
+    final genState = ref.read(scheduleGenerationControllerProvider);
+    final targetMonth = genState.selectedMonth;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Publish Schedule'),
+          content: Text(
+            'Are you sure you want to publish the schedule for ${genState.selectedMonth}? Once published, assignments will be visible to all staff.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Publish'),
+            ),
+          ],
         );
+      },
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    final user = ref.read(currentUserProvider);
+    await ref
+        .read(scheduleGenerationControllerProvider.notifier)
+        .publishCurrentDraft(departmentId: user?.departmentId);
+
+    if (!mounted) return;
+
+    final nextState = ref.read(scheduleGenerationControllerProvider);
+    if (nextState.status == GenerationStatus.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Schedule for $targetMonth published successfully.'),
+        ),
+      );
+    }
   }
 
   Future<void> _handleGeneratePressed() async {
@@ -88,11 +130,12 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     if (!mounted || file == null) return;
 
     final user = ref.read(currentUserProvider);
+    final genState = ref.read(scheduleGenerationControllerProvider);
     await ref
         .read(scheduleGenerationControllerProvider.notifier)
         .generateFromExcel(
           file,
-          targetMonth: '2026-11',
+          targetMonth: genState.selectedMonth,
           departmentId: user?.departmentId,
         );
 
@@ -109,7 +152,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   Future<void> _handleExportPressed() async {
     final user = ref.read(currentUserProvider);
     final genState = ref.read(scheduleGenerationControllerProvider);
-    final targetMonth = genState.draft?.targetMonth ?? '2026-11';
+    final targetMonth = genState.draft?.targetMonth ?? genState.selectedMonth;
     final bytes = await ref
         .read(scheduleGenerationControllerProvider.notifier)
         .exportCurrentDraft(
@@ -160,6 +203,12 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
 
     final genState = ref.watch(scheduleGenerationControllerProvider);
 
+    final availableMonths = <String>{
+      if (genState.targetMonthInfo != null)
+        genState.targetMonthInfo!.nextTargetMonth,
+      ...genState.scheduleHistory.map((s) => s.targetMonth),
+    }.toList();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('MedShift Admin'),
@@ -187,7 +236,15 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: AdminHeroCard(
-                targetMonth: 'November',
+                targetMonth: genState.selectedMonth,
+                isPublished: genState.isPublished,
+                availableMonths: availableMonths,
+                onMonthSelected: (month) {
+                  final user = ref.read(currentUserProvider);
+                  ref
+                      .read(scheduleGenerationControllerProvider.notifier)
+                      .selectMonth(month, departmentId: user?.departmentId);
+                },
                 onGeneratePressed: _handleGeneratePressed,
                 isGenerating: genState.isSolving,
               ),
@@ -205,6 +262,8 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                 draft: genState.draft,
                 isExporting: genState.isExporting,
                 onExportPressed: _handleExportPressed,
+                isPublishing: genState.isPublishing,
+                onPublishPressed: _handlePublishPressed,
               ),
             ),
           ],

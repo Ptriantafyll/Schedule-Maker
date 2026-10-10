@@ -5,7 +5,8 @@ Shift repository functions for handling database operations.
 # from typing import Optional
 import datetime
 import uuid
-from sqlmodel import Session, not_, select
+import calendar
+from sqlmodel import Session, not_, select, func
 from src.position.models import Position as PositionModel
 from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate
 from src.shift.models import Shift as ShiftModel
@@ -25,6 +26,18 @@ def create_shift(session: Session, shift_data: ShiftCreate) -> ShiftModel:
     session.refresh(new_shift)
     return new_shift
 
+
+def stage_shift(session: Session, shift_data: ShiftCreate) -> ShiftModel:
+    """Creates a new shift but does not commit in database"""
+    new_shift = ShiftModel(
+        name=shift_data.name,
+        doctors_per_shift=shift_data.doctors_per_shift,
+        grants_day_off=shift_data.grants_day_off,
+        position_id=shift_data.position_id
+    )
+    session.add(new_shift)
+    session.flush()
+    return new_shift
 
 def get_shift_by_id_for_department(
     session: Session,
@@ -160,3 +173,83 @@ def get_active_shift_assignments_for_department(
     )
 
     return list(session.exec(statement).all())
+
+
+def get_latest_shift_assignment_date_for_department(
+    session: Session,
+    department_id: uuid.UUID,
+) -> datetime.date | None:
+    """Retrieves the latest shift assignment date for a department"""
+    statement = select(func.max(ShiftAssignmentModel.date)).join(
+        ShiftModel,
+        ShiftAssignmentModel.shift_id == ShiftModel.id
+    ).join(
+        PositionModel,
+        ShiftModel.position_id == PositionModel.id
+    ).where(
+        PositionModel.department_id == department_id,
+        not_(ShiftAssignmentModel.is_deleted),
+        not_(ShiftModel.is_deleted),
+        not_(PositionModel.is_deleted),
+    )
+
+    return session.exec(statement).first()
+
+
+def soft_delete_shift_assignments_for_department_month(
+    session: Session,
+    department_id: uuid.UUID,
+    year: int,
+    month: int,
+    commit: bool = True,
+) -> int:
+    """
+    Sets is_deleted = True for the shift assignments of a department
+    For a given month
+    """
+    start_date = datetime.date(year, month, 1)
+    last_day = calendar.monthrange(year, month)[1]
+    end_date = datetime.date(year, month, last_day)
+
+    statement = (
+        select(ShiftAssignmentModel)
+        .join(ShiftModel, ShiftAssignmentModel.shift_id == ShiftModel.id)
+        .join(PositionModel, ShiftModel.position_id == PositionModel.id)
+        .where(
+            PositionModel.department_id == department_id,
+            ShiftAssignmentModel.date >= start_date,
+            ShiftAssignmentModel.date <= end_date,
+            not_(ShiftAssignmentModel.is_deleted),
+        )
+    )
+
+    assignments = list(session.exec(statement).all())
+
+    for assignment in assignments:
+        assignment.is_deleted = True
+        session.add(assignment)
+
+    if commit:
+        session.commit()
+    else:
+        session.flush()
+
+    return len(assignments)
+
+
+def bulk_create_shift_assignments(
+    session: Session,
+    assignments: list[ShiftAssignmentModel],
+    commit: bool = True,
+) -> list[ShiftAssignmentModel]:
+    """Batch-inserts a list of ShiftAssignmentModel instances into the database."""
+    session.add_all(assignments)
+    if commit:
+        session.commit()
+    else:
+        session.flush()
+
+    for assignment in assignments:
+        session.refresh(assignment)
+
+    return assignments

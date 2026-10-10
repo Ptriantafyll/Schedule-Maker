@@ -49,6 +49,8 @@ void main() {
     bool isExporting = false,
     VoidCallback? onExportPressed,
     Widget? generatedContent,
+    bool isPublishing = false,
+    VoidCallback? onPublishPressed,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -59,6 +61,8 @@ void main() {
             isExporting: isExporting,
             onExportPressed: onExportPressed,
             generatedContent: generatedContent,
+            isPublishing: isPublishing,
+            onPublishPressed: onPublishPressed,
           ),
         ),
       ),
@@ -322,6 +326,81 @@ void main() {
 
       expect(find.byKey(const ValueKey('cal_day_1')), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('renders Publish Schedule button when draft is present', (tester) async {
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          isGenerated: true,
+          draft: sampleDraft,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(FilledButton, 'Publish Schedule'), findsOneWidget);
+    });
+
+    testWidgets('tapping Publish Schedule invokes onPublishPressed callback', (tester) async {
+      var wasPublished = false;
+
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          isGenerated: true,
+          draft: sampleDraft,
+          onPublishPressed: () => wasPublished = true,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final publishButton = find.widgetWithText(FilledButton, 'Publish Schedule');
+      await tester.tap(publishButton);
+      await tester.pumpAndSettle();
+
+      expect(wasPublished, isTrue);
+    });
+
+    testWidgets('shows loading indicator and disables Publish button when isPublishing is true', (tester) async {
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          isGenerated: true,
+          draft: sampleDraft,
+          isPublishing: true,
+          onPublishPressed: () {},
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      final button = tester.widget<FilledButton>(find.byType(FilledButton));
+      expect(button.onPressed, isNull);
+    });
+
+    testWidgets('disables Publish Schedule button when draft is already published', (tester) async {
+      final publishedDraft = ScheduleDraft(
+        id: sampleDraft.id,
+        departmentId: sampleDraft.departmentId,
+        targetMonth: sampleDraft.targetMonth,
+        sourceFilename: sampleDraft.sourceFilename,
+        totalDuties: sampleDraft.totalDuties,
+        solverStatus: sampleDraft.solverStatus,
+        status: 'published',
+        assignments: sampleDraft.assignments,
+        unavailabilities: sampleDraft.unavailabilities,
+        createdAt: sampleDraft.createdAt,
+        updatedAt: sampleDraft.updatedAt,
+      );
+
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          isGenerated: true,
+          draft: publishedDraft,
+          onPublishPressed: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<FilledButton>(find.byType(FilledButton));
+      expect(button.onPressed, isNull);
     });
   });
 }
