@@ -28,9 +28,15 @@ router = APIRouter(
 
 
 @router.get(
+    "",
+    response_model=list[ScheduleSummaryRead],
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
+@router.get(
     "/",
     response_model=list[ScheduleSummaryRead],
-    status_code=status.HTTP_200_OK
+    status_code=status.HTTP_200_OK,
 )
 def list_schedules(
     department_id: uuid.UUID | None = Query(None),
