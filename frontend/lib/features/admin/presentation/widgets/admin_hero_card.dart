@@ -83,7 +83,7 @@ class AdminHeroCard extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(child: monthHeader),
+                Flexible(child: monthHeader),
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 10,
