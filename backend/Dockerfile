@@ -22,7 +22,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # Step 3: Copy application source code and seed data
 COPY src/ ./src
-COPY data/ ./data
+# COPY data/ ./data
 
 # Step 4: Finalize sync to include our project root package
 RUN uv sync --frozen --no-dev
