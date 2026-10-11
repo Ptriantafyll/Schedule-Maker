@@ -148,6 +148,10 @@ void main() {
       );
       await tester.pumpAndSettle();
 
+      // Switch to Table View
+      await tester.tap(find.byIcon(Icons.table_chart_outlined));
+      await tester.pumpAndSettle();
+
       // Column Headers
       expect(find.text('Date'), findsOneWidget);
       expect(find.text('Day'), findsOneWidget);
@@ -264,14 +268,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // Initially in Table View
-      expect(find.text('Doctor'), findsOneWidget);
-      expect(find.byKey(const ValueKey('cal_day_1')), findsNothing);
-
-      // Tap Calendar View icon
-      await tester.tap(find.byIcon(Icons.calendar_view_month));
-      await tester.pumpAndSettle();
-
+      // Initially in Calendar View
       expect(find.byKey(const ValueKey('cal_day_1')), findsOneWidget);
       expect(find.text('Doctor'), findsNothing);
 
@@ -281,6 +278,13 @@ void main() {
 
       expect(find.text('Doctor'), findsOneWidget);
       expect(find.byKey(const ValueKey('cal_day_1')), findsNothing);
+
+      // Tap Calendar View icon
+      await tester.tap(find.byIcon(Icons.calendar_view_month));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const ValueKey('cal_day_1')), findsOneWidget);
+      expect(find.text('Doctor'), findsNothing);
     });
 
     testWidgets('renders compact icon export button on mobile viewports', (tester) async {
