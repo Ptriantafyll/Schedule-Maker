@@ -8,8 +8,6 @@ import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/network/api_exception.dart';
 import 'package:frontend/features/admin/data/datasources/schedule_draft_remote_data_source.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
-import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
-import 'package:frontend/features/admin/domain/models/target_month_info.dart';
 
 base class FakePlatformFile extends PlatformFile {
   FakePlatformFile({

@@ -20,8 +20,8 @@ For each step, it outlines:
 | **Phase 3** | Data Layer: Repository (`AuthRepository`) | `[x] Completed` |
 | **Phase 4** | Core Network Polish: Silent 401 Refresh Queue | `[x] Completed` |
 | **Phase 5** | ViewModel: State Management (`AuthController` via Riverpod) | `[x] Completed` |
-| **Phase 6** | View Layer: Presentation (`AuthGate`, `LoginScreen`, `SignupScreen`) | `[ ] Pending` |
-| **Phase 7** | End-to-End Verification & Backend Integration | `[ ] Pending` |
+| **Phase 6** | View Layer: Presentation (`AuthGate`, `LoginScreen`, `SignupScreen`) | `[x] Completed` |
+| **Phase 7** | End-to-End Verification & Backend Integration | `[x] Completed` |
 
 ---
 
@@ -181,7 +181,7 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 > **Presentation Layer Rule**: For the presentation layer (UI screens, dialogs, forms, layout widgets), **always ask the user for the design first and ask clarifying questions** before writing any code or proposing UI designs.
 
 ### Step 6.1: `LoginScreen` (Staff Login UI & Validation)
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** A clean, accessible clinical interface matching the MedShift design mockup (`login.png`) allowing doctors and hospital staff to securely sign in, see immediate input validation, experience smooth loading feedback, and access onboarding or support.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/presentation/screens/login_screen.dart`:
@@ -199,7 +199,7 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 ---
 
 ### Step 6.2: `SignupScreen` (Invitation Onboarding Form)
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** A dedicated onboarding screen where a newly invited doctor or administrator enters their cryptographic invitation token, personal details, and sets their password to activate their account.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/presentation/screens/signup_screen.dart`:
@@ -212,7 +212,7 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 ---
 
 ### Step 6.3: `AuthGate` Navigation Controller Widget
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** The root navigation switcher that dynamically routes the user to the correct screen based on their session state without visual flickering or race conditions.
 - **Technical Implementation Needed:**
   - Create `lib/features/auth/presentation/widgets/auth_gate.dart`.
@@ -225,7 +225,7 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 ---
 
 ### Step 6.4: Full-Stack Password Reset Flow
-- **Status:** `[ ] Pending`
+- **Status:** `[Deferred to Backlog]` (Tracked in [backlog.md](backlog.md#bl-001-self-service-password-reset-flow-full-stack))
 - **Business Reason:** Self-service credential recovery so hospital staff who forget their credentials can regain access without manual database interventions from systems administrators.
 - **Technical Implementation Needed:**
   - **Backend**:
@@ -241,7 +241,7 @@ The Domain Layer defines the core data contracts and state definitions of the ap
 ## Phase 7: End-to-End Verification & Backend Integration
 
 ### Step 7.1: Live Integration Verification
-- **Status:** `[ ] Pending`
+- **Status:** `[x] Completed`
 - **Business Reason:** Verify that the frontend seamlessly connects with the live FastAPI backend, successfully authenticates a bootstrapped super admin, rotates tokens, and accesses protected endpoints.
 - **Verification Routine:**
   1. Run FastAPI backend: `uv run uvicorn src.main:app --reload`
