@@ -1,0 +1,92 @@
+name: CD
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    name: Deploy to Hetzner ARM64 VM
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        (
+          github.event.workflow_run.head_branch == 'main' ||
+          startsWith(github.event.workflow_run.head_branch, 'v')
+        )
+      )
+    runs-on: [self-hosted, linux]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Determine Image Tag from Git
+        run: |
+          if git describe --tags --exact-match 2>/dev/null; then
+            TAG=$(git describe --tags --exact-match)
+          elif [ -n "${{ github.event.workflow_run.head_branch }}" ] && [[ "${{ github.event.workflow_run.head_branch }}" == v* ]]; then
+            TAG="${{ github.event.workflow_run.head_branch }}"
+          else
+            TAG=$(git rev-parse --short HEAD)
+          fi
+          echo "IMAGE_TAG=${TAG}" >> $GITHUB_ENV
+          echo "Target Image Tag: ${TAG}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Native ARM64 Images
+        run: |
+          echo "Building images with IMAGE_TAG=${IMAGE_TAG}..."
+          docker compose build
+
+      - name: Push Images to GHCR
+        run: |
+          echo "Pushing images to ghcr.io with IMAGE_TAG=${IMAGE_TAG}..."
+          docker compose push
+
+      - name: Deploy Containers In-Place (Zero-Downtime)
+        run: |
+          echo "Recreating containers with IMAGE_TAG=${IMAGE_TAG}..."
+          docker compose up -d --remove-orphans
+
+      - name: Verify Service Health
+        run: |
+          echo "Verifying health endpoint on gateway (:3000)..."
+          for i in {1..12}; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:3000/health || true)
+            if [ "$STATUS" -eq 200 ]; then
+              echo "Gateway health verified (HTTP 200)!"
+              exit 0
+            fi
+            echo "Waiting for backend initialization (attempt $i/12, status: $STATUS)..."
+            sleep 5
+          done
+          echo "Deployment healthcheck timed out!" >&2
+          docker compose logs --tail=50
+          exit 1
+
+      - name: Clean up Dangling Images
+        if: always()
+        run: |
+          echo "Pruning dangling docker images to reclaim disk space..."
+          docker image prune -f

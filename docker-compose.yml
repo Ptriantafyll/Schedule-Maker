@@ -6,11 +6,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+    image: ghcr.io/ptriantafyll/schedule-maker-backend:${IMAGE_TAG:-latest}
     container_name: schedule_maker_backend
     restart: unless-stopped
     environment:
-      DATABASE_URL: "sqlite:////app/data/hospital_schedule.db"
-      CORS_ALLOWED_ORIGINS: "http://localhost:3000,http://127.0.0.1:3000,http://91.99.53.152:3000"
+      DATABASE_URL: "${DATABASE_URL:-sqlite:////app/data/hospital_schedule.db}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://91.99.53.152:3000}"
     volumes:
       - ./backend/data:/app/data
     expose:
@@ -25,6 +26,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+    image: ghcr.io/ptriantafyll/schedule-maker-frontend:${IMAGE_TAG:-latest}
     container_name: schedule_maker_frontend
     restart: unless-stopped
     expose:
@@ -39,6 +41,7 @@ services:
     build:
       context: ./gateway
       dockerfile: Dockerfile
+    image: ghcr.io/ptriantafyll/schedule-maker-gateway:${IMAGE_TAG:-latest}
     container_name: schedule_maker_gateway
     restart: unless-stopped
     ports:

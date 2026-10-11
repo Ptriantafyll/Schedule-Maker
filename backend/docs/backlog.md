@@ -421,6 +421,28 @@ Instead of treating infeasibility as an unhandled crash or hard error, the appli
 - Infeasible schedules return structured diagnostic responses instead of generic HTTP 400 exceptions.
 - Admin dashboard displays clear, actionable feedback explaining why the schedule was infeasible and how to resolve it.
 
+### BL-019: Automated Backend Static Analysis & Code Quality Pipeline
+
+**Area:** CI Pipeline / Code Quality & Static Analysis  
+**Priority:** Medium
+
+#### Problem
+
+Currently, the CI pipeline executes unit and integration tests via `pytest`. To maintain high architectural cleanliness, identify dead code, control cyclomatic complexity, and enforce consistent Python idioms as the codebase scales, automated static analysis tools should be integrated into the workflow.
+
+#### Required work
+
+1. Integrate **Ruff** (`ruff check .`): Fast, modern linting to enforce Python PEP standards and catch common syntax/style issues.
+2. Integrate **Vulture** (`vulture .`): Automated dead code analysis to discover unused functions, classes, and unreachable code paths.
+3. Integrate **Radon** (`radon cc .`): Measure and track cyclomatic complexity to flag overly complex methods that require refactoring.
+4. Integrate **Pylint** (`pylint .`): In-depth static code analysis for code smells, type violations, and convention enforcement.
+5. Configure threshold rules in `pyproject.toml` or standalone configuration files to ensure linting checks run predictably without false positives.
+
+#### Completion criteria
+
+- CI pipeline incorporates automated linting, dead code detection, complexity scoring, and static analysis steps.
+- Clean thresholds configured in the project root to ensure continuous code quality.
+
 ## Resolved / Closed
 
 
