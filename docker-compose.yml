@@ -13,7 +13,7 @@ services:
       DATABASE_URL: "${DATABASE_URL:-sqlite:////app/data/hospital_schedule.db}"
       CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://91.99.53.152:3000}"
     volumes:
-      - ./backend/data:/app/data
+      - "${DATA_DIR:-/home/deployer/schedule_data}:/app/data"
     expose:
       - "8000"
     networks:
