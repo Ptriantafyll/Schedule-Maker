@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 enum CanvasViewMode { calendar, table }
 
@@ -13,6 +14,7 @@ class DraftPreviewCanvas extends StatefulWidget {
     this.generatedContent,
     this.isPublishing = false,
     this.onPublishPressed,
+    this.isLoading = false,
   });
 
   final bool isGenerated;
@@ -22,6 +24,7 @@ class DraftPreviewCanvas extends StatefulWidget {
   final Widget? generatedContent;
   final bool isPublishing;
   final VoidCallback? onPublishPressed;
+  final bool isLoading;
 
   @override
   State<DraftPreviewCanvas> createState() => _DraftPreviewCanvasState();
@@ -30,10 +33,34 @@ class DraftPreviewCanvas extends StatefulWidget {
 class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
   CanvasViewMode _viewMode = CanvasViewMode.calendar;
   int _selectedDay = 1;
+  static final _skeletonDraft = ScheduleDraft(
+    id: 'skeleton',
+    targetMonth: '2026-11',
+    status: 'draft',
+    sourceFilename: 'Schedule Template.xlsx',
+    totalDuties: 45,
+    solverStatus: 'OPTIMAL',
+    assignments: List.generate(
+      15,
+      (i) => ScheduleAssignment(
+        date: '2026-11-${(i + 1).toString().padLeft(2, '0')}',
+        dayName: 'Mon',
+        doctorName: 'Dr. Gregory House',
+        doctorEmail: 'gregory.house@hospital.org',
+        position: 'Emergency',
+        shift: 'Day',
+      ),
+    ),
+    unavailabilities: const {},
+    createdAt: DateTime(2026, 11, 1),
+    updatedAt: DateTime(2026, 11, 1),
+    departmentId: '1234',
+  );
 
   Widget _buildPublishButton({bool isCompact = false}) {
     final isAlreadyPublished = widget.draft?.isPublished ?? false;
-    final isEnabled = !widget.isPublishing && !isAlreadyPublished;
+    final isEnabled =
+        !widget.isLoading && !widget.isPublishing && !isAlreadyPublished;
     final onPressed = isEnabled ? widget.onPublishPressed : null;
 
     if (isCompact) {
@@ -77,14 +104,15 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
         );
       }
       return IconButton(
-        onPressed: widget.onExportPressed,
+        onPressed: widget.isLoading ? null : widget.onExportPressed,
         tooltip: 'Export to Excel',
         icon: const Icon(Icons.file_download_outlined),
       );
     }
 
     return OutlinedButton.icon(
-      onPressed: widget.isExporting ? null : widget.onExportPressed,
+      onPressed:
+          (widget.isLoading || widget.isExporting) ? null : widget.onExportPressed,
       label: const Text('Export to Excel'),
       icon: widget.isExporting
           ? const SizedBox(
@@ -107,14 +135,22 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.green.withValues(alpha: 0.15),
+              color: widget.isLoading
+                  ? theme.colorScheme.surfaceContainerHighest
+                  : Colors.green.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.green.shade600),
+              border: Border.all(
+                color: widget.isLoading
+                    ? theme.colorScheme.outlineVariant
+                    : Colors.green.shade600,
+              ),
             ),
             child: Text(
               draft.solverStatus,
               style: theme.textTheme.labelMedium?.copyWith(
-                color: Colors.green.shade800,
+                color: widget.isLoading
+                    ? theme.colorScheme.onSurfaceVariant
+                    : Colors.green.shade800,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -210,12 +246,17 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
   }
 
   Widget _buildShiftDots(
+    ThemeData theme,
     String dateString,
     List<ScheduleAssignment> assignments,
   ) {
     if (assignments.isEmpty) {
       return const SizedBox(height: 8);
     }
+
+    final dotColor = widget.isLoading
+        ? theme.colorScheme.outlineVariant.withValues(alpha: 0.5)
+        : Colors.green;
 
     return Wrap(
       alignment: WrapAlignment.center,
@@ -226,8 +267,8 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
           key: ValueKey('shift_dot_${dateString}_${entry.key}'),
           width: 6,
           height: 6,
-          decoration: const BoxDecoration(
-            color: Colors.green,
+          decoration: BoxDecoration(
+            color: dotColor,
             shape: BoxShape.circle,
           ),
         );
@@ -244,12 +285,12 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
   ) {
     final dateString =
         '$year-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
-    final isSelected = _selectedDay == day;
+    final isSelected = !widget.isLoading && _selectedDay == day;
 
     return InkWell(
       key: ValueKey('cal_day_$day'),
       borderRadius: BorderRadius.circular(8),
-      onTap: () => setState(() => _selectedDay = day),
+      onTap: widget.isLoading ? null : () => setState(() => _selectedDay = day),
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
@@ -273,7 +314,7 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
                 color: isSelected ? theme.colorScheme.primary : null,
               ),
             ),
-            _buildShiftDots(dateString, dayAssignments),
+            _buildShiftDots(theme, dateString, dayAssignments),
           ],
         ),
       ),
@@ -453,93 +494,107 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasDraft = widget.isGenerated || widget.draft != null;
+    final isSkeleton = widget.isLoading && widget.draft == null;
+    final effectiveDraft = isSkeleton ? _skeletonDraft : widget.draft;
+    final hasDraft = widget.isGenerated || effectiveDraft != null;
 
-    return SizedBox(
-      width: double.infinity,
-      child: Card(
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+    return Skeletonizer(
+      enabled: widget.isLoading,
+      child: SizedBox(
+        width: double.infinity,
+        child: Card(
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: BorderSide(
+              color: theme.colorScheme.outlineVariant.withValues(alpha: 0.6),
+            ),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final isCompact = constraints.maxWidth < 500;
-                  return Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Flexible(
-                        child: Text(
-                          'Draft Preview Canvas',
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isCompact = constraints.maxWidth < 500;
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Draft Preview Canvas',
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (hasDraft) ...[
-                            _buildExportButton(isCompact: isCompact),
-                            const SizedBox(width: 4),
-                            _buildPublishButton(isCompact: isCompact),
-                            const SizedBox(width: 4),
+                        const SizedBox(width: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (hasDraft) ...[
+                              _buildExportButton(isCompact: isCompact),
+                              const SizedBox(width: 4),
+                              _buildPublishButton(isCompact: isCompact),
+                              const SizedBox(width: 4),
+                            ],
+                            IconButton(
+                              isSelected: _viewMode == CanvasViewMode.calendar,
+                              onPressed: widget.isLoading
+                                  ? null
+                                  : () => setState(
+                                        () => _viewMode =
+                                            CanvasViewMode.calendar,
+                                      ),
+                              icon: const Icon(Icons.calendar_view_month),
+                              tooltip: 'Calendar View',
+                            ),
+                            IconButton(
+                              isSelected: _viewMode == CanvasViewMode.table,
+                              onPressed: widget.isLoading
+                                  ? null
+                                  : () => setState(
+                                        () => _viewMode =
+                                            CanvasViewMode.table,
+                                      ),
+                              icon: const Icon(Icons.table_chart_outlined),
+                              tooltip: 'Table View',
+                            ),
                           ],
-                          IconButton(
-                            isSelected: _viewMode == CanvasViewMode.calendar,
-                            onPressed: () => setState(
-                              () => _viewMode = CanvasViewMode.calendar,
-                            ),
-                            icon: const Icon(Icons.calendar_view_month),
-                            tooltip: 'Calendar View',
-                          ),
-                          IconButton(
-                            isSelected: _viewMode == CanvasViewMode.table,
-                            onPressed: () => setState(
-                              () => _viewMode = CanvasViewMode.table,
-                            ),
-                            icon: const Icon(Icons.table_chart_outlined),
-                            tooltip: 'Table View',
-                          ),
-                        ],
-                      ),
-                    ],
-                  );
-                },
+                        ),
+                      ],
+                    );
+                  },
+                ),
               ),
-            ),
-            const Divider(height: 1),
-            if (!hasDraft)
-              _buildEmptyState(context)
-            else if (widget.draft != null)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildSummaryBar(theme, widget.draft!),
-                  const Divider(height: 1),
-                  _viewMode == CanvasViewMode.table
-                      ? _buildTable(theme, widget.draft!)
-                      : _buildCalendarView(theme, widget.draft!),
-                ],
-              )
-            else
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child:
-                    widget.generatedContent ??
-                    const Center(child: Text('Draft Schedule Generated')),
-              ),
-          ],
+              const Divider(height: 1),
+              if (!hasDraft)
+                _buildEmptyState(context)
+              else if (effectiveDraft != null)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildSummaryBar(theme, effectiveDraft),
+                    const Divider(height: 1),
+                    _viewMode == CanvasViewMode.table
+                        ? _buildTable(theme, effectiveDraft)
+                        : _buildCalendarView(theme, effectiveDraft),
+                  ],
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child:
+                      widget.generatedContent ??
+                      const Center(child: Text('Draft Schedule Generated')),
+                ),
+            ],
+          ),
         ),
       ),
     );

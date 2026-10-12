@@ -392,6 +392,19 @@ void main() {
       final state = container.read(scheduleGenerationControllerProvider);
       expect(state.status, equals(GenerationStatus.error));
       expect(state.errorMessage, contains('Dashboard init failed'));
+      expect(state.isLoadingDashboard, isFalse);
+    });
+
+    test('initializeDashboard toggles isLoadingDashboard while fetching', () async {
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+
+      final future = controller.initializeDashboard(departmentId: 'dept-1');
+
+      expect(container.read(scheduleGenerationControllerProvider).isLoadingDashboard, isTrue);
+
+      await future;
+
+      expect(container.read(scheduleGenerationControllerProvider).isLoadingDashboard, isFalse);
     });
 
     test('selectMonth updates selectedMonth and loads active draft for that month', () async {
@@ -406,6 +419,18 @@ void main() {
       expect(fakeRepository.capturedTargetMonth, equals('2027-01'));
       expect(state.selectedMonth, equals('2027-01'));
       expect(state.draft, equals(dummyDraft));
+    });
+
+    test('selectMonth toggles isLoadingDashboard while loading active draft', () async {
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+
+      final future = controller.selectMonth('2027-01', departmentId: 'dept-1');
+
+      expect(container.read(scheduleGenerationControllerProvider).isLoadingDashboard, isTrue);
+
+      await future;
+
+      expect(container.read(scheduleGenerationControllerProvider).isLoadingDashboard, isFalse);
     });
 
     test('generateFromExcel uses state.selectedMonth when targetMonth is not explicitly passed', () async {

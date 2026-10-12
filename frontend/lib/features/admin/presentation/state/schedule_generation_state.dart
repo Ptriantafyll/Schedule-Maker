@@ -17,6 +17,7 @@ class ScheduleGenerationState {
     this.targetMonthInfo,
     this.scheduleHistory = const [],
     this.isPublishing = false,
+    this.isLoadingDashboard = false,
   });
 
   final GenerationStatus status;
@@ -29,6 +30,7 @@ class ScheduleGenerationState {
   final TargetMonthInfo? targetMonthInfo;
   final List<ScheduleSummary> scheduleHistory;
   final bool isPublishing;
+  final bool isLoadingDashboard;
 
   bool get isGenerated => status == GenerationStatus.success;
   bool get isSolving => status == GenerationStatus.solving;
@@ -47,6 +49,7 @@ class ScheduleGenerationState {
     TargetMonthInfo? targetMonthInfo,
     List<ScheduleSummary>? scheduleHistory,
     bool? isPublishing,
+    bool? isLoadingDashboard,
   }) {
     return ScheduleGenerationState(
       status: status ?? this.status,
@@ -59,6 +62,7 @@ class ScheduleGenerationState {
       targetMonthInfo: targetMonthInfo ?? this.targetMonthInfo,
       scheduleHistory: scheduleHistory ?? this.scheduleHistory,
       isPublishing: isPublishing ?? this.isPublishing,
+      isLoadingDashboard: isLoadingDashboard ?? this.isLoadingDashboard,
     );
   }
 
@@ -76,7 +80,8 @@ class ScheduleGenerationState {
         other.selectedMonth == selectedMonth &&
         other.targetMonthInfo == targetMonthInfo &&
         listEquals(other.scheduleHistory, scheduleHistory) &&
-        other.isPublishing == isPublishing;
+        other.isPublishing == isPublishing &&
+        other.isLoadingDashboard == isLoadingDashboard;
   }
 
   @override
@@ -91,5 +96,6 @@ class ScheduleGenerationState {
     targetMonthInfo,
     Object.hashAll(scheduleHistory),
     isPublishing,
+    isLoadingDashboard,
   );
 }

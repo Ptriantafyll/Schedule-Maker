@@ -139,7 +139,7 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
   }
 
   Future<void> initializeDashboard({String? departmentId}) async {
-    state = state.copyWith(clearError: true);
+    state = state.copyWith(isLoadingDashboard: true, clearError: true);
     try {
       final repository = ref.read(scheduleDraftRepositoryProvider);
       final targetMonthInfo = await repository.fetchTargetMonthInfo(
@@ -164,6 +164,8 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
         status: GenerationStatus.error,
         errorMessage: _extractErrorMessage(e),
       );
+    } finally {
+      state = state.copyWith(isLoadingDashboard: false);
     }
   }
 
@@ -207,8 +209,18 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
   }
 
   Future<void> selectMonth(String targetMonth, {String? departmentId}) async {
-    state = state.copyWith(selectedMonth: targetMonth);
-    await loadActiveDraft(targetMonth: targetMonth, departmentId: departmentId);
+    state = state.copyWith(
+      isLoadingDashboard: true,
+      selectedMonth: targetMonth,
+    );
+    try {
+      await loadActiveDraft(
+        targetMonth: targetMonth,
+        departmentId: departmentId,
+      );
+    } finally {
+      state = state.copyWith(isLoadingDashboard: false);
+    }
   }
 
   void reset() {

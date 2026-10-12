@@ -27,7 +27,7 @@ class _AuthGateState extends ConsumerState<AuthGate> {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
-    final stateValue = authState.valueOrNull;
+    final stateValue = authState.value;
 
     if (stateValue is AuthStateAuthenticated) {
       final user = stateValue.user;

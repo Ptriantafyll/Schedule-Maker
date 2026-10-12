@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_hero_card.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 void main() {
   group('AdminHeroCard Widget Tests', () {
@@ -161,6 +162,45 @@ void main() {
 
       expect(find.byType(PopupMenuButton<String>), findsNothing);
       expect(find.text('2026-11'), findsOneWidget);
+    });
+
+    testWidgets('renders skeletonizer when isLoading is true with empty targetMonth', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminHeroCard(
+              targetMonth: '',
+              isLoading: true,
+              onGeneratePressed: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final skeletonizerFinder = find.byWidgetPredicate((w) => w is Skeletonizer);
+      expect(skeletonizerFinder, findsOneWidget);
+      final skeletonizerWidget = tester.widget<Skeletonizer>(skeletonizerFinder);
+      expect(skeletonizerWidget.enabled, isTrue);
+    });
+
+    testWidgets('does not render popup button when isLoading is true even if availableMonths provided', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminHeroCard(
+              targetMonth: '2026-11',
+              availableMonths: const ['2026-11', '2026-12'],
+              onMonthSelected: (_) {},
+              isLoading: true,
+              onGeneratePressed: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      expect(find.byType(PopupMenuButton<String>), findsNothing);
     });
   });
 }

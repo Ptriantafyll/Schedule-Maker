@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 void main() {
   group('AdminMetricCards Widget Tests (4-Card Pre-Flight System)', () {
@@ -106,6 +107,42 @@ void main() {
       expect(find.text('2'), findsOneWidget);
       expect(find.text('18 Doctors'), findsOneWidget);
       expect(find.text('3 Tight Days'), findsOneWidget);
+    });
+
+    testWidgets('renders Skeletonizer when isLoading is true', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AdminMetricCards(
+              isLoading: true,
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final skeletonizerFinder = find.byWidgetPredicate((w) => w is Skeletonizer);
+      expect(skeletonizerFinder, findsOneWidget);
+      final skeletonizerWidget = tester.widget<Skeletonizer>(skeletonizerFinder);
+      expect(skeletonizerWidget.enabled, isTrue);
+    });
+
+    testWidgets('renders skeletonizer with empty bottleneckDates without errors', (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: AdminMetricCards(
+              isLoading: true,
+              bottleneckDates: [],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final skeletonizerFinder = find.byWidgetPredicate((w) => w is Skeletonizer);
+      expect(skeletonizerFinder, findsOneWidget);
+      expect(find.text('Coverage Bottlenecks'), findsOneWidget);
     });
   });
 }

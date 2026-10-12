@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
 import 'package:frontend/features/admin/presentation/widgets/draft_preview_canvas.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 void main() {
   final sampleDraft = ScheduleDraft(
@@ -51,6 +52,7 @@ void main() {
     Widget? generatedContent,
     bool isPublishing = false,
     VoidCallback? onPublishPressed,
+    bool isLoading = false,
   }) {
     return MaterialApp(
       home: Scaffold(
@@ -63,6 +65,7 @@ void main() {
             generatedContent: generatedContent,
             isPublishing: isPublishing,
             onPublishPressed: onPublishPressed,
+            isLoading: isLoading,
           ),
         ),
       ),
@@ -405,6 +408,36 @@ void main() {
 
       final button = tester.widget<FilledButton>(find.byType(FilledButton));
       expect(button.onPressed, isNull);
+    });
+
+    testWidgets('renders Skeletonizer when isLoading is true without draft', (tester) async {
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          isLoading: true,
+          draft: null,
+        ),
+      );
+      await tester.pump();
+
+      final skeletonizerFinder = find.byWidgetPredicate((w) => w is Skeletonizer);
+      expect(skeletonizerFinder, findsOneWidget);
+      final skeletonizerWidget = tester.widget<Skeletonizer>(skeletonizerFinder);
+      expect(skeletonizerWidget.enabled, isTrue);
+
+      // Should not display the empty state icon/text while loading
+      expect(find.text('Awaiting Generation'), findsNothing);
+    });
+
+    testWidgets('renders normal empty state when isLoading is false and draft is null', (tester) async {
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          isLoading: false,
+          draft: null,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Awaiting Generation'), findsOneWidget);
     });
   });
 }

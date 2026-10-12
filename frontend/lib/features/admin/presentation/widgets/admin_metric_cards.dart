@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 class AdminMetricCards extends StatelessWidget {
   const AdminMetricCards({
@@ -14,6 +15,7 @@ class AdminMetricCards extends StatelessWidget {
     this.bottleneckDaysCount = 3,
     this.bottleneckStatus = 'Requires Attention',
     this.bottleneckDates = const ['ICU - Nov 12', 'ER - Nov 15'],
+    this.isLoading = false,
   });
 
   final String dueDate;
@@ -27,76 +29,80 @@ class AdminMetricCards extends StatelessWidget {
   final int bottleneckDaysCount;
   final String bottleneckStatus;
   final List<String> bottleneckDates;
+  final bool isLoading;
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final card1 = _buildDueDateCard(context);
-        final card2 = _buildPendingApprovalsCard(context);
-        final card3 = _buildStaffPoolCard(context);
-        final card4 = _buildBottlenecksCard(context);
+    return Skeletonizer(
+      enabled: isLoading,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final card1 = _buildDueDateCard(context);
+          final card2 = _buildPendingApprovalsCard(context);
+          final card3 = _buildStaffPoolCard(context);
+          final card4 = _buildBottlenecksCard(context);
 
-        if (constraints.maxWidth > 1050) {
-          // Desktop: 4 cards in a row
-          return IntrinsicHeight(
-            child: Row(
+          if (constraints.maxWidth > 1050) {
+            // Desktop: 4 cards in a row
+            return IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(child: card1),
+                  const SizedBox(width: 12),
+                  Expanded(child: card2),
+                  const SizedBox(width: 12),
+                  Expanded(child: card3),
+                  const SizedBox(width: 12),
+                  Expanded(child: card4),
+                ],
+              ),
+            );
+          } else if (constraints.maxWidth > 650) {
+            // Tablet: 2x2 grid
+            return IntrinsicHeight(
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(child: card1),
+                        const SizedBox(height: 12),
+                        Expanded(child: card3),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(child: card2),
+                        const SizedBox(height: 12),
+                        Expanded(child: card4),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            // Mobile: Stacked column
+            return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(child: card1),
-                const SizedBox(width: 12),
-                Expanded(child: card2),
-                const SizedBox(width: 12),
-                Expanded(child: card3),
-                const SizedBox(width: 12),
-                Expanded(child: card4),
+                card1,
+                const SizedBox(height: 12),
+                card2,
+                const SizedBox(height: 12),
+                card3,
+                const SizedBox(height: 12),
+                card4,
               ],
-            ),
-          );
-        } else if (constraints.maxWidth > 650) {
-          // Tablet: 2x2 grid
-          return IntrinsicHeight(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: Column(
-                    children: [
-                      Expanded(child: card1),
-                      const SizedBox(height: 12),
-                      Expanded(child: card3),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    children: [
-                      Expanded(child: card2),
-                      const SizedBox(height: 12),
-                      Expanded(child: card4),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        } else {
-          // Mobile: Stacked column
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              card1,
-              const SizedBox(height: 12),
-              card2,
-              const SizedBox(height: 12),
-              card3,
-              const SizedBox(height: 12),
-              card4,
-            ],
-          );
-        }
-      },
+            );
+          }
+        },
+      ),
     );
   }
 
@@ -155,14 +161,22 @@ class AdminMetricCards extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
+                color: isLoading
+                    ? theme.colorScheme.surfaceContainerHighest
+                    : Colors.blue.shade50,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.blue.shade200),
+                border: Border.all(
+                  color: isLoading
+                      ? theme.colorScheme.outlineVariant
+                      : Colors.blue.shade200,
+                ),
               ),
               child: Text(
                 '$daysLeft Days Left',
                 style: TextStyle(
-                  color: Colors.blue.shade800,
+                  color: isLoading
+                      ? theme.colorScheme.onSurfaceVariant
+                      : Colors.blue.shade800,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
@@ -211,14 +225,22 @@ class AdminMetricCards extends StatelessWidget {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.red.shade50,
+                color: isLoading
+                    ? theme.colorScheme.surfaceContainerHighest
+                    : Colors.red.shade50,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.red.shade200),
+                border: Border.all(
+                  color: isLoading
+                      ? theme.colorScheme.outlineVariant
+                      : Colors.red.shade200,
+                ),
               ),
               child: Text(
                 pendingApprovalsStatus,
                 style: TextStyle(
-                  color: Colors.red.shade800,
+                  color: isLoading
+                      ? theme.colorScheme.onSurfaceVariant
+                      : Colors.red.shade800,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
@@ -278,7 +300,11 @@ class AdminMetricCards extends StatelessWidget {
 
   Widget _buildBottlenecksCard(BuildContext context) {
     final theme = Theme.of(context);
-
+    final chips = bottleneckDates.isNotEmpty
+        ? bottleneckDates
+        : (isLoading
+              ? const ['ICU - Nov 12', 'ER - Nov 15']
+              : const <String>[]);
     return _buildCardShell(
       context,
       children: [
@@ -304,16 +330,24 @@ class AdminMetricCards extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: Colors.amber.shade50,
+                color: isLoading
+                    ? theme.colorScheme.surfaceContainerHighest
+                    : Colors.amber.shade50,
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.amber.shade300),
+                border: Border.all(
+                  color: isLoading
+                      ? theme.colorScheme.outlineVariant
+                      : Colors.amber.shade300,
+                ),
               ),
               child: Text(
                 bottleneckStatus,
                 style: TextStyle(
-                  color: Colors.amber.shade900,
+                  color: isLoading
+                      ? theme.colorScheme.onSurfaceVariant
+                      : Colors.amber.shade900,
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
                 ),
@@ -325,7 +359,7 @@ class AdminMetricCards extends StatelessWidget {
         Wrap(
           spacing: 6,
           runSpacing: 4,
-          children: bottleneckDates
+          children: chips
               .map(
                 (slot) => Container(
                   padding: const EdgeInsets.symmetric(

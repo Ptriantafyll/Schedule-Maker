@@ -247,12 +247,13 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                 },
                 onGeneratePressed: _handleGeneratePressed,
                 isGenerating: genState.isSolving,
+                isLoading: genState.isLoadingDashboard,
               ),
             ),
             const SizedBox(height: 10),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 20),
-              child: AdminMetricCards(),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: AdminMetricCards(isLoading: genState.isLoadingDashboard),
             ),
             const SizedBox(height: 10),
             Padding(
@@ -264,6 +265,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                 onExportPressed: _handleExportPressed,
                 isPublishing: genState.isPublishing,
                 onPublishPressed: _handlePublishPressed,
+                isLoading: genState.isLoadingDashboard,
               ),
             ),
           ],

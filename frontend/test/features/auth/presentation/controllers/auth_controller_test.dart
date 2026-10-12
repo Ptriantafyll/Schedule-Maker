@@ -93,6 +93,7 @@ void main() {
 
   ProviderContainer createContainer() {
     final c = ProviderContainer(
+      retry: (_, _) => null,
       overrides: [
         authRepositoryProvider.overrideWithValue(fakeRepository),
       ],
