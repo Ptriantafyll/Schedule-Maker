@@ -5,6 +5,7 @@ import 'package:frontend/features/auth/domain/state/auth_state.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/features/auth/presentation/screens/login_screen.dart';
 import 'package:frontend/features/auth/presentation/screens/signup_screen.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 class AuthGate extends ConsumerStatefulWidget {
   const AuthGate({super.key, this.authenticatedBuilder, this.home});
@@ -24,7 +25,16 @@ class _AuthGateState extends ConsumerState<AuthGate> {
     final authState = ref.watch(authControllerProvider);
 
     if (authState.isLoading && !authState.hasValue) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      if (widget.home != null) {
+        return Skeletonizer(
+          enabled: true,
+          child: widget.home!,
+        );
+      }
+      return const Skeletonizer(
+        enabled: true,
+        child: LoginScreen(),
+      );
     }
 
     final stateValue = authState.value;

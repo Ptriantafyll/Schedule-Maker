@@ -15,6 +15,7 @@ class App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      themeMode: ThemeMode.system,
       title: 'Shift scheduling app',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

@@ -11,6 +11,7 @@ import 'package:frontend/features/auth/presentation/controllers/auth_controller.
 import 'package:frontend/features/auth/presentation/screens/login_screen.dart';
 import 'package:frontend/features/auth/presentation/screens/signup_screen.dart';
 import 'package:frontend/features/auth/presentation/widgets/auth_gate.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 
 class FakeAuthRepository implements AuthRepository {
   User? userToReturnOnLogin;
@@ -129,7 +130,7 @@ void main() {
 
   group('AuthGate - Session Restoration & Loading State', () {
     testWidgets(
-      'renders CircularProgressIndicator while initial session is restoring',
+      'renders Skeletonizer while initial session is restoring',
       (tester) async {
         fakeRepository.restoreSessionCompleter = Completer<User?>();
 
@@ -138,8 +139,14 @@ void main() {
         // Wait for first frame
         await tester.pump();
 
-        expect(find.byType(CircularProgressIndicator), findsOneWidget);
-        expect(find.byType(LoginScreen), findsNothing);
+        final skeletonizerFinder =
+            find.byWidgetPredicate((w) => w is Skeletonizer);
+        expect(skeletonizerFinder, findsOneWidget);
+        final skeletonizerWidget =
+            tester.widget<Skeletonizer>(skeletonizerFinder);
+        expect(skeletonizerWidget.enabled, isTrue);
+
+        expect(find.byType(LoginScreen), findsOneWidget);
         expect(find.byType(SignupScreen), findsNothing);
 
         // Complete session restoration

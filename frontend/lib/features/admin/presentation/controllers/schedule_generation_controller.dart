@@ -9,7 +9,7 @@ export 'package:frontend/features/admin/presentation/state/schedule_generation_s
 
 class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
   @override
-  ScheduleGenerationState build() => const ScheduleGenerationState();
+  ScheduleGenerationState build() => const ScheduleGenerationState(isLoadingDashboard: true);
 
   String _extractErrorMessage(Object error) {
     if (error is ApiException) {

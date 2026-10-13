@@ -28,8 +28,8 @@ RUN flutter pub get
 # Step 2: Copy remaining source code
 COPY . .
 
-# Step 3: Build the web application in release mode without PWA service worker caching
-RUN flutter build web --release --pwa-strategy=none
+# Step 3: Build the web application in release mode
+RUN flutter build web --release
 
 # ==========================================
 # Stage 2: Production Nginx Runtime

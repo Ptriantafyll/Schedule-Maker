@@ -78,42 +78,45 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                     ),
                   ),
 
-                  const Text(
+                  Text(
                     'Clinical Scheduling & Management',
-                    style: TextStyle(fontSize: 14, color: Colors.blueGrey),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                   const SizedBox(height: 24),
 
                   Card(
                     elevation: 3,
                     shadowColor: Colors.black.withValues(alpha: 0.1),
-                    color: Colors.white,
+                    color: colorScheme.surfaceContainer,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Padding(
-                      padding: EdgeInsets.all(28),
+                      padding: const EdgeInsets.all(28),
                       child: Form(
                         key: _formKey,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Complete Registration',
                               style: TextStyle(
                                 fontSize: 22,
                                 fontWeight: FontWeight.bold,
-                                color: Color(0xFF172B3A),
+                                color: colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 10),
 
-                            const Text(
+                            Text(
                               'Invitation token',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF334155),
+                                color: colorScheme.onSurfaceVariant,
                               ),
                             ),
                             TextFormField(
@@ -141,12 +144,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                 Expanded(
                                   child: Column(
                                     children: [
-                                      const Text(
+                                      Text(
                                         'First Name',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
-                                          color: Color(0xFF334155),
+                                          color: colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                       TextFormField(
@@ -176,12 +179,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                                 Expanded(
                                   child: Column(
                                     children: [
-                                      const Text(
+                                      Text(
                                         'Last Name',
                                         style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
-                                          color: Color(0xFF334155),
+                                          color: colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                       TextFormField(
@@ -211,12 +214,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             ),
                             const SizedBox(height: 10),
 
-                            const Text(
+                            Text(
                               'Email',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF334155),
+                                color: colorScheme.onSurfaceVariant,
                               ),
                             ),
                             TextFormField(
@@ -245,12 +248,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                             ),
                             const SizedBox(height: 10),
 
-                            const Text(
+                            Text(
                               'Password',
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: Color(0xFF334155),
+                                color: colorScheme.onSurfaceVariant,
                               ),
                             ),
                             TextFormField(
@@ -394,9 +397,12 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                   const SizedBox(height: 24),
                   Column(
                     children: [
-                      const Text(
+                      Text(
                         'Already have an active account?',
-                        style: TextStyle(fontSize: 14, color: Colors.blueGrey),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
                       ),
                       // const SizedBox(height: 4),
                       TextButton(
@@ -437,21 +443,21 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
                         ),
                       ),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
                           Icons.support_agent_outlined,
                           size: 18,
-                          color: Colors.blueGrey,
+                          color: colorScheme.onSurfaceVariant,
                         ),
-                        SizedBox(width: 8),
+                        const SizedBox(width: 8),
                         Flexible(
                           child: Text(
                             'Need assistance? Contact the Help Desk (Ext. 4420)',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.blueGrey,
+                              color: colorScheme.onSurfaceVariant,
                             ),
                             textAlign: TextAlign.center,
                           ),
