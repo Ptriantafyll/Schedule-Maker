@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+// ignore: depend_on_referenced_packages
+import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:frontend/features/admin/presentation/controllers/schedule_generation_controller.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/data/repositories/schedule_draft_repository.dart';
@@ -15,6 +19,35 @@ import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
 import 'package:frontend/features/admin/domain/models/target_month_info.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
+
+base class FakePlatformFile extends PlatformFile {
+  FakePlatformFile({
+    required this.name,
+    this.fileSize = 1024,
+  });
+
+  @override
+  final String name;
+  final int fileSize;
+
+  @override
+  Uri get uri => Uri.file(name);
+
+  @override
+  XFile get xFile => XFile(name);
+
+  @override
+  int? lengthSync() => fileSize;
+
+  @override
+  Future<int?> length() async => fileSize;
+
+  @override
+  Future<Uint8List> readAsBytes() async => Uint8List(0);
+
+  @override
+  Stream<Uint8List> readAsByteStream() => const Stream.empty();
+}
 
 class FakeAdminScheduleDraftRepository implements ScheduleDraftRepository {
   ScheduleDraft? draftToReturn;
@@ -315,6 +348,31 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Internal server error occurred'), findsOneWidget);
+    });
+
+    testWidgets('when Excel upload fails with error, an error SnackBar is displayed', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      await tester.pumpWidget(createWidgetUnderTest(repository: fakeRepo));
+      await tester.pumpAndSettle();
+
+      fakeRepo.errorToThrow = const ApiException(
+        type: ApiErrorType.validation,
+        message: "Doctor 'Dr. Gregory House' cannot be pre-assigned on unavailable day(s): 2026-11-04",
+        statusCode: 400,
+      );
+
+      final controller = ProviderScope.containerOf(tester.element(find.byType(AdminScreen)))
+          .read(scheduleGenerationControllerProvider.notifier);
+
+      await controller.generateFromExcel(
+        FakePlatformFile(name: 'schedule_maker_template.xlsx'),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text("Doctor 'Dr. Gregory House' cannot be pre-assigned on unavailable day(s): 2026-11-04"),
+        findsOneWidget,
+      );
     });
 
     testWidgets('selecting month from popup menu loads draft for selected month', (tester) async {

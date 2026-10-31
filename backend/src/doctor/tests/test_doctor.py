@@ -1336,6 +1336,25 @@ def test_create_pre_assignment_unavailability_conflict(session, new_doctor, unav
     assert exc_info.value.status_code == 422
     assert "cannot be assigned to an unavailable day" in exc_info.value.detail
 
+
+def test_create_unavailability_pre_assignment_conflict(session, new_doctor, pre_assignment, department_admin_user):
+    """Tests that a doctor cannot be marked unavailable on a date with an existing pre-assignment."""
+    unavailability_data = DoctorUnavailabilityCreate(
+        date=pre_assignment.date,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        doctor_controllers.create_doctor_unavailability_controller(
+            session=session,
+            doctor_id=new_doctor.id,
+            department_id=new_doctor.department_id,
+            current_user=department_admin_user,
+            unavailability_data=unavailability_data,
+        )
+
+    assert exc_info.value.status_code == 422
+    assert "cannot be marked unavailable on a pre-assigned day" in exc_info.value.detail
+
 #######################
 # Route tests
 #######################
@@ -1771,6 +1790,21 @@ def test_create_doctor_unavailability_route_invalid_payload(client, new_doctor, 
         headers=doctor_headers
     )
     assert response.status_code == 422
+
+
+def test_create_doctor_unavailability_pre_assignment_conflict_route(
+    client, new_doctor, pre_assignment, department_admin_headers
+):
+    """Tests that POST /doctors/{doctor_id}/unavailability rejects when pre-assignment exists on that date"""
+    response = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        json={
+            "date": str(pre_assignment.date),
+        },
+        headers=department_admin_headers,
+    )
+    assert response.status_code == 422
+    assert "cannot be marked unavailable on a pre-assigned day" in response.json()["detail"]
 
 
 def test_get_doctor_unavailability_route(client, new_doctor, unavailability, doctor_headers):

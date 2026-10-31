@@ -449,6 +449,15 @@ def parse_excel_schedule_workbook(
             has_explicit_shifts=has_explicit_shifts,
         )
 
+        pre_assigned_dates = {date for date, _ in pre_assignments}
+        conflicts = sorted(unavailability & pre_assigned_dates)
+        if conflicts:
+            conflicts_str = ", ".join(d.isoformat() for d in conflicts)
+            doc_name = str(r.get("Name")).strip()
+            raise ValueError(
+                f"Doctor '{doc_name}' cannot be pre-assigned on unavailable day(s): {conflicts_str}"
+            )
+
         doc = Doctor(
             name=str(r.get("Name")).strip(),
             email=str(r.get("Email")).strip(),

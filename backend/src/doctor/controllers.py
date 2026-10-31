@@ -228,6 +228,18 @@ def create_doctor_unavailability_controller(
             detail="Unavailability already exists"
         )
 
+    existing_pre_assignment = doctor_repository.get_doctor_pre_assignment_by_date(
+        session=session,
+        doctor_id=authorized_doctor.id,
+        target_date=unavailability_data.date
+    )
+
+    if existing_pre_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Doctor cannot be marked unavailable on a pre-assigned day {unavailability_data.date}"
+        )
+
     return doctor_repository.create_doctor_unavailability(
         session=session,
         doctor_id=authorized_doctor.id,

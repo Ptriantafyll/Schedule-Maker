@@ -542,3 +542,43 @@ def test_parse_doctor_multiple_positions_pre_assignments_cross_position():
 
     assert day_assignment[1].name == "Day"
     assert night_assignment[1].name == "Night"
+
+
+def test_parse_doctor_with_conflicting_unavailability_and_pre_assignment_raises_error():
+    """Verify that an Excel file with overlapping unavailability and pre-assignment raises a ValueError."""
+    doctor_rows = [
+        {
+            "Name": "Dr. Gregory House",
+            "Email": "house@hospital.org",
+            "Position": "ER",
+            "Unavailability": "4, 18",
+            "Pre-Assignments": "4:Night",
+        },
+    ]
+    shift_rows = [
+        {
+            "Position": "ER",
+            "Shift Name": "Night",
+            "Doctors Per Shift": 1,
+            "Duty Days": "Mon-Sun",
+            "Grants Day Off": "No",
+        },
+    ]
+
+    file_bytes = _create_workbook_bytes({
+        "Doctors": doctor_rows,
+        "Shifts": shift_rows,
+    })
+
+    with pytest.raises(ValueError) as exc_info:
+        parse_excel_schedule_workbook(
+            file_bytes=file_bytes,
+            department_name="Emergency Dept",
+            target_month="2026-11",
+        )
+
+    error_message = str(exc_info.value)
+    assert "Dr. Gregory House" in error_message
+    assert "cannot be pre-assigned on unavailable day" in error_message
+    assert "2026-11-04" in error_message
+
