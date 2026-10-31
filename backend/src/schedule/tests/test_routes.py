@@ -671,3 +671,64 @@ def test_publish_schedule_draft_endpoint_nonexistent_returns_404(
 
 
 
+
+
+def test_generate_schedule_with_country_code(
+    client,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+    valid_excel_bytes,
+):
+    """Verify endpoint accepts country_code in form data."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    response = client.post(
+        "/api/v1/schedules/generate-from-excel",
+        data={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+            "country_code": "GR",
+        },
+        files={
+            "file": ("november_roster.xlsx", valid_excel_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["target_month"] == "2026-11"
+    assert data["solver_status"] in ("OPTIMAL", "FEASIBLE")
+
+
+def test_export_schedule_draft_with_country_code(
+    client,
+    session,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+):
+    """Verify export endpoint accepts country_code query parameter."""
+    dept = department_factory()
+    member = user_factory(role=UserRole.VIEWER, department_id=dept.id)
+    headers = auth_headers_factory(member)
+    draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-10",
+        source_filename="test.xlsx",
+        total_duties=1,
+        solver_status="OPTIMAL",
+        assignments=[],
+    )
+    saved = schedule_repository.create_schedule_draft(session, draft)
+
+    response = client.get(
+        f"/api/v1/schedules/export-excel?draft_id={saved.id}&country_code=GR",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

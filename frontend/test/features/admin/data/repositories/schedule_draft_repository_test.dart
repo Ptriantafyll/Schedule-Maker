@@ -55,6 +55,7 @@ class FakeScheduleDraftRemoteDataSource implements ScheduleDraftRemoteDataSource
     required PlatformFile file,
     required String targetMonth,
     String? departmentId,
+    String? countryCode,
   }) async {
     capturedFile = file;
     capturedTargetMonth = targetMonth;
@@ -81,6 +82,7 @@ class FakeScheduleDraftRemoteDataSource implements ScheduleDraftRemoteDataSource
   @override
   Future<List<int>> exportExcel({
     required String draftId,
+    String? countryCode,
   }) async {
     capturedDraftId = draftId;
 

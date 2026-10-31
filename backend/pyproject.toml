@@ -8,6 +8,7 @@ dependencies = [
     "bcrypt>=4.1.0",
     "customtkinter>=5.2.2",
     "fastapi>=0.136.3",
+    "holidays>=0.107",
     "logging>=0.4.9.6",
     "openpyxl>=3.1.5",
     "ortools>=9.15.6755",

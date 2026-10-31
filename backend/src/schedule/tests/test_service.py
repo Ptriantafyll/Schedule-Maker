@@ -666,3 +666,37 @@ def test_publish_schedule_draft_idempotency_cleans_prior_assignments(session):
 
 
 
+
+
+
+def test_export_schedule_draft_to_excel_highlights_public_holidays():
+    """Verify that public holidays receive the weekend/holiday fill in exported Excel."""
+    draft = ScheduleDraft(
+        department_id=uuid.uuid4(),
+        target_month="2026-10",
+        source_filename="october_roster.xlsx",
+        total_duties=1,
+        solver_status="OPTIMAL",
+        assignments=[
+            {
+                "date": "2026-10-28",
+                "day_name": "Wednesday",
+                "doctor_name": "Dr. Gregory House",
+                "doctor_email": "house@hospital.org",
+                "position": "ER",
+                "shift": "Night",
+            },
+        ],
+    )
+
+    file_bytes = export_schedule_draft_to_excel(draft, country_code="GR")
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
+    ws = wb.active
+
+    # Oct 28 is column 29 (column 1 is Doctor \ Date, col 2 is Oct 1, ..., col 29 is Oct 28)
+    holiday_header_cell = ws.cell(row=1, column=29)
+    assert holiday_header_cell.fill.fill_type is not None, "Oct 28 holiday in GR should have holiday/weekend fill"
+
+    # Tuesday Oct 27 (column 28) is a normal weekday and should not have fill
+    weekday_header_cell = ws.cell(row=1, column=28)
+    assert weekday_header_cell.fill.fill_type is None

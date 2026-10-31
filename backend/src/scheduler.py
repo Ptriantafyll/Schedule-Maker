@@ -7,6 +7,7 @@ optimal monthly duty schedules for a hospital department.
 import datetime
 import calendar
 import math
+import holidays
 from ortools.sat.python import cp_model
 from src.models import Department, Doctor, Position, Shift, Team
 
@@ -14,8 +15,9 @@ from src.models import Department, Doctor, Position, Shift, Team
 class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
     """Shift scheduling engine using Google OR-Tools CP-SAT solver."""
 
-    def __init__(self, department: Department):
+    def __init__(self, department: Department, country_code: str | None = "GR"):
         self.department = department
+        self.country_code = country_code
         self.is_weekend = {}
         self.model = cp_model.CpModel()
         self.shift_assignments = {}
@@ -33,7 +35,17 @@ class ShiftScheduler:  # pylint: disable=too-many-instance-attributes
         self.dates = [first_day + datetime.timedelta(days=i)
                       for i in range(days_in_month)]
 
-        self.is_weekend = {d: (d.weekday() >= 5) for d in self.dates}
+        holiday_dates = set()
+        if self.country_code:
+            try:
+                holiday_dates = set(holidays.country_holidays(self.country_code, years=year).keys())
+            except NotImplementedError:
+                holiday_dates = set()
+
+        self.is_weekend = {
+            d: (d.weekday() >= 5 or d in holiday_dates)
+            for d in self.dates
+        }
 
     def _get_assignment_vars_for(self, day_index=None, position=None, shift=None, doctor=None):
         """Returns all shift assignment variables matching the given filters."""

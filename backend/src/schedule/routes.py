@@ -60,6 +60,7 @@ async def generate_schedule_from_excel(
     file: UploadFile = File(...),
     target_month: str = Form(...),
     department_id: uuid.UUID | None = Form(None),
+    country_code: str | None = Form(None),
     session: Session = Depends(get_session),
     current_user: UserModel = Depends(require_department_admin),
 ):
@@ -72,6 +73,7 @@ async def generate_schedule_from_excel(
         department_id=department_id,
         current_user=current_user,
         filename=file.filename,
+        country_code=country_code,
     )
 
 
@@ -98,6 +100,7 @@ def get_schedule_draft(
 @router.get("/export-excel")
 def export_schedule_draft(
     draft_id: uuid.UUID = Query(...),
+    country_code: str | None = Query(None),
     session: Session = Depends(get_session),
     current_user: UserModel = Depends(require_department_member),
 ):
@@ -106,6 +109,7 @@ def export_schedule_draft(
         session=session,
         draft_id=draft_id,
         current_user=current_user,
+        country_code=country_code,
     )
 
     return Response(

@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/widgets.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/network/api_client.dart';
@@ -21,20 +22,41 @@ class ScheduleDraftRemoteDataSource {
 
   final ApiClient _apiClient;
 
+  String _resolveCountryCode(String? countryCode) {
+    if (countryCode != null && countryCode.isNotEmpty) {
+      return countryCode;
+    }
+
+    try {
+      final detectedCode =
+          WidgetsBinding.instance.platformDispatcher.locale.countryCode;
+
+      if (detectedCode != null && detectedCode.isNotEmpty) {
+        return detectedCode;
+      }
+    } catch (_) {}
+
+    return 'GR';
+  }
+
   Future<ScheduleDraft> generateFromExcel({
     required PlatformFile file,
     required String targetMonth,
     String? departmentId,
+    String? countryCode,
   }) async {
     // 1. Read bytes asynchronously using file_picker 13.x API
     final bytes = await file.readAsBytes();
     final multipartFile = MultipartFile.fromBytes(bytes, filename: file.name);
+
+    final effectiveCountryCode = _resolveCountryCode(countryCode);
 
     // 2. Build FormData matching backend requirements
     final formData = FormData.fromMap({
       'file': multipartFile,
       'target_month': targetMonth,
       'department_id': ?departmentId,
+      'country_code': effectiveCountryCode,
     });
 
     // 3. Post to backend solver endpoint
@@ -70,8 +92,16 @@ class ScheduleDraftRemoteDataSource {
     }
   }
 
-  Future<List<int>> exportExcel({required String draftId}) async {
-    final queryParams = <String, dynamic>{'draft_id': draftId};
+  Future<List<int>> exportExcel({
+    required String draftId,
+    String? countryCode,
+  }) async {
+    final effectiveCountryCode = _resolveCountryCode(countryCode);
+
+    final queryParams = <String, dynamic>{
+      'draft_id': draftId,
+      'country_code': effectiveCountryCode,
+    };
 
     final response = await _apiClient.get<List<int>>(
       '/api/v1/schedules/export-excel',

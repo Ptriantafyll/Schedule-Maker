@@ -10,9 +10,9 @@ from src.scheduler import ShiftScheduler
 from src.models import Department, Team, Doctor, Position, Shift, ScheduleConfig
 
 
-def _build_and_solve(department, month=4, year=2026, constraint_names=None):
+def _build_and_solve(department, month=4, year=2026, constraint_names=None, country_code="GR"):
     """Helper that builds model, adds constraints by method name, solves, and returns (scheduler, solver, dates)."""
-    scheduler = ShiftScheduler(department=department)
+    scheduler = ShiftScheduler(department=department, country_code=country_code)
     scheduler._calculate_days_for_schedule(month=month, year=year)
     scheduler._build_model()
 
@@ -655,3 +655,47 @@ def test_max_one_team_day_off_infeasible_with_two_preassigned_same_team():
 
     assert status == cp_model.INFEASIBLE
 
+
+
+
+def test_public_holidays_treated_as_weekend_in_is_weekend_lookup():
+    """Verifies that public holidays for a country are flagged as True in scheduler.is_weekend."""
+    scheduler = ShiftScheduler(department=Department(name="test"), country_code="GR")
+    scheduler._calculate_days_for_schedule(month=10, year=2026)
+
+    oct_28 = datetime.date(2026, 10, 28)  # Wednesday (Ochi Day)
+    assert oct_28.weekday() == 2  # Wednesday, not a standard weekend
+    assert scheduler.is_weekend[oct_28] is True, "Oct 28 holiday in Greece should be treated as weekend"
+
+
+def test_public_holidays_balanced_across_doctors():
+    """Verifies that public holiday duties are counted and balanced along with weekends."""
+    test_department = _make_test_department()
+
+    scheduler, solver = _build_and_solve(
+        department=test_department,
+        month=10,
+        year=2026,
+        constraint_names=[
+            "_add_hard_constraint_no_consecutive_shifts",
+            "_add_hard_constraint_doctors_per_shift",
+            "_add_hard_constraint_balanced_total_duties_across_doctors",
+            "_add_hard_constraint_balanced_weekend_duties_across_doctors",
+        ],
+    )
+
+    oct_28 = datetime.date(2026, 10, 28)
+    assert scheduler.is_weekend[oct_28] is True
+
+    # Total weekend & holiday duties: 9 weekend days + 1 holiday = 10 duties
+    # For 5 doctors, each doctor should receive exactly 10 // 5 = 2 weekend/holiday duties
+    for doctor in test_department.doctors:
+        total_weekend_assignments = 0
+        for day_index, date in enumerate(scheduler.dates):
+            if not scheduler.is_weekend[date]:
+                continue
+            total_weekend_assignments += sum(
+                solver.Value(var)
+                for var in scheduler._get_assignment_vars_for(doctor=doctor, day_index=day_index)
+            )
+        assert total_weekend_assignments == 2, f"{doctor.name} should have exactly 2 weekend/holiday duties"

@@ -95,6 +95,7 @@ def generate_schedule_from_excel_controller(
     current_user: UserModel | None = None,
     filename: str | None = None,
     source_filename: str | None = None,
+    country_code: str | None = None,
 ) -> ScheduleDraft:
     """Generate a schedule draft from Excel file bytes.
 
@@ -116,6 +117,7 @@ def generate_schedule_from_excel_controller(
             department_id=dept_id,
             target_month=target_month,
             source_filename=actual_filename,
+            country_code=country_code or "GR",
         )
     except ValueError as exc:
         raise HTTPException(
@@ -129,6 +131,7 @@ def export_schedule_draft_controller(
     draft_id: uuid.UUID,
     department_id: uuid.UUID | None = None,
     current_user: UserModel | None = None,
+    country_code: str | None = None,
 ) -> tuple[bytes, str]:
     """Exports a draft schedule to an excel file fia bytes"""
     draft = schedule_repository.get_schedule_draft_by_id(
@@ -153,7 +156,10 @@ def export_schedule_draft_controller(
         requested_department_id=draft.department_id,
     )
 
-    file_bytes = schedule_service.export_schedule_draft_to_excel(draft)
+    file_bytes = schedule_service.export_schedule_draft_to_excel(
+        draft,
+        country_code=country_code or "GR",
+    )
     filename = f"schedule_{draft.target_month}.xlsx"
 
     return (file_bytes, filename)

@@ -95,6 +95,7 @@ class FakeApiClient implements ApiClient {
 }
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late FakeApiClient fakeApiClient;
   late ScheduleDraftRemoteDataSource dataSource;
 
@@ -177,6 +178,26 @@ void main() {
         throwsA(isA<ApiException>()),
       );
     });
+
+    test('includes country_code in FormData when generating schedule from excel', () async {
+      fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules/generate-from-excel'),
+        statusCode: 201,
+        data: sampleDraftPayload,
+      );
+
+      await dataSource.generateFromExcel(
+        file: testFile,
+        targetMonth: '2026-11',
+        countryCode: 'GR',
+      );
+
+      final formData = fakeApiClient.capturedData as FormData;
+      expect(
+        formData.fields.any((f) => f.key == 'country_code' && f.value == 'GR'),
+        isTrue,
+      );
+    });
   });
 
   group('ScheduleDraftRemoteDataSource.getActiveDraft', () {
@@ -244,6 +265,21 @@ void main() {
       expect(fakeApiClient.capturedQueryParams?['draft_id'], equals('draft-uuid-1'));
       expect(fakeApiClient.capturedResponseType, equals(ResponseType.bytes));
       expect(result, equals(sampleBytes));
+    });
+
+    test('includes country_code in query parameters when exporting excel', () async {
+      fakeApiClient.responseToReturn = Response<List<int>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules/export-excel'),
+        statusCode: 200,
+        data: const [1, 2, 3],
+      );
+
+      await dataSource.exportExcel(
+        draftId: 'draft-uuid-1',
+        countryCode: 'GR',
+      );
+
+      expect(fakeApiClient.capturedQueryParams?['country_code'], equals('GR'));
     });
   });
 

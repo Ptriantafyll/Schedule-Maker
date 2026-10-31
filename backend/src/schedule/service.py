@@ -8,6 +8,7 @@ import uuid
 import datetime
 import calendar
 from collections import defaultdict
+import holidays
 import openpyxl
 from openpyxl.styles import PatternFill, Font
 from sqlmodel import Session
@@ -37,6 +38,7 @@ def generate_schedule_from_excel(
     target_month: str,
     source_filename: str,
     config_override: Optional[ScheduleConfig] = None,
+    country_code: Optional[str] = "GR",
 ) -> ScheduleDraft:
     """
     Generates an optimized monthly schedule from an uploaded Excel workbook.
@@ -75,7 +77,7 @@ def generate_schedule_from_excel(
         dept_domain.config = config_override
 
     year, month = map(int, target_month.split("-"))
-    scheduler = ShiftScheduler(department=dept_domain)
+    scheduler = ShiftScheduler(department=dept_domain, country_code=country_code)
     status = scheduler.create_schedule(month=month, year=year)
     status_name = scheduler.solver.status_name(status)
 
@@ -142,7 +144,7 @@ def _populate_doctor_day_cell(
     return len(shifts)
 
 
-def export_schedule_draft_to_excel(draft: ScheduleDraft) -> bytes:
+def export_schedule_draft_to_excel(draft: ScheduleDraft, country_code: str | None = "GR") -> bytes:
     """Exports a ScheduleDraft model's assignments into a formatted Excel (.xlsx) file in bytes."""
     # 1. Parse target month
     try:
@@ -159,6 +161,13 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft) -> bytes:
         )
 
     days_in_month = calendar.monthrange(year, month)[1]
+
+    holiday_dates = set()
+    if country_code:
+        try:
+            holiday_dates = set(holidays.country_holidays(country_code, years=year).keys())
+        except NotImplementedError:
+            holiday_dates = set()
 
     # 2. Workbook styling setup
     wb = openpyxl.Workbook()
@@ -183,15 +192,16 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft) -> bytes:
     for day_idx in range(1, days_in_month + 1):
         date = datetime.date(year, month, day_idx)
         weekday = date.strftime("%a")
+        is_weekend = (date.weekday() >= 5 or date in holiday_dates)
 
         # Row 1 (weekday name)
         cell = ws.cell(row=1, column=day_idx + 1, value=weekday)
-        if date.weekday() >= 5:
+        if is_weekend:
             cell.fill = weekend_fill
 
         # Row 2 (day number)
         cell = ws.cell(row=2, column=day_idx + 1, value=date.day)
-        if date.weekday() >= 5:
+        if is_weekend:
             cell.fill = weekend_fill
 
     # 4. If no assignments, save and return empty grid
@@ -224,7 +234,8 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft) -> bytes:
 
         for day in range(1, days_in_month + 1):
             cell = ws.cell(row=row_idx, column=day + 1)
-            is_weekend = datetime.date(year, month, day).weekday() >= 5
+            cell_date = datetime.date(year, month, day)
+            is_weekend = (cell_date.weekday() >= 5 or cell_date in holiday_dates)
             shifts = doctor_day_shifts.get((doc_name, day), [])
 
             total_duties += _populate_doctor_day_cell(
