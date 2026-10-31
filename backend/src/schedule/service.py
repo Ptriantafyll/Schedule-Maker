@@ -187,6 +187,10 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft, country_code: str | Non
     header_cell_total = ws.cell(
         row=2, column=days_in_month + 2, value="Total Duties")
     header_cell_total.font = header_font
+    header_cell_holiday_total = ws.cell(
+        row=2, column=days_in_month + 3, value="Total Holiday Duties"
+    )
+    header_cell_holiday_total.font = header_font
 
     # 3. Header rows (1, 2)
     for day_idx in range(1, days_in_month + 1):
@@ -231,6 +235,7 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft, country_code: str | Non
         ws.cell(row=row_idx, column=1, value=doc_name)
         doc_unavail_days = set(unavailability_dict.get(doc_name, []))
         total_duties = 0
+        total_holiday_duties = 0
 
         for day in range(1, days_in_month + 1):
             cell = ws.cell(row=row_idx, column=day + 1)
@@ -238,7 +243,7 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft, country_code: str | Non
             is_weekend = (cell_date.weekday() >= 5 or cell_date in holiday_dates)
             shifts = doctor_day_shifts.get((doc_name, day), [])
 
-            total_duties += _populate_doctor_day_cell(
+            duties_count = _populate_doctor_day_cell(
                 cell=cell,
                 day=day,
                 doc_unavail_days=doc_unavail_days,
@@ -248,7 +253,12 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft, country_code: str | Non
                 weekend_fill=weekend_fill,
             )
 
+            total_duties += duties_count
+            if is_weekend:
+                total_holiday_duties += duties_count
+
         ws.cell(row=row_idx, column=days_in_month + 2, value=total_duties)
+        ws.cell(row=row_idx, column=days_in_month + 3, value=total_holiday_duties)
 
     output = io.BytesIO()
     wb.save(output)

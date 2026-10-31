@@ -13,6 +13,7 @@ For building our backend API and database layer, we use three core libraries:
 | **FastAPI** | Extremely fast web framework for building APIs with automatic OpenAPI docs (`/docs`). | Enforces strict input validation using Pydantic, preventing dirty data from hitting the database. |
 | **Uvicorn** | An ASGI web server designed to serve asynchronous Python frameworks like FastAPI. | Runs FastAPI application instances locally with optional auto-reload for development. |
 | **SQLModel** | A unified library combining SQLAlchemy and Pydantic. | Eliminates duplicate code by allowing one class definition to serve as both the database schema and the API data-transfer object (DTO). |
+| **holidays** | Fast, offline calculation of statutory public holidays across 100+ countries. | Used in scheduler to automatically treat public holidays as weekend days for duty fairness and visual formatting. |
 
 ---
 

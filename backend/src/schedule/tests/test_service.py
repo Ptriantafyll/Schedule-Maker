@@ -700,3 +700,83 @@ def test_export_schedule_draft_to_excel_highlights_public_holidays():
     # Tuesday Oct 27 (column 28) is a normal weekday and should not have fill
     weekday_header_cell = ws.cell(row=1, column=28)
     assert weekday_header_cell.fill.fill_type is None
+
+
+def test_export_schedule_draft_to_excel_includes_holiday_duties_column():
+    """Verify that export_schedule_draft_to_excel adds a 'Total Holiday Duties' column next to 'Total Duties'."""
+    draft = ScheduleDraft(
+        department_id=uuid.uuid4(),
+        target_month="2026-10",
+        source_filename="october_roster.xlsx",
+        total_duties=4,
+        solver_status="OPTIMAL",
+        assignments=[
+            # Dr. House:
+            # 1. Oct 1 (Thu) - Weekday duty
+            {
+                "date": "2026-10-01",
+                "day_name": "Thursday",
+                "doctor_name": "Dr. Gregory House",
+                "doctor_email": "house@hospital.org",
+                "position": "ER",
+                "shift": "Night",
+            },
+            # 2. Oct 3 (Sat) - Weekend duty (counts as holiday duty)
+            {
+                "date": "2026-10-03",
+                "day_name": "Saturday",
+                "doctor_name": "Dr. Gregory House",
+                "doctor_email": "house@hospital.org",
+                "position": "ER",
+                "shift": "Night",
+            },
+            # 3. Oct 28 (Wed) - Public Holiday duty (Ohi Day in Greece)
+            {
+                "date": "2026-10-28",
+                "day_name": "Wednesday",
+                "doctor_name": "Dr. Gregory House",
+                "doctor_email": "house@hospital.org",
+                "position": "ER",
+                "shift": "Night",
+            },
+            # Dr. Wilson:
+            # 4. Oct 2 (Fri) - Weekday duty
+            {
+                "date": "2026-10-02",
+                "day_name": "Friday",
+                "doctor_name": "Dr. James Wilson",
+                "doctor_email": "wilson@hospital.org",
+                "position": "Oncology",
+                "shift": "Day",
+            },
+        ],
+    )
+
+    file_bytes = export_schedule_draft_to_excel(draft, country_code="GR")
+    wb = openpyxl.load_workbook(io.BytesIO(file_bytes))
+    ws = wb.active
+
+    # October has 31 days:
+    # Col 1: Doctor \ Date
+    # Col 2-32: Days 1 to 31
+    # Col 33: Total Duties (days_in_month + 2)
+    # Col 34: Total Holiday Duties (days_in_month + 3)
+    total_duties_header = ws.cell(row=2, column=33)
+    assert total_duties_header.value == "Total Duties"
+    assert total_duties_header.font.bold is True
+
+    holiday_duties_header = ws.cell(row=2, column=34)
+    assert holiday_duties_header.value == "Total Holiday Duties"
+    assert holiday_duties_header.font.bold is True
+
+    # Row 3: Dr. Gregory House (alphabetical)
+    # Total Duties = 3, Total Holiday Duties = 2 (Oct 3 Sat + Oct 28 Holiday)
+    assert ws.cell(row=3, column=1).value == "Dr. Gregory House"
+    assert ws.cell(row=3, column=33).value == 3
+    assert ws.cell(row=3, column=34).value == 2
+
+    # Row 4: Dr. James Wilson
+    # Total Duties = 1, Total Holiday Duties = 0
+    assert ws.cell(row=4, column=1).value == "Dr. James Wilson"
+    assert ws.cell(row=4, column=33).value == 1
+    assert ws.cell(row=4, column=34).value == 0
