@@ -250,11 +250,11 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                 isLoading: genState.isLoadingDashboard,
               ),
             ),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: AdminMetricCards(isLoading: genState.isLoadingDashboard),
-            ),
+            // const SizedBox(height: 10),
+            // Padding(
+            //   padding: const EdgeInsets.symmetric(horizontal: 20),
+            //   child: AdminMetricCards(isLoading: genState.isLoadingDashboard),
+            // ),
             const SizedBox(height: 10),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
