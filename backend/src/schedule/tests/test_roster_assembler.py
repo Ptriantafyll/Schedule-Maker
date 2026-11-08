@@ -236,3 +236,26 @@ def test_assemble_department_from_db_unavailability_preassignment_conflict_raise
 
     with pytest.raises(ValueError, match="cannot be pre-assigned on unavailable day"):
         assemble_department_from_db(session, dept.id, "2026-11")
+
+
+def test_assemble_department_from_db_preassignment_ineligible_position_raises(
+    session, roster_setup
+):
+    """Tests that a pre-assignment to a shift in a position the doctor is not eligible for raises ValueError."""
+    dept = roster_setup["dept"]
+    doc_bob = roster_setup["doc_bob"]
+    shift_icu_duty = roster_setup["shift_icu_duty"]
+
+    # Bob is only eligible for 'Emergency', not 'ICU'
+    doctor_repository.create_doctor_pre_assignment(
+        session,
+        doc_bob.id,
+        DoctorPreAssignmentCreate(shift_id=shift_icu_duty.id, date=datetime.date(2026, 11, 18)),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Doctor 'Dr Bob' is pre-assigned to shift 'Duty' on 2026-11-18, but is not eligible for its position",
+    ):
+        assemble_department_from_db(session, dept.id, "2026-11")
+
