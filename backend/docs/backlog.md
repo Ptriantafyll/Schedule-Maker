@@ -443,6 +443,31 @@ Currently, the CI pipeline executes unit and integration tests via `pytest`. To 
 - CI pipeline incorporates automated linting, dead code detection, complexity scoring, and static analysis steps.
 - Clean thresholds configured in the project root to ensure continuous code quality.
 
+### BL-020: Unaffiliated User Screen & Department Transfer Lifecycle
+
+**Area:** Authentication / User & Doctor Lifecycle (Backend + Frontend)  
+**Priority:** Medium
+
+#### Problem
+
+When a doctor leaves a department and is removed from the roster, their `Doctor` record is soft-deleted (`is_deleted = True`), while their `User` account remains active in the system so they do not lose their account and can join another department in the future. Currently:
+1. The `User` table's `ck_user_role_shape` check constraint requires `role = 'DOCTOR'` to have non-null `department_id` and `doctor_id`.
+2. If a logged-in `User` has a soft-deleted `Doctor` record (or `department_id = None` / no active department membership), the frontend router does not yet have a dedicated screen explaining that they are not currently assigned to an active department.
+
+#### Required work
+
+1. **Backend Role-Shape & Detachment Support**:
+   - Allow a `User` with `role = UserRole.DOCTOR` whose `Doctor` row was soft-deleted (or whose `department_id` / `doctor_id` is cleared upon removal) to remain a valid `User` account without active department access, and allow them to accept an invitation to join a new department (creating/linking a new `Doctor` row in the new department).
+   - Expose whether the user's department/doctor membership is active in `/api/v1/auth/me`.
+2. **Frontend Custom Screen for Users Without an Active Department**:
+   - Add a dedicated route and screen (e.g. `NoDepartmentScreen`) shown when an authenticated user has no active department (`departmentId == null` for a non-Super-Admin, or their `Doctor` profile is inactive/removed).
+   - Display a clear message ("You are not currently assigned to a department") with options to enter an invitation code/link or log out.
+
+#### Completion criteria
+
+- Removing a doctor soft-deletes the `Doctor` row while preserving the `User` row.
+- A user whose doctor profile was removed or who has no active department is routed to a custom informational screen rather than encountering 403/404 dashboard errors.
+
 ## Resolved / Closed
 
 

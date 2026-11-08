@@ -5,6 +5,7 @@ Doctor repository function for handling database operations.
 from typing import Optional
 import uuid
 import datetime
+import calendar
 from sqlmodel import Session, not_, select
 from src.user.models import User as UserModel
 from src.doctor.schemas import (
@@ -16,6 +17,7 @@ from src.doctor.models import Doctor as DoctorModel
 from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 from src.doctor.models import DoctorPosition as DoctorPositionModel
+from src.position.models import Position as PositionModel
 
 
 def get_doctor_by_email(session: Session, email: str) -> DoctorModel | None:
@@ -215,3 +217,85 @@ def get_doctor_positions_for_department(
     )
 
     return session.exec(statement).all()
+
+
+def get_doctor_emails_for_department(
+    session: Session, department_id: uuid.UUID
+) -> dict[uuid.UUID, str]:
+    """Retrieves a mapping of {doctor_id: email} for all active users in a department."""
+    statement = (
+        select(UserModel.doctor_id, UserModel.email)
+        .where(
+            UserModel.department_id == department_id,
+            not_(UserModel.doctor_id == None),
+            not_(UserModel.is_deleted),
+        )
+    )
+    rows = session.exec(statement).all()
+
+    return {doc_id: email for doc_id, email in rows if doc_id is not None}
+
+
+def get_all_doctor_positions_for_department(
+    session: Session, department_id: uuid.UUID
+) -> list[DoctorPositionModel]:
+    """Retrieves all active DoctorPosition associations for a department."""
+    statement = (
+        select(DoctorPositionModel)
+        .join(DoctorModel, DoctorModel.id == DoctorPositionModel.doctor_id)
+        .join(PositionModel, PositionModel.id == DoctorPositionModel.position_id)
+        .where(
+            DoctorModel.department_id == department_id,
+            not_(DoctorModel.is_deleted),
+            not_(PositionModel.is_deleted),
+            not_(DoctorPositionModel.is_deleted),
+        )
+    )
+
+    return list(session.exec(statement).all())
+
+
+def get_department_unavailabilities_for_month(
+    session: Session, department_id: uuid.UUID, year: int, month: int
+) -> list[DoctorUnavailabilityModel]:
+    """Retrieves all active doctor unavailabilities for a department in a target month."""
+    _, last_day = calendar.monthrange(year, month)
+    start_date = datetime.date(year, month, 1)
+    end_date = datetime.date(year, month, last_day)
+
+    statement = (
+        select(DoctorUnavailabilityModel)
+        .join(DoctorModel, DoctorModel.id == DoctorUnavailabilityModel.doctor_id)
+        .where(
+            DoctorModel.department_id == department_id,
+            not_(DoctorModel.is_deleted),
+            not_(DoctorUnavailabilityModel.is_deleted),
+            DoctorUnavailabilityModel.date >= start_date,
+            DoctorUnavailabilityModel.date <= end_date,
+        )
+    )
+
+    return list(session.exec(statement).all())
+
+
+def get_department_pre_assignments_for_month(
+    session: Session, department_id: uuid.UUID, year: int, month: int
+) -> list[DoctorPreAssignmentModel]:
+    """Retrieves all active doctor pre-assignments for a department in a target month."""
+    _, last_day = calendar.monthrange(year, month)
+    start_date = datetime.date(year, month, 1)
+    end_date = datetime.date(year, month, last_day)
+
+    statement = (
+        select(DoctorPreAssignmentModel)
+        .join(DoctorModel, DoctorModel.id == DoctorPreAssignmentModel.doctor_id)
+        .where(
+            DoctorModel.department_id == department_id,
+            not_(DoctorModel.is_deleted),
+            not_(DoctorPreAssignmentModel.is_deleted),
+            DoctorPreAssignmentModel.date >= start_date,
+            DoctorPreAssignmentModel.date <= end_date,
+        )
+    )
+
+    return list(session.exec(statement).all())

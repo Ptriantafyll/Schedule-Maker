@@ -77,7 +77,8 @@ def generate_schedule_from_excel(
         dept_domain.config = config_override
 
     year, month = map(int, target_month.split("-"))
-    scheduler = ShiftScheduler(department=dept_domain, country_code=country_code)
+    scheduler = ShiftScheduler(
+        department=dept_domain, country_code=country_code)
     status = scheduler.create_schedule(month=month, year=year)
     status_name = scheduler.solver.status_name(status)
 
@@ -165,7 +166,8 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft, country_code: str | Non
     holiday_dates = set()
     if country_code:
         try:
-            holiday_dates = set(holidays.country_holidays(country_code, years=year).keys())
+            holiday_dates = set(holidays.country_holidays(
+                country_code, years=year).keys())
         except NotImplementedError:
             holiday_dates = set()
 
@@ -240,7 +242,8 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft, country_code: str | Non
         for day in range(1, days_in_month + 1):
             cell = ws.cell(row=row_idx, column=day + 1)
             cell_date = datetime.date(year, month, day)
-            is_weekend = (cell_date.weekday() >= 5 or cell_date in holiday_dates)
+            is_weekend = (cell_date.weekday() >=
+                          5 or cell_date in holiday_dates)
             shifts = doctor_day_shifts.get((doc_name, day), [])
 
             duties_count = _populate_doctor_day_cell(
@@ -258,7 +261,8 @@ def export_schedule_draft_to_excel(draft: ScheduleDraft, country_code: str | Non
                 total_holiday_duties += duties_count
 
         ws.cell(row=row_idx, column=days_in_month + 2, value=total_duties)
-        ws.cell(row=row_idx, column=days_in_month + 3, value=total_holiday_duties)
+        ws.cell(row=row_idx, column=days_in_month +
+                3, value=total_holiday_duties)
 
     output = io.BytesIO()
     wb.save(output)
@@ -347,7 +351,7 @@ def publish_schedule_draft(
             pos = position_repository.stage_position(
                 session=session,
                 position_name=pos_name,
-                duty_days=[1, 2, 3, 4, 5, 6, 7],
+                duty_days=[0, 1, 2, 3, 4, 5, 6],
                 department_id=department_id
             )
             pos_cache[pos_name] = pos

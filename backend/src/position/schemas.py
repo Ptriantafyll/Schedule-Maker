@@ -11,7 +11,24 @@ from typing import Optional
 import uuid
 import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
+
+
+def validate_duty_days_list(duty_days: Optional[list[int]]) -> Optional[list[int]]:
+    """Validates that duty days are integers within 0..6 (Mon-Sun), non-empty, and returns them sorted."""
+    if duty_days is None:
+        return None
+
+    if len(duty_days) == 0:
+        raise ValueError("Duty days cannot be empty.")
+
+    for day in duty_days:
+        if not isinstance(day, int) or day < 0 or day > 6:
+            raise ValueError(
+                f"Invalid duty day: {day}. Must be an integer between 0 (Monday) and 6 (Sunday)."
+            )
+
+    return sorted(list(set(duty_days)))
 
 
 class PositionBase(BaseModel):
@@ -39,6 +56,11 @@ class PositionCreate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    @field_validator("duty_days")
+    @classmethod
+    def validate_duty_days(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+        return validate_duty_days_list(v)
+
 
 class PositionUpdate(BaseModel):
     """Schema for partial position updates.
@@ -47,8 +69,13 @@ class PositionUpdate(BaseModel):
     """
 
     name: Optional[str] = None
-    department_id: Optional[uuid.UUID]
-    duty_days: Optional[list[int]]
+    department_id: Optional[uuid.UUID] = None
+    duty_days: Optional[list[int]] = None
+
+    @field_validator("duty_days")
+    @classmethod
+    def validate_duty_days(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+        return validate_duty_days_list(v)
 
 
 class PositionRead(PositionBase):

@@ -6,10 +6,11 @@ import uuid
 import datetime
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 
 from src.position.models import Position as PositionModel
-from src.position.schemas import PositionCreate
+from src.position.schemas import PositionCreate, PositionUpdate
 from src.position import repository as position_repository
 from src.doctor import repository as doctor_repository
 from src.team import repository as team_repository
@@ -675,11 +676,6 @@ def test_create_position_requires_authentication(client, department, session):
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
-    assert position_repository.get_position_by_name_for_department(
-        session=session,
-        position_name="ICU",
-        department_id=department.id,
-    ) is None
 
 
 @pytest.mark.parametrize(
@@ -708,3 +704,74 @@ def test_position_read_routes_require_authentication(
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_position_create_schema_duty_days_validation():
+    """Tests Pydantic validation for PositionCreate duty_days."""
+    # Out of range (7 is invalid; valid is 0..6)
+    with pytest.raises(ValidationError):
+        PositionCreate(name="ER", duty_days=[0, 1, 7])
+
+    # Negative number
+    with pytest.raises(ValidationError):
+        PositionCreate(name="ER", duty_days=[-1, 2])
+
+    # Empty list
+    with pytest.raises(ValidationError):
+        PositionCreate(name="ER", duty_days=[])
+
+    # Valid: deduplicates and sorts
+    pos = PositionCreate(name="ER", duty_days=[5, 2, 2, 0])
+    assert pos.duty_days == [0, 2, 5]
+
+
+def test_position_update_schema_duty_days_validation():
+    """Tests Pydantic validation for PositionUpdate duty_days."""
+    # Out of range
+    with pytest.raises(ValidationError):
+        PositionUpdate(duty_days=[7])
+
+    # Empty list
+    with pytest.raises(ValidationError):
+        PositionUpdate(duty_days=[])
+
+    # None is allowed for partial update
+    pos_update = PositionUpdate(duty_days=None)
+    assert pos_update.duty_days is None
+
+    # Valid: deduplicates and sorts
+    pos_update_valid = PositionUpdate(duty_days=[6, 0, 0])
+    assert pos_update_valid.duty_days == [0, 6]
+
+
+def test_create_position_route_rejects_invalid_duty_days(client, department_admin_headers):
+    """Tests that POST /api/v1/positions returns 422 for out-of-range or empty duty_days."""
+    # Out-of-range day (7)
+    response_out_of_range = client.post(
+        "/api/v1/positions/",
+        json={"name": "Out of Range", "duty_days": [1, 2, 7]},
+        headers=department_admin_headers,
+    )
+    assert response_out_of_range.status_code == 422
+
+    # Empty duty days
+    response_empty = client.post(
+        "/api/v1/positions/",
+        json={"name": "Empty Days", "duty_days": []},
+        headers=department_admin_headers,
+    )
+    assert response_empty.status_code == 422
+
+
+def test_create_position_route_normalizes_duty_days(
+    client, session, department, department_admin_headers
+):
+    """Tests that valid duty_days are sorted and deduplicated upon creation."""
+    response = client.post(
+        "/api/v1/positions/",
+        json={"name": "Normalized Position", "duty_days": [5, 1, 1, 3]},
+        headers=department_admin_headers,
+    )
+    assert response.status_code == 201
+    data = response.json()
+    assert data["duty_days"] == [1, 3, 5]

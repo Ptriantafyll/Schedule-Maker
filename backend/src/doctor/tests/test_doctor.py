@@ -2627,3 +2627,136 @@ def test_list_doctor_positions_requires_authentication(client, new_doctor):
     assert response.status_code == 401
     assert response.json() == {"detail": "Unauthorized"}
     assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+def test_get_doctor_emails_for_department(
+    session, department, department_b, new_doctor, other_doctor, doctor_b, user_factory
+):
+    """Tests batch retrieval of doctor emails for a department, excluding deleted and foreign users."""
+    # Active user linked to new_doctor in department
+    user_factory(
+        email="panos@hospital.com",
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=new_doctor.id,
+    )
+    # Active user linked to doctor_b in foreign department_b
+    user_factory(
+        email="foreign@hospital.com",
+        role=UserRole.DOCTOR,
+        department_id=department_b.id,
+        doctor_id=doctor_b.id,
+    )
+    # other_doctor has no User account
+
+    # Soft-deleted user linked to another doctor
+    doc_deleted = doctor_repository.create_doctor(
+        session=session, name="Dr Deleted", department_id=department.id
+    )
+    user_deleted = user_factory(
+        email="deleted@hospital.com",
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=doc_deleted.id,
+    )
+    user_deleted.is_deleted = True
+    session.add(user_deleted)
+    session.commit()
+
+    emails = doctor_repository.get_doctor_emails_for_department(session, department.id)
+
+    assert emails == {new_doctor.id: "panos@hospital.com"}
+    assert other_doctor.id not in emails
+    assert doctor_b.id not in emails
+    assert doc_deleted.id not in emails
+
+
+def test_get_all_doctor_positions_for_department(
+    session, department, department_b, new_doctor, other_doctor, doctor_b, position, position_b
+):
+    """Tests batch retrieval of doctor positions for a department, excluding deleted and foreign records."""
+    # 2 active assignments in department
+    dp1 = create_test_doctor_position(session, new_doctor, position)
+    dp2 = create_test_doctor_position(session, other_doctor, position)
+
+    # 1 in foreign department
+    create_test_doctor_position(session, doctor_b, position_b)
+
+    # 1 soft-deleted assignment in department (using a 3rd doctor)
+    doc_3 = doctor_repository.create_doctor(
+        session=session, name="Dr Position Deleted", department_id=department.id
+    )
+    dp_deleted = create_test_doctor_position(session, doc_3, position)
+    dp_deleted.is_deleted = True
+    session.add(dp_deleted)
+    session.commit()
+
+    results = doctor_repository.get_all_doctor_positions_for_department(session, department.id)
+    result_ids = {r.id for r in results}
+
+    assert len(results) == 2
+    assert dp1.id in result_ids
+    assert dp2.id in result_ids
+    assert dp_deleted.id not in result_ids
+
+
+def test_get_department_unavailabilities_for_month(
+    session, department, department_b, new_doctor, doctor_b
+):
+    """Tests batch retrieval of doctor unavailabilities strictly filtered by department and target month."""
+    # In-month unavailabilities (November 2026)
+    u1 = create_test_unavailability(session, new_doctor, datetime.date(2026, 11, 5))
+    u2 = create_test_unavailability(session, new_doctor, datetime.date(2026, 11, 20))
+
+    # Out-of-month (October and December)
+    create_test_unavailability(session, new_doctor, datetime.date(2026, 10, 31))
+    create_test_unavailability(session, new_doctor, datetime.date(2026, 12, 1))
+
+    # In-month but soft-deleted
+    u_deleted = create_test_unavailability(session, new_doctor, datetime.date(2026, 11, 15))
+    u_deleted.is_deleted = True
+    session.add(u_deleted)
+    session.commit()
+
+    # In-month but foreign department
+    create_test_unavailability(session, doctor_b, datetime.date(2026, 11, 10))
+
+    results = doctor_repository.get_department_unavailabilities_for_month(
+        session, department.id, year=2026, month=11
+    )
+    result_ids = {r.id for r in results}
+
+    assert len(results) == 2
+    assert u1.id in result_ids
+    assert u2.id in result_ids
+    assert u_deleted.id not in result_ids
+
+
+def test_get_department_pre_assignments_for_month(
+    session, department, department_b, new_doctor, doctor_b, shift, shift_b
+):
+    """Tests batch retrieval of pre-assignments strictly filtered by department and target month."""
+    # In-month pre-assignment (November 2026)
+    pa1 = create_test_pre_assignment(session, shift.id, new_doctor, datetime.date(2026, 11, 3))
+
+    # Out-of-month (October and December)
+    create_test_pre_assignment(session, shift.id, new_doctor, datetime.date(2026, 10, 31))
+    create_test_pre_assignment(session, shift.id, new_doctor, datetime.date(2026, 12, 1))
+
+    # In-month but soft-deleted
+    pa_deleted = create_test_pre_assignment(session, shift.id, new_doctor, datetime.date(2026, 11, 15))
+    pa_deleted.is_deleted = True
+    session.add(pa_deleted)
+    session.commit()
+
+    # In-month but foreign department
+    create_test_pre_assignment(session, shift_b.id, doctor_b, datetime.date(2026, 11, 7))
+
+    results = doctor_repository.get_department_pre_assignments_for_month(
+        session, department.id, year=2026, month=11
+    )
+    result_ids = {r.id for r in results}
+
+    assert len(results) == 1
+    assert pa1.id in result_ids
+    assert pa_deleted.id not in result_ids
