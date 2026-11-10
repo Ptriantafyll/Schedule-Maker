@@ -12,3 +12,4 @@ Schedule-Maker is a Python tool that generates optimized monthly on-duty schedul
 - After every change, check if anything can be made cleaner and if there is repeated code that can be extracted into a helper function
 - Use snake_case for OR-Tools CP-SAT methods (e.g. `model.add`, `model.new_bool_var`, `only_enforce_if`), not PascalCase
 - Use TDD (Test-Driven Development) approach: write tests first, then implement the code to make them pass
+- Prioritize code readability and single-responsibility helper functions: Break large functions down into small, well-named helper functions where each helper has a single responsibility (e.g., separating DB retrieval from domain model transformation) and use consistent, descriptive variable naming so the code is immediately understandable months later.
