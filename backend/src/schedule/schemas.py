@@ -61,3 +61,13 @@ class TargetMonthResponse(BaseModel):
     """Response model for target month resolution."""
     next_target_month: str
     last_published_month: Optional[str] = None
+
+
+class GenerateFromRosterRequest(BaseModel):
+    """Request payload to generate a schedule draft directly from department roster."""
+
+    target_month: str
+    department_id: Optional[uuid.UUID] = None
+    country_code: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")

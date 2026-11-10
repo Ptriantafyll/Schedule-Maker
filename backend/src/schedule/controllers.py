@@ -227,4 +227,33 @@ def publish_schedule_draft_controller(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(exc)
+        ) from exc
+
+
+def generate_schedule_from_roster_controller(
+    session: Session,
+    target_month: str,
+    department_id: uuid.UUID | None = None,
+    current_user: UserModel | None = None,
+    country_code: str | None = None,
+) -> ScheduleDraft:
+    """Generates a schedule from department roster."""
+    dept_id = _resolve_and_verify_department(
+        current_user=current_user,
+        requested_department_id=department_id,
+    )
+
+    try:
+        draft = schedule_service.generate_schedule_from_roster(
+            session=session,
+            department_id=dept_id,
+            target_month=target_month,
+            country_code=country_code or "GR",
         )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc)
+        ) from exc
+
+    return draft

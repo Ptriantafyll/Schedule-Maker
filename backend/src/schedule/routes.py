@@ -13,7 +13,7 @@ from fastapi import (
 )
 from sqlmodel import Session
 from src.db.connection import get_session
-from src.schedule.schemas import ScheduleDraftRead, ScheduleSummaryRead, TargetMonthResponse
+from src.schedule.schemas import ScheduleDraftRead, ScheduleSummaryRead, TargetMonthResponse, GenerateFromRosterRequest
 from src.schedule import controllers as schedule_controllers
 from src.user.models import User as UserModel
 from src.auth.dependencies import (
@@ -52,11 +52,31 @@ def list_schedules(
 
 
 @router.post(
+    "/generate-from-roster",
+    response_model=ScheduleDraftRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def generate_schedule_from_roster(
+    payload: GenerateFromRosterRequest,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin),
+):
+    """Generate a monthly duty schedule draft from the department roster."""
+    return schedule_controllers.generate_schedule_from_roster_controller(
+        session=session,
+        target_month=payload.target_month,
+        department_id=payload.department_id,
+        current_user=current_user,
+        country_code=payload.country_code,
+    )
+
+
+@router.post(
     "/generate-from-excel",
     response_model=ScheduleDraftRead,
     status_code=status.HTTP_201_CREATED,
 )
-async def generate_schedule_from_excel(
+def generate_schedule_from_excel(
     file: UploadFile = File(...),
     target_month: str = Form(...),
     department_id: uuid.UUID | None = Form(None),
@@ -65,7 +85,7 @@ async def generate_schedule_from_excel(
     current_user: UserModel = Depends(require_department_admin),
 ):
     """Generate a monthly duty schedule draft from an uploaded Excel roster."""
-    file_bytes = await file.read()
+    file_bytes = file.file.read()
     return schedule_controllers.generate_schedule_from_excel_controller(
         session=session,
         file_bytes=file_bytes,
