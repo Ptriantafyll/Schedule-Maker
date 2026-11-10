@@ -39,6 +39,25 @@ class ScheduleDraftRemoteDataSource {
     return 'GR';
   }
 
+  Future<ScheduleDraft> generateFromRoster({
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
+    final payload = {
+      'target_month': targetMonth,
+      'department_id': ?departmentId,
+      'country_code': _resolveCountryCode(countryCode),
+    };
+
+    final response = await _apiClient.post<Map<String, dynamic>>(
+      '/api/v1/schedules/generate-from-roster',
+      data: payload,
+    );
+
+    return ScheduleDraftDto.fromJson(response.data!).toDomain();
+  }
+
   Future<ScheduleDraft> generateFromExcel({
     required PlatformFile file,
     required String targetMonth,

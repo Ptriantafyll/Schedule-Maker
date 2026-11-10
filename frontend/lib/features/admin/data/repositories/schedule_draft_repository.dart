@@ -19,14 +19,18 @@ abstract class ScheduleDraftRepository {
     String? departmentId,
   });
 
+  Future<ScheduleDraft> generateFromRoster({
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  });
+
   Future<ScheduleDraft?> getActiveDraft({
     required String targetMonth,
     String? departmentId,
   });
 
   Future<List<int>> exportExcel({required String draftId});
-
-  Future<void> generateFromRoster({required String month});
 
   Future<List<ScheduleSummary>> fetchScheduleHistory({String? departmentId});
 
@@ -54,6 +58,19 @@ class ScheduleDraftRepositoryImpl implements ScheduleDraftRepository {
   }
 
   @override
+  Future<ScheduleDraft> generateFromRoster({
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
+    return await remoteDataSource.generateFromRoster(
+      targetMonth: targetMonth,
+      departmentId: departmentId,
+      countryCode: countryCode,
+    );
+  }
+
+  @override
   Future<ScheduleDraft?> getActiveDraft({
     required String targetMonth,
     String? departmentId,
@@ -67,11 +84,6 @@ class ScheduleDraftRepositoryImpl implements ScheduleDraftRepository {
   @override
   Future<List<int>> exportExcel({required String draftId}) async {
     return await remoteDataSource.exportExcel(draftId: draftId);
-  }
-
-  @override
-  Future<void> generateFromRoster({required String month}) async {
-    await Future.delayed(const Duration(milliseconds: 500));
   }
 
   @override

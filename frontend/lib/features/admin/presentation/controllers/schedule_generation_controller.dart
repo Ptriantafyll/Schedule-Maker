@@ -124,7 +124,7 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
 
     try {
       final repository = ref.read(scheduleDraftRepositoryProvider);
-      await repository.generateFromRoster(month: month);
+      await repository.generateFromRoster(targetMonth: month);
       state = state.copyWith(
         status: GenerationStatus.success,
         generatedAt: DateTime.now(),
