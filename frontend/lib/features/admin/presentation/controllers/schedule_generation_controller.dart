@@ -9,7 +9,8 @@ export 'package:frontend/features/admin/presentation/state/schedule_generation_s
 
 class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
   @override
-  ScheduleGenerationState build() => const ScheduleGenerationState(isLoadingDashboard: true);
+  ScheduleGenerationState build() =>
+      const ScheduleGenerationState(isLoadingDashboard: true);
 
   String _extractErrorMessage(Object error) {
     if (error is ApiException) {
@@ -119,15 +120,29 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
     }
   }
 
-  Future<void> generateFromCurrentRoster({String month = 'November'}) async {
+  Future<void> generateFromCurrentRoster({
+    String? targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
     state = state.copyWith(status: GenerationStatus.solving, clearError: true);
+
+    final effectiveTargetMonth = (targetMonth != null && targetMonth.isNotEmpty)
+        ? targetMonth
+        : (state.selectedMonth.isNotEmpty ? state.selectedMonth : '2026-11');
 
     try {
       final repository = ref.read(scheduleDraftRepositoryProvider);
-      await repository.generateFromRoster(targetMonth: month);
+      final draft = await repository.generateFromRoster(
+        targetMonth: effectiveTargetMonth,
+        countryCode: countryCode,
+        departmentId: departmentId,
+      );
+
       state = state.copyWith(
         status: GenerationStatus.success,
         generatedAt: DateTime.now(),
+        draft: draft,
         source: 'Current Department Roster',
       );
     } catch (e) {

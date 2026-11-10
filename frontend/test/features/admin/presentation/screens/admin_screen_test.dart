@@ -93,8 +93,14 @@ class FakeAdminScheduleDraftRepository implements ScheduleDraftRepository {
   }
 
   @override
-  Future<void> generateFromRoster({required String month}) async {
+  Future<ScheduleDraft> generateFromRoster({
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
     generateFromRosterCallCount++;
+    if (errorToThrow != null) throw errorToThrow!;
+    return draftToReturn ?? _createSampleDraft();
   }
 
   @override
@@ -257,12 +263,29 @@ void main() {
       await tester.tap(find.text('Current Department Roster'));
       await tester.pumpAndSettle();
 
-      // Draft canvas should now display Draft Schedule Generated
-      expect(find.text('Draft Schedule Generated'), findsOneWidget);
+      // Draft canvas should now display the solved draft
+      expect(find.text('OPTIMAL'), findsOneWidget);
+      expect(find.text('Dr. Gregory House'), findsOneWidget);
       expect(find.text('Awaiting Generation'), findsNothing);
 
       // SnackBar should be displayed
       expect(find.text('Schedule generated from current roster'), findsOneWidget);
+    });
+
+    testWidgets('displays error SnackBar when roster generation fails', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository()
+        ..errorToThrow = Exception("Position 'ICU' has no eligible doctors assigned.");
+
+      await tester.pumpWidget(createWidgetUnderTest(repository: fakeRepo));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Generate Schedule'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Current Department Roster'));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Exception: Position 'ICU' has no eligible doctors assigned."), findsOneWidget);
     });
 
     testWidgets('selecting Import from Excel opens ExcelUploadDialog', (tester) async {

@@ -107,9 +107,15 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   }
 
   Future<void> _generateFromCurrentRoster() async {
+    final user = ref.read(currentUserProvider);
+    final genState = ref.read(scheduleGenerationControllerProvider);
+
     await ref
         .read(scheduleGenerationControllerProvider.notifier)
-        .generateFromCurrentRoster(month: 'November');
+        .generateFromCurrentRoster(
+          targetMonth: genState.selectedMonth,
+          departmentId: user?.departmentId,
+        );
 
     if (!mounted) return;
 

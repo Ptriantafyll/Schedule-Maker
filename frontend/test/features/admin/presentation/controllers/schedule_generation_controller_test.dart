@@ -97,10 +97,20 @@ class FakeScheduleDraftRepository implements ScheduleDraftRepository {
     return exportBytesToReturn;
   }
 
+  String? capturedCountryCode;
+
   @override
-  Future<void> generateFromRoster({required String month}) async {
+  Future<ScheduleDraft> generateFromRoster({
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
     generateFromRosterCallCount++;
+    capturedTargetMonth = targetMonth;
+    capturedDepartmentId = departmentId;
+    capturedCountryCode = countryCode;
     if (exceptionToThrow != null) throw exceptionToThrow!;
+    return scheduleDraftToReturn ?? _createDummyDraft();
   }
 
   @override
@@ -317,15 +327,38 @@ void main() {
       expect(state.errorMessage, contains('Export failed'));
     });
 
-    test('generateFromCurrentRoster transitions to success', () async {
+    test('generateFromCurrentRoster transitions to success, sets draft and source', () async {
+      final dummyDraft = FakeScheduleDraftRepository._createDummyDraft();
+      fakeRepository.scheduleDraftToReturn = dummyDraft;
       final controller = container.read(scheduleGenerationControllerProvider.notifier);
 
-      await controller.generateFromCurrentRoster(month: 'November');
+      await controller.generateFromCurrentRoster(
+        targetMonth: '2026-11',
+        departmentId: 'dept-1',
+      );
 
       final state = container.read(scheduleGenerationControllerProvider);
       expect(fakeRepository.generateFromRosterCallCount, equals(1));
+      expect(fakeRepository.capturedTargetMonth, equals('2026-11'));
+      expect(fakeRepository.capturedDepartmentId, equals('dept-1'));
       expect(state.status, equals(GenerationStatus.success));
       expect(state.isGenerated, isTrue);
+      expect(state.draft, equals(dummyDraft));
+      expect(state.source, equals('Current Department Roster'));
+      expect(state.generatedAt, isNotNull);
+    });
+
+    test('generateFromCurrentRoster transitions to error state when repository throws', () async {
+      fakeRepository.exceptionToThrow = Exception("Position 'ER' has no eligible doctors assigned.");
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+
+      await controller.generateFromCurrentRoster(targetMonth: '2026-11');
+
+      final state = container.read(scheduleGenerationControllerProvider);
+      expect(state.status, equals(GenerationStatus.error));
+      expect(state.isGenerated, isFalse);
+      expect(state.draft, isNull);
+      expect(state.errorMessage, contains("Position 'ER' has no eligible doctors assigned."));
     });
 
     test('reset clears state and draft back to idle', () async {
