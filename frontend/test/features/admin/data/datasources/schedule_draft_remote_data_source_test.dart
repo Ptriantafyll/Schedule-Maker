@@ -407,4 +407,63 @@ void main() {
       );
     });
   });
+
+  group('ScheduleDraftRemoteDataSource.generateFromRoster', () {
+    test('sends JSON POST to /api/v1/schedules/generate-from-roster and returns ScheduleDraft', () async {
+      fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules/generate-from-roster'),
+        statusCode: 201,
+        data: sampleDraftPayload,
+      );
+
+      final result = await dataSource.generateFromRoster(
+        targetMonth: '2026-11',
+        departmentId: 'dept-uuid-1',
+        countryCode: 'GR',
+      );
+
+      expect(fakeApiClient.capturedPath, equals('/api/v1/schedules/generate-from-roster'));
+      expect(fakeApiClient.capturedData, isA<Map<String, dynamic>>());
+
+      final data = fakeApiClient.capturedData as Map<String, dynamic>;
+      expect(data['target_month'], equals('2026-11'));
+      expect(data['department_id'], equals('dept-uuid-1'));
+      expect(data['country_code'], equals('GR'));
+
+      expect(result, isA<ScheduleDraft>());
+      expect(result.id, equals('draft-uuid-1'));
+      expect(result.assignments.length, equals(1));
+    });
+
+    test('omits department_id from payload when departmentId is null', () async {
+      fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules/generate-from-roster'),
+        statusCode: 201,
+        data: sampleDraftPayload,
+      );
+
+      await dataSource.generateFromRoster(
+        targetMonth: '2026-11',
+      );
+
+      final data = fakeApiClient.capturedData as Map<String, dynamic>;
+      expect(data['target_month'], equals('2026-11'));
+      expect(data.containsKey('department_id'), isFalse);
+    });
+
+    test('propagates ApiException when solver endpoint fails', () async {
+      fakeApiClient.exceptionToThrow = const ApiException(
+        type: ApiErrorType.validation,
+        statusCode: 400,
+        message: "Position 'ER' has no eligible doctors assigned.",
+      );
+
+      expect(
+        () => dataSource.generateFromRoster(
+          targetMonth: '2026-11',
+        ),
+        throwsA(isA<ApiException>()),
+      );
+    });
+  });
 }

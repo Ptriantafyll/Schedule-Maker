@@ -50,6 +50,22 @@ class FakeScheduleDraftRemoteDataSource implements ScheduleDraftRemoteDataSource
   TargetMonthInfo? targetMonthInfoToReturn;
   Exception? exceptionToThrow;
 
+  String? capturedCountryCode;
+
+  @override
+  Future<ScheduleDraft> generateFromRoster({
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
+    capturedTargetMonth = targetMonth;
+    capturedDepartmentId = departmentId;
+    capturedCountryCode = countryCode;
+
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return draftToReturn!;
+  }
+
   @override
   Future<ScheduleDraft> generateFromExcel({
     required PlatformFile file,
@@ -235,10 +251,27 @@ void main() {
   });
 
   group('ScheduleDraftRepositoryImpl.generateFromRoster', () {
-    test('completes successfully', () async {
-      await expectLater(
-        repository.generateFromRoster(month: 'November'),
-        completes,
+    test('delegates to remoteDataSource and returns ScheduleDraft', () async {
+      fakeRemoteDataSource.draftToReturn = sampleDraft;
+
+      final result = await repository.generateFromRoster(
+        targetMonth: '2026-11',
+        departmentId: 'dept-1',
+        countryCode: 'GR',
+      );
+
+      expect(fakeRemoteDataSource.capturedTargetMonth, equals('2026-11'));
+      expect(fakeRemoteDataSource.capturedDepartmentId, equals('dept-1'));
+      expect(fakeRemoteDataSource.capturedCountryCode, equals('GR'));
+      expect(result, equals(sampleDraft));
+    });
+
+    test('propagates exception when remoteDataSource throws', () async {
+      fakeRemoteDataSource.exceptionToThrow = Exception('Solver error');
+
+      expect(
+        () => repository.generateFromRoster(targetMonth: '2026-11'),
+        throwsException,
       );
     });
   });
