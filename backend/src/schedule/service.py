@@ -13,13 +13,13 @@ import openpyxl
 from openpyxl.styles import PatternFill, Font
 from sqlmodel import Session
 from ortools.sat.python import cp_model
-from sqlmodel import Session
 
 from src.department import repository as department_repository
-from src.models import ScheduleConfig
+from src.models import Department, ScheduleConfig
 from src.scheduler import ShiftScheduler
 from src.schedule.models import ScheduleDraft
 from src.schedule.excel_parser import parse_excel_schedule_workbook
+from src.schedule.roster_assembler import assemble_department_from_db
 from src.schedule import repository as schedule_repository
 from src.shift import repository as shift_repository
 
@@ -29,6 +29,65 @@ from src.position import repository as position_repository
 from src.position.models import Position as PositionModel
 from src.shift.models import Shift as ShiftModel, ShiftAssignment as ShiftAssignmentModel
 from src.shift.schemas import ShiftCreate
+
+
+def _extract_solved_assignments(scheduler: ShiftScheduler) -> list[dict]:
+    """Extracts and sorts shift assignments from a solved ShiftScheduler instance."""
+    assignments = []
+    for (day_idx, position, shift, doc), var in scheduler.shift_assignments.items():
+        if scheduler.solver.value(var) == 1:
+            date = scheduler.dates[day_idx]
+            assignments.append({
+                "date": date.isoformat(),
+                "day_name": date.strftime("%A"),
+                "doctor_name": doc.name,
+                "doctor_email": doc.email,
+                "position": position.name,
+                "shift": shift.name,
+            })
+
+    assignments.sort(key=lambda a: (a["date"], a["position"], a["shift"]))
+    return assignments
+
+
+def _solve_and_persist_draft(
+    session: Session,
+    department_id: uuid.UUID,
+    dept_domain: Department,
+    target_month: str,
+    source_filename: str,
+    country_code: Optional[str] = "GR",
+) -> ScheduleDraft:
+    """Executes CP-SAT solving on a domain Department and persists the ScheduleDraft."""
+    year, month = map(int, target_month.split("-"))
+    scheduler = ShiftScheduler(department=dept_domain, country_code=country_code)
+    status = scheduler.create_schedule(month=month, year=year)
+    status_name = scheduler.solver.status_name(status)
+
+    if status not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+        raise ValueError(
+            f"Unable to generate schedule. Constraints are infeasible (status: {status_name})."
+        )
+
+    assignments = _extract_solved_assignments(scheduler)
+    unavailabilities = {
+        doc.name: sorted([d.day for d in doc.unavailability])
+        for doc in dept_domain.doctors
+        if doc.unavailability
+    }
+
+    draft = ScheduleDraft(
+        department_id=department_id,
+        target_month=target_month,
+        source_filename=source_filename,
+        total_duties=len(assignments),
+        solver_status=status_name,
+        status="draft",
+        assignments=assignments,
+        unavailabilities=unavailabilities,
+    )
+
+    return schedule_repository.create_schedule_draft(session, draft)
 
 
 def generate_schedule_from_excel(
@@ -54,6 +113,7 @@ def generate_schedule_from_excel(
         target_month: Target month in "YYYY-MM" format (e.g., "2026-11").
         source_filename: Name of the uploaded file for audit and display tracking.
         config_override: Optional custom solver weights and constraint limits.
+        country_code: Country code used for holiday detection (defaults to "GR").
 
     Returns:
         The newly created and persisted ScheduleDraft record with its assignments.
@@ -76,50 +136,59 @@ def generate_schedule_from_excel(
     if config_override:
         dept_domain.config = config_override
 
-    year, month = map(int, target_month.split("-"))
-    scheduler = ShiftScheduler(
-        department=dept_domain, country_code=country_code)
-    status = scheduler.create_schedule(month=month, year=year)
-    status_name = scheduler.solver.status_name(status)
-
-    if status not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
-        raise ValueError(
-            f"Unable to generate schedule. Constraints are infeasible (status: {status_name})."
-        )
-
-    assignments = []
-    for (day_idx, position, shift, doc), var in scheduler.shift_assignments.items():
-        if scheduler.solver.value(var) == 1:
-            date = scheduler.dates[day_idx]
-            assignments.append({
-                "date": date.isoformat(),
-                "day_name": date.strftime("%A"),
-                "doctor_name": doc.name,
-                "doctor_email": doc.email,
-                "position": position.name,
-                "shift": shift.name,
-            })
-
-    assignments.sort(key=lambda a: (a["date"], a["position"], a["shift"]))
-
-    unavailabilities = {
-        doc.name: sorted([d.day for d in doc.unavailability])
-        for doc in dept_domain.doctors
-        if doc.unavailability
-    }
-
-    draft = ScheduleDraft(
+    return _solve_and_persist_draft(
+        session=session,
         department_id=department_id,
+        dept_domain=dept_domain,
         target_month=target_month,
         source_filename=source_filename,
-        total_duties=len(assignments),
-        solver_status=status_name,
-        status="draft",
-        assignments=assignments,
-        unavailabilities=unavailabilities,
+        country_code=country_code,
     )
 
-    return schedule_repository.create_schedule_draft(session, draft)
+
+def generate_schedule_from_roster(
+    session: Session,
+    department_id: uuid.UUID,
+    target_month: str,
+    config_override: Optional[ScheduleConfig] = None,
+    country_code: Optional[str] = "GR",
+) -> ScheduleDraft:
+    """
+    Generates an optimized monthly schedule draft directly from the department database roster.
+
+    Assembles the department roster entities (positions, shifts, doctors, teams,
+    unavailabilities, and pre-assignments) from the database into the domain model,
+    executes CP-SAT constraint solving, and persists the resulting ScheduleDraft.
+
+    Args:
+        session: Active database session.
+        department_id: UUID of the target hospital department.
+        target_month: Target month in "YYYY-MM" format (e.g., "2026-11").
+        config_override: Optional custom solver weights and constraint limits.
+        country_code: Country code used for holiday detection (defaults to "GR").
+
+    Returns:
+        The newly created and persisted ScheduleDraft record with its assignments.
+
+    Raises:
+        ValueError: If the department does not exist, roster validation fails,
+                    or the solver determines the constraints are infeasible.
+    """
+    dept_domain = assemble_department_from_db(
+        session=session,
+        department_id=department_id,
+        target_month=target_month,
+        config_override=config_override,
+    )
+
+    return _solve_and_persist_draft(
+        session=session,
+        department_id=department_id,
+        dept_domain=dept_domain,
+        target_month=target_month,
+        source_filename="Current Department Roster",
+        country_code=country_code,
+    )
 
 
 def _populate_doctor_day_cell(

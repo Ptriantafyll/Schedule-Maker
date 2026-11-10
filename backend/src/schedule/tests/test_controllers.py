@@ -389,3 +389,110 @@ def test_get_target_month_controller_rejects_cross_department_access(
 
 
 
+
+
+def test_generate_schedule_from_roster_controller_success(
+    monkeypatch, session, department_factory, user_factory
+):
+    """Verify controller resolves department, delegates to service, and returns draft."""
+    from src.schedule.controllers import generate_schedule_from_roster_controller
+
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+
+    fake_draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="Current Department Roster",
+        total_duties=15,
+        solver_status="OPTIMAL",
+        status="draft",
+        assignments=[],
+    )
+
+    monkeypatch.setattr(
+        "src.schedule.service.generate_schedule_from_roster",
+        lambda **kwargs: fake_draft,
+    )
+
+    result = generate_schedule_from_roster_controller(
+        session=session,
+        target_month="2026-11",
+        department_id=dept.id,
+        current_user=admin,
+    )
+
+    assert result.id == fake_draft.id
+    assert result.department_id == dept.id
+    assert result.source_filename == "Current Department Roster"
+
+
+def test_generate_schedule_from_roster_controller_translates_value_error_to_400(
+    monkeypatch, session, department_factory, user_factory
+):
+    """Verify controller translates service ValueError into HTTPException(400)."""
+    from src.schedule.controllers import generate_schedule_from_roster_controller
+
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+
+    def _mock_service_failure(**kwargs):
+        raise ValueError("Position 'ICU' has no eligible doctors assigned.")
+
+    monkeypatch.setattr(
+        "src.schedule.service.generate_schedule_from_roster",
+        _mock_service_failure,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_schedule_from_roster_controller(
+            session=session,
+            target_month="2026-11",
+            department_id=dept.id,
+            current_user=admin,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "Position 'ICU' has no eligible doctors assigned." in exc_info.value.detail
+
+
+def test_generate_schedule_from_roster_controller_rejects_cross_department_access(
+    session, department_factory, user_factory
+):
+    """Verify controller enforces department boundary for Department Admin."""
+    from src.schedule.controllers import generate_schedule_from_roster_controller
+
+    dept_a = department_factory()
+    dept_b = department_factory()
+    admin_a = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept_a.id)
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_schedule_from_roster_controller(
+            session=session,
+            target_month="2026-11",
+            department_id=dept_b.id,
+            current_user=admin_a,
+        )
+
+    assert exc_info.value.status_code == 403
+    assert "Cannot access schedules for another department" in exc_info.value.detail
+
+
+def test_generate_schedule_from_roster_controller_super_admin_requires_department_id(
+    session, user_factory
+):
+    """Verify Super Admin cannot generate without providing a department_id."""
+    from src.schedule.controllers import generate_schedule_from_roster_controller
+
+    super_admin = user_factory(role=UserRole.SUPER_ADMIN, department_id=None)
+
+    with pytest.raises(HTTPException) as exc_info:
+        generate_schedule_from_roster_controller(
+            session=session,
+            target_month="2026-11",
+            department_id=None,
+            current_user=super_admin,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "Department ID is required for Super Admin" in exc_info.value.detail

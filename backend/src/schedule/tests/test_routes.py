@@ -732,3 +732,139 @@ def test_export_schedule_draft_with_country_code(
 
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def test_generate_schedule_from_roster_route_success(
+    client,
+    monkeypatch,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+):
+    """Verify Department Admin can generate schedule draft from database roster via POST."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    fake_draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="Current Department Roster",
+        total_duties=12,
+        solver_status="OPTIMAL",
+        status="draft",
+        assignments=[
+            {
+                "date": "2026-11-01",
+                "day_name": "Sunday",
+                "doctor_name": "Dr. Alice",
+                "doctor_email": "alice@hospital.org",
+                "position": "ER",
+                "shift": "Morning",
+            }
+        ],
+        unavailabilities={"Dr. Alice": [15]},
+    )
+
+    monkeypatch.setattr(
+        "src.schedule.service.generate_schedule_from_roster",
+        lambda **kwargs: fake_draft,
+    )
+
+    response = client.post(
+        "/api/v1/schedules/generate-from-roster",
+        json={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["target_month"] == "2026-11"
+    assert data["department_id"] == str(dept.id)
+    assert data["source_filename"] == "Current Department Roster"
+    assert data["solver_status"] == "OPTIMAL"
+    assert len(data["assignments"]) == 1
+    assert data["unavailabilities"] == {"Dr. Alice": [15]}
+
+
+def test_generate_schedule_from_roster_route_translates_service_error_to_400(
+    client,
+    monkeypatch,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+):
+    """Verify endpoint maps domain ValueError to HTTP 400 Bad Request."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    def _mock_failure(**kwargs):
+        raise ValueError("Department has no active doctors registered.")
+
+    monkeypatch.setattr(
+        "src.schedule.service.generate_schedule_from_roster",
+        _mock_failure,
+    )
+
+    response = client.post(
+        "/api/v1/schedules/generate-from-roster",
+        json={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert "Department has no active doctors registered." in response.json()["detail"]
+
+
+def test_generate_schedule_from_roster_route_forbidden_for_non_admin(
+    client,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+):
+    """Verify non-admin roles (DOCTOR, VIEWER) cannot generate from roster."""
+    dept = department_factory()
+    viewer = user_factory(role=UserRole.VIEWER, department_id=dept.id)
+    headers = auth_headers_factory(viewer)
+
+    response = client.post(
+        "/api/v1/schedules/generate-from-roster",
+        json={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_generate_schedule_from_roster_route_rejects_extra_fields(
+    client,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+):
+    """Verify payload rejecting unexpected attributes due to extra='forbid'."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    response = client.post(
+        "/api/v1/schedules/generate-from-roster",
+        json={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+            "unsupported_payload_field": "disallowed",
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 422

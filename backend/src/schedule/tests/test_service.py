@@ -7,10 +7,24 @@ import openpyxl
 import pytest
 from openpyxl import Workbook
 from src.department.models import Department as DepartmentModel
+from src.department.schemas import DepartmentCreate
+from src.department import repository as department_repository
+from src.team import repository as team_repository
+from src.position import repository as position_repository
+from src.shift import repository as shift_repository
+from src.shift.schemas import ShiftCreate
+from src.doctor import repository as doctor_repository
+from src.doctor.schemas import (
+    DoctorPositionCreate,
+    DoctorUnavailabilityCreate,
+    DoctorPreAssignmentCreate,
+)
+from src.user.models import UserRole
 from src.models import ScheduleConfig
 from src.schedule.models import ScheduleDraft
 from src.schedule.service import (
     generate_schedule_from_excel,
+    generate_schedule_from_roster,
     export_schedule_draft_to_excel,
 )
 
@@ -780,3 +794,143 @@ def test_export_schedule_draft_to_excel_includes_holiday_duties_column():
     assert ws.cell(row=4, column=1).value == "Dr. James Wilson"
     assert ws.cell(row=4, column=33).value == 1
     assert ws.cell(row=4, column=34).value == 0
+
+
+@pytest.fixture(name="realistic_roster")
+def realistic_roster_fixture(session, user_factory):
+    """Pytest fixture to seed a feasible department roster with multiple positions and shifts."""
+    dept = department_repository.create_department(
+        session, DepartmentCreate(name="Critical Care", code="CCU")
+    )
+    team_a = team_repository.create_team(session, name="Team Alpha", department_id=dept.id)
+
+    # 2 Positions: Emergency (Day, Night) and ICU (Duty) across all days
+    pos_er = position_repository.create_position(
+        session, position_name="Emergency", department_id=dept.id, duty_days=[0, 1, 2, 3, 4, 5, 6]
+    )
+    pos_icu = position_repository.create_position(
+        session, position_name="ICU", department_id=dept.id, duty_days=[0, 1, 2, 3, 4, 5, 6]
+    )
+
+    shift_er_day = shift_repository.create_shift(
+        session, ShiftCreate(name="Day", position_id=pos_er.id, doctors_per_shift=1, grants_day_off=True)
+    )
+    shift_er_night = shift_repository.create_shift(
+        session, ShiftCreate(name="Night", position_id=pos_er.id, doctors_per_shift=1, grants_day_off=True)
+    )
+    shift_icu_duty = shift_repository.create_shift(
+        session, ShiftCreate(name="Duty", position_id=pos_icu.id, doctors_per_shift=1, grants_day_off=False)
+    )
+
+    # 15 doctors (teamed + teamless)
+    doctors = []
+    for i in range(1, 16):
+        team_id = team_a.id if i <= 7 else None
+        doc = doctor_repository.create_doctor(
+            session, name=f"Dr. Doctor {i}", department_id=dept.id, team_id=team_id
+        )
+        user_factory(
+            email=f"doctor{i}@hospital.org",
+            role=UserRole.DOCTOR,
+            department_id=dept.id,
+            doctor_id=doc.id,
+        )
+        doctors.append(doc)
+
+    # Doctors 1..5: Emergency only
+    for doc in doctors[:5]:
+        doctor_repository.create_doctor_position(
+            session, doc.id, DoctorPositionCreate(position_id=pos_er.id)
+        )
+
+    # Doctors 6..10: ICU only
+    for doc in doctors[5:10]:
+        doctor_repository.create_doctor_position(
+            session, doc.id, DoctorPositionCreate(position_id=pos_icu.id)
+        )
+
+    # Doctors 11..15: Multi-position (Emergency AND ICU)
+    for doc in doctors[10:15]:
+        doctor_repository.create_doctor_position(
+            session, doc.id, DoctorPositionCreate(position_id=pos_er.id)
+        )
+        doctor_repository.create_doctor_position(
+            session, doc.id, DoctorPositionCreate(position_id=pos_icu.id)
+        )
+
+    # Doctor 1 has unavailability on Nov 10 and pre-assignment on Nov 15
+    doctor_repository.create_doctor_unavailability(
+        session, doctors[0].id, DoctorUnavailabilityCreate(date=datetime.date(2026, 11, 10))
+    )
+    doctor_repository.create_doctor_pre_assignment(
+        session,
+        doctors[0].id,
+        DoctorPreAssignmentCreate(shift_id=shift_er_day.id, date=datetime.date(2026, 11, 15)),
+    )
+
+    return {
+        "dept": dept,
+        "pos_er": pos_er,
+        "pos_icu": pos_icu,
+        "doctors": doctors,
+    }
+
+
+def test_generate_schedule_from_roster_success(session, realistic_roster):
+    """Verify solving and persisting a ScheduleDraft directly from the database roster."""
+    dept = realistic_roster["dept"]
+
+    draft = generate_schedule_from_roster(
+        session=session,
+        department_id=dept.id,
+        target_month="2026-11",
+        country_code="GR",
+    )
+
+    assert isinstance(draft, ScheduleDraft)
+    assert draft.department_id == dept.id
+    assert draft.target_month == "2026-11"
+    assert draft.source_filename == "Current Department Roster"
+    assert draft.status == "draft"
+    assert draft.solver_status in ("OPTIMAL", "FEASIBLE")
+    assert draft.total_duties == len(draft.assignments)
+    assert len(draft.assignments) > 0
+
+    # Ensure persisted in database
+    persisted = session.get(ScheduleDraft, draft.id)
+    assert persisted is not None
+    assert persisted.total_duties == draft.total_duties
+
+    # Verify assignment structure
+    first_assignment = draft.assignments[0]
+    assert "date" in first_assignment
+    assert "day_name" in first_assignment
+    assert "doctor_name" in first_assignment
+    assert "doctor_email" in first_assignment
+    assert "position" in first_assignment
+    assert "shift" in first_assignment
+
+
+def test_generate_schedule_from_roster_missing_department_raises(session):
+    """Verify that a nonexistent department raises ValueError."""
+    fake_id = uuid.uuid4()
+    with pytest.raises(ValueError, match=f"Department {fake_id} not found"):
+        generate_schedule_from_roster(
+            session=session,
+            department_id=fake_id,
+            target_month="2026-11",
+        )
+
+
+def test_generate_schedule_from_roster_validation_error_propagates(session):
+    """Verify that roster assembler validation errors propagate up from the service."""
+    dept = department_repository.create_department(
+        session, DepartmentCreate(name="Empty Dept", code="EMPTY")
+    )
+    with pytest.raises(ValueError, match="No active positions found"):
+        generate_schedule_from_roster(
+            session=session,
+            department_id=dept.id,
+            target_month="2026-11",
+        )
+
