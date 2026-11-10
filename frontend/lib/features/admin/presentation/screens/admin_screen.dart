@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/admin/presentation/controllers/schedule_generation_controller.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_hero_card.dart';
-import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.dart';
+// import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.dart';
 import 'package:frontend/features/admin/presentation/widgets/draft_preview_canvas.dart';
 import 'package:frontend/features/admin/presentation/widgets/excel_upload_dialog.dart';
 import 'package:frontend/features/admin/presentation/widgets/generation_mode_dialog.dart';
