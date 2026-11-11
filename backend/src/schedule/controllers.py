@@ -12,6 +12,7 @@ from src.user.models import User as UserModel, UserRole
 from src.schedule.models import ScheduleDraft
 from src.schedule import repository as schedule_repository
 from src.schedule import service as schedule_service
+from src.schedule.schemas import ExcelRosterDiffResponse
 
 
 def _resolve_and_verify_department(
@@ -259,3 +260,41 @@ def generate_schedule_from_roster_controller(
         ) from exc
 
     return draft
+
+
+def preview_excel_roster_diff_controller(
+    session: Session,
+    file_bytes: bytes,
+    target_month: str,
+    department_id: uuid.UUID | None = None,
+    current_user: UserModel | None = None,
+    filename: str | None = None,
+) -> ExcelRosterDiffResponse:
+    """Preview roster differences between an uploaded Excel spreadsheet and department roster.
+
+    Validates file extension, tenant scope, and translates domain ValueError into HTTP 400.
+    """
+    actual_filename = filename or "schedule.xlsx"
+    if not actual_filename.endswith(".xlsx"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Only .xlsx files are supported",
+        )
+
+    dept_id = _resolve_and_verify_department(
+        current_user=current_user,
+        requested_department_id=department_id
+    )
+
+    try:
+        return schedule_service.preview_excel_roster_diff(
+            session=session,
+            file_bytes=file_bytes,
+            department_id=dept_id,
+            target_month=target_month,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc

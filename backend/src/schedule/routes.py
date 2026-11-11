@@ -15,6 +15,7 @@ from sqlmodel import Session
 from src.db.connection import get_session
 from src.schedule.schemas import ScheduleDraftRead, ScheduleSummaryRead, TargetMonthResponse, GenerateFromRosterRequest
 from src.schedule import controllers as schedule_controllers
+from src.schedule.schemas import ExcelRosterDiffResponse
 from src.user.models import User as UserModel
 from src.auth.dependencies import (
     require_department_admin,
@@ -156,6 +157,30 @@ def get_target_month(
         session=session,
         department_id=department_id,
         current_user=current_user,
+    )
+
+
+@router.post(
+    "/preview-excel-roster-diff",
+    response_model=ExcelRosterDiffResponse,
+    status_code=status.HTTP_200_OK
+)
+def preview_excel_roster_diff(
+    file: UploadFile = File(...),
+    target_month: str = Form(...),
+    department_id: uuid.UUID | None = Form(None),
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_department_admin)
+):
+    """Preview roster differences between an uploaded Excel spreadsheet and the department database."""
+    file_bytes = file.file.read()
+    return schedule_controllers.preview_excel_roster_diff_controller(
+        session=session,
+        file_bytes=file_bytes,
+        target_month=target_month,
+        department_id=department_id,
+        current_user=current_user,
+        filename=file.filename
     )
 
 

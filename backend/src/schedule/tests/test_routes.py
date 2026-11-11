@@ -8,6 +8,7 @@ from openpyxl import Workbook
 from src.user.models import UserRole
 from src.schedule.models import ScheduleDraft
 from src.schedule import repository as schedule_repository
+from src.doctor import repository as doctor_repository
 
 
 def _create_test_workbook_bytes(doctor_rows: list[dict]) -> bytes:
@@ -899,3 +900,121 @@ def test_generate_schedule_from_roster_route_rejects_extra_fields(
     )
 
     assert response.status_code == 422
+
+
+def test_preview_excel_roster_diff_endpoint_success(
+    client,
+    session,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+    valid_excel_bytes,
+):
+    """Verify Department Admin can preview roster differences between Excel and DB."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    # Seed an existing DB doctor who is NOT in valid_excel_bytes (e.g. Dr. Bob Kelso)
+    doctor_repository.create_doctor(
+        session=session,
+        name="Dr. Bob Kelso",
+        department_id=dept.id,
+        team_id=None,
+    )
+
+    response = client.post(
+        "/api/v1/schedules/preview-excel-roster-diff",
+        data={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+        },
+        files={
+            "file": ("november_roster.xlsx", valid_excel_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["has_existing_roster"] is True
+    # Dr. Bob Kelso is in DB but not in Excel
+    assert len(data["missing_from_excel"]) == 1
+    assert data["missing_from_excel"][0]["name"] == "Dr. Bob Kelso"
+    assert data["missing_from_excel"][0]["team_name"] is None
+    # 6 doctors in valid_excel_bytes are not in DB yet
+    assert len(data["new_in_excel"]) == 6
+
+
+def test_preview_excel_roster_diff_endpoint_rejects_non_admin(
+    client,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+    valid_excel_bytes,
+):
+    """Verify non-admin roles (e.g. VIEWER) are forbidden from previewing roster diff."""
+    dept = department_factory()
+    viewer = user_factory(role=UserRole.VIEWER, department_id=dept.id)
+    headers = auth_headers_factory(viewer)
+
+    response = client.post(
+        "/api/v1/schedules/preview-excel-roster-diff",
+        data={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+        },
+        files={
+            "file": ("november_roster.xlsx", valid_excel_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+
+
+def test_preview_excel_roster_diff_endpoint_unauthenticated_returns_401(
+    client,
+    department_factory,
+    valid_excel_bytes,
+):
+    """Verify unauthenticated request to preview diff returns 401."""
+    dept = department_factory()
+
+    response = client.post(
+        "/api/v1/schedules/preview-excel-roster-diff",
+        data={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+        },
+        files={
+            "file": ("november_roster.xlsx", valid_excel_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        },
+    )
+
+    assert response.status_code == 401
+
+
+def test_preview_excel_roster_diff_endpoint_rejects_non_excel(
+    client,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+):
+    """Verify endpoint rejects files that do not end with .xlsx."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    response = client.post(
+        "/api/v1/schedules/preview-excel-roster-diff",
+        data={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+        },
+        files={"file": ("roster.csv", b"dummy,csv,content", "text/csv")},
+        headers=headers,
+    )
+
+    assert response.status_code == 400
+    assert "Only .xlsx files are supported" in response.json()["detail"]

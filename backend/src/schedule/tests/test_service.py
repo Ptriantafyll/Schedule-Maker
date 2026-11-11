@@ -19,7 +19,11 @@ from src.doctor.schemas import (
     DoctorUnavailabilityCreate,
     DoctorPreAssignmentCreate,
 )
-from src.user.models import UserRole
+from sqlmodel import select
+from src.user.models import User as UserModel, UserRole
+from src.doctor.models import DoctorPosition as DoctorPositionModel
+from src.team.models import Team as TeamModel
+from src.position.models import Position as PositionModel
 from src.models import ScheduleConfig
 from src.schedule.models import ScheduleDraft
 from src.schedule import repository as schedule_repository
@@ -28,6 +32,7 @@ from src.schedule.service import (
     generate_schedule_from_roster,
     export_schedule_draft_to_excel,
     publish_schedule_draft,
+    preview_excel_roster_diff,
 )
 
 
@@ -1075,3 +1080,258 @@ def test_repository_queries_exclude_one_time_drafts(session):
     )
     assert resolved_by_id is not None
     assert resolved_by_id.id == one_time_draft.id
+
+
+def test_preview_excel_roster_diff_with_differences(session):
+    """Verify preview_excel_roster_diff detects missing DB doctors and new Excel doctors."""
+    dept = department_repository.create_department(
+        session, DepartmentCreate(name="Emergency Medicine", code="EMERG")
+    )
+    team_alpha = team_repository.create_team(session, name="Alpha", department_id=dept.id)
+
+    # DB has Dr. House (Team Alpha) and Dr. Cuddy (teamless)
+    doc_house = doctor_repository.create_doctor(
+        session, name="Dr. Gregory House", department_id=dept.id, team_id=team_alpha.id
+    )
+    doc_cuddy = doctor_repository.create_doctor(
+        session, name="Dr. Lisa Cuddy", department_id=dept.id, team_id=None
+    )
+
+    # Excel has Dr. House (matching) and Dr. Cameron (new)
+    doctor_rows = [
+        {"Name": "Dr. Gregory House", "Email": "house@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Allison Cameron", "Email": "cameron@hospital.org", "Position": "ER", "Team": "Alpha"},
+    ]
+    file_bytes = _create_test_workbook_bytes(doctor_rows)
+
+    diff = preview_excel_roster_diff(
+        session=session,
+        file_bytes=file_bytes,
+        department_id=dept.id,
+        target_month="2026-11",
+    )
+
+    assert diff.has_existing_roster is True
+    # Missing from Excel: Dr. Cuddy
+    assert len(diff.missing_from_excel) == 1
+    assert diff.missing_from_excel[0].id == doc_cuddy.id
+    assert diff.missing_from_excel[0].name == "Dr. Lisa Cuddy"
+    assert diff.missing_from_excel[0].team_name is None
+
+    # New in Excel: Dr. Cameron
+    assert len(diff.new_in_excel) == 1
+    assert diff.new_in_excel[0].name == "Dr. Allison Cameron"
+    assert diff.new_in_excel[0].team_name == "Alpha"
+    assert "ER" in diff.new_in_excel[0].positions
+
+
+def test_preview_excel_roster_diff_empty_department(session):
+    """Verify preview_excel_roster_diff reports has_existing_roster=False when department has no doctors."""
+    dept = department_repository.create_department(
+        session, DepartmentCreate(name="Neurology", code="NEURO")
+    )
+
+    doctor_rows = [
+        {"Name": "Dr. Eric Foreman", "Email": "foreman@hospital.org", "Position": "Neuro", "Team": "Beta"},
+    ]
+    file_bytes = _create_test_workbook_bytes(doctor_rows)
+
+    diff = preview_excel_roster_diff(
+        session=session,
+        file_bytes=file_bytes,
+        department_id=dept.id,
+        target_month="2026-11",
+    )
+
+    assert diff.has_existing_roster is False
+    assert len(diff.missing_from_excel) == 0
+    assert len(diff.new_in_excel) == 1
+    assert diff.new_in_excel[0].name == "Dr. Eric Foreman"
+    assert diff.new_in_excel[0].team_name == "Beta"
+
+
+def test_preview_excel_roster_diff_case_and_whitespace_insensitive(session):
+    """Verify name comparison normalizes case and surrounding whitespace."""
+    dept = department_repository.create_department(
+        session, DepartmentCreate(name="Cardiology", code="CARD")
+    )
+    doctor_repository.create_doctor(
+        session, name="Dr. Robert Chase", department_id=dept.id, team_id=None
+    )
+
+    # Excel row has irregular casing and whitespace
+    doctor_rows = [
+        {"Name": "  dr. robert chase  ", "Email": "chase@hospital.org", "Position": "Cardio", "Team": ""},
+    ]
+    file_bytes = _create_test_workbook_bytes(doctor_rows)
+
+    diff = preview_excel_roster_diff(
+        session=session,
+        file_bytes=file_bytes,
+        department_id=dept.id,
+        target_month="2026-11",
+    )
+
+    assert diff.has_existing_roster is True
+    assert len(diff.missing_from_excel) == 0
+    assert len(diff.new_in_excel) == 0
+
+
+def test_generate_schedule_from_excel_reconciles_removed_doctor_and_preserves_user(session, user_factory):
+    """Verify remove_doctor_ids soft-deletes DoctorModel, keeps linked UserModel active, and keeps unselected DB doctors."""
+    dept = department_repository.create_department(
+        session, DepartmentCreate(name="Emergency Medicine", code="EMERG")
+    )
+
+    # 1. DB doctor to be removed, linked to a User account
+    doc_to_remove = doctor_repository.create_doctor(
+        session, name="Dr. Bob Kelso", department_id=dept.id, team_id=None
+    )
+    user_factory(
+        role=UserRole.DOCTOR,
+        department_id=dept.id,
+        doctor_id=doc_to_remove.id,
+        email="kelso@hospital.org",
+    )
+
+    # 2. DB doctor to be KEPT (missing from Excel but admin did not select to remove)
+    doc_to_keep = doctor_repository.create_doctor(
+        session, name="Dr. John Dorian", department_id=dept.id, team_id=None
+    )
+
+    # 3. Excel has 6 doctors (House, Cameron, Foreman, Chase, Wilson, Cuddy)
+    doctor_rows = [
+        {"Name": "Dr. Gregory House", "Email": "house@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Allison Cameron", "Email": "cameron@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Eric Foreman", "Email": "foreman@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Robert Chase", "Email": "chase@hospital.org", "Position": "ER", "Team": "Beta"},
+        {"Name": "Dr. James Wilson", "Email": "wilson@hospital.org", "Position": "ER", "Team": "Beta"},
+        {"Name": "Dr. Lisa Cuddy", "Email": "cuddy@hospital.org", "Position": "ER", "Team": "Beta"},
+    ]
+    file_bytes = _create_test_workbook_bytes(doctor_rows)
+
+    draft = generate_schedule_from_excel(
+        session=session,
+        file_bytes=file_bytes,
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="november_roster.xlsx",
+        sync_roster=True,
+        remove_doctor_ids=[doc_to_remove.id],
+    )
+
+    assert draft.status == "draft"
+
+    # Assert Doctor is soft-deleted
+    session.refresh(doc_to_remove)
+    assert doc_to_remove.is_deleted is True
+
+    # Assert linked User remains active (Doctor vs User separation)
+    linked_user = session.exec(select(UserModel).where(UserModel.doctor_id == doc_to_remove.id)).first()
+    assert linked_user is not None
+    assert linked_user.is_deleted is False
+
+    # Assert unselected doctor remains active in DB
+    session.refresh(doc_to_keep)
+    assert doc_to_keep.is_deleted is False
+
+
+def test_generate_schedule_from_excel_filters_ignored_new_doctors(session):
+    """Verify ignored_new_doctors are excluded from the solver assignments and never saved in the database."""
+    dept = department_repository.create_department(
+        session, DepartmentCreate(name="Trauma Center", code="TRAUMA")
+    )
+
+    # Excel contains 6 core doctors + 1 doctor marked to be ignored
+    doctor_rows = [
+        {"Name": "Dr. Gregory House", "Email": "house@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Allison Cameron", "Email": "cameron@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Eric Foreman", "Email": "foreman@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Robert Chase", "Email": "chase@hospital.org", "Position": "ER", "Team": "Beta"},
+        {"Name": "Dr. James Wilson", "Email": "wilson@hospital.org", "Position": "ER", "Team": "Beta"},
+        {"Name": "Dr. Lisa Cuddy", "Email": "cuddy@hospital.org", "Position": "ER", "Team": "Beta"},
+        {"Name": "Dr. Temporary Resident", "Email": "temp@hospital.org", "Position": "ER", "Team": "Beta"},
+    ]
+    file_bytes = _create_test_workbook_bytes(doctor_rows)
+
+    draft = generate_schedule_from_excel(
+        session=session,
+        file_bytes=file_bytes,
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="november_roster.xlsx",
+        sync_roster=True,
+        ignored_new_doctors=["Dr. Temporary Resident"],
+    )
+
+    assert draft.status == "draft"
+
+    # Verify Dr. Temporary Resident was NOT saved in DB
+    saved_temp = session.exec(
+        select(DoctorModel).where(
+            DoctorModel.department_id == dept.id,
+            DoctorModel.name == "Dr. Temporary Resident",
+        )
+    ).first()
+    assert saved_temp is None
+
+    # Verify Dr. Temporary Resident has no shift assignments
+    temp_assignments = [a for a in draft.assignments if a["doctor_name"] == "Dr. Temporary Resident"]
+    assert len(temp_assignments) == 0
+
+
+def test_generate_schedule_from_excel_syncs_new_teams_and_doctors_to_db(session):
+    """Verify sync_roster=True upserts teams, positions, doctors, and doctor-position links into DB."""
+    dept = department_repository.create_department(
+        session, DepartmentCreate(name="Surgery", code="SURG")
+    )
+
+    doctor_rows = [
+        {"Name": "Dr. Gregory House", "Email": "house@hospital.org", "Position": "General Surgery", "Team": "Alpha"},
+        {"Name": "Dr. Allison Cameron", "Email": "cameron@hospital.org", "Position": "General Surgery", "Team": "Alpha"},
+        {"Name": "Dr. Eric Foreman", "Email": "foreman@hospital.org", "Position": "General Surgery", "Team": "Alpha"},
+        {"Name": "Dr. Robert Chase", "Email": "chase@hospital.org", "Position": "General Surgery", "Team": "Beta"},
+        {"Name": "Dr. James Wilson", "Email": "wilson@hospital.org", "Position": "General Surgery", "Team": "Beta"},
+        {"Name": "Dr. Lisa Cuddy", "Email": "cuddy@hospital.org", "Position": "General Surgery", "Team": ""},
+    ]
+    file_bytes = _create_test_workbook_bytes(doctor_rows)
+
+    draft = generate_schedule_from_excel(
+        session=session,
+        file_bytes=file_bytes,
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="november_roster.xlsx",
+        sync_roster=True,
+    )
+
+    assert draft.status == "draft"
+
+    # 1. Teams synced in DB: Alpha and Beta
+    db_teams = team_repository.get_active_teams_by_department(session, dept.id)
+    team_names = {t.name for t in db_teams}
+    assert "Alpha" in team_names
+    assert "Beta" in team_names
+
+    # 2. Position synced in DB: General Surgery
+    db_positions = position_repository.get_active_positions_for_department(session, dept.id)
+    pos_names = {p.name for p in db_positions}
+    assert "General Surgery" in pos_names
+    gen_surg_pos = next(p for p in db_positions if p.name == "General Surgery")
+
+    # 3. Doctors synced in DB
+    db_doctors = doctor_repository.get_active_doctors_for_department(session, dept.id)
+    assert len(db_doctors) == 6
+    doc_names = {d.name for d in db_doctors}
+    assert "Dr. Gregory House" in doc_names
+    assert "Dr. Lisa Cuddy" in doc_names
+
+    # Verify teamless doctor Cuddy has team_id=None
+    cuddy_db = next(d for d in db_doctors if d.name == "Dr. Lisa Cuddy")
+    assert cuddy_db.team_id is None
+
+    # 4. DoctorPosition links created
+    doc_pos_links = session.exec(
+        select(DoctorPositionModel).where(DoctorPositionModel.position_id == gen_surg_pos.id)
+    ).all()
+    assert len(doc_pos_links) == 6

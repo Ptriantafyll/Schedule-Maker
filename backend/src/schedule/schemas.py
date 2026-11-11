@@ -71,3 +71,27 @@ class GenerateFromRosterRequest(BaseModel):
     country_code: Optional[str] = None
 
     model_config = ConfigDict(extra="forbid")
+
+
+class MissingDoctorDiffItem(BaseModel):
+    """Represents a doctor currently in the department database who is missing from the uploaded Excel sheet."""
+
+    id: uuid.UUID
+    name: str
+    team_name: Optional[str] = None
+
+
+class NewDoctorDiffItem(BaseModel):
+    """Represents a doctor present in the uploaded Excel sheet who does not yet exist in the department database."""
+
+    name: str
+    team_name: Optional[str] = None
+    positions: list[str] = []
+
+
+class ExcelRosterDiffResponse(BaseModel):
+    """Response schema containing doctor differences between an uploaded Excel roster and the database."""
+
+    has_existing_roster: bool
+    missing_from_excel: list[MissingDoctorDiffItem] = []
+    new_in_excel: list[NewDoctorDiffItem] = []

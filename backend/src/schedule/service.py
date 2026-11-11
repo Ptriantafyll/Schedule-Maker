@@ -22,6 +22,7 @@ from src.schedule.excel_parser import parse_excel_schedule_workbook
 from src.schedule.roster_assembler import assemble_department_from_db
 from src.schedule import repository as schedule_repository
 from src.shift import repository as shift_repository
+from src.team import repository as team_repository
 
 from src.doctor import repository as doctor_repository
 from src.doctor.models import Doctor as DoctorModel
@@ -29,6 +30,12 @@ from src.position import repository as position_repository
 from src.position.models import Position as PositionModel
 from src.shift.models import Shift as ShiftModel, ShiftAssignment as ShiftAssignmentModel
 from src.shift.schemas import ShiftCreate
+from src.schedule.schemas import ExcelRosterDiffResponse, MissingDoctorDiffItem, NewDoctorDiffItem
+
+
+def _norm(s: str) -> str:
+    """Lowercases, strips, and collapses consecutive whitespace."""
+    return " ".join(s.strip().lower().split())
 
 
 def _extract_solved_assignments(scheduler: ShiftScheduler) -> list[dict]:
@@ -488,3 +495,106 @@ def publish_schedule_draft(
     )
 
     return draft
+
+
+def preview_excel_roster_diff(
+    session: Session,
+    file_bytes: bytes,
+    department_id: uuid.UUID,
+    target_month: str = "2026-11",
+) -> ExcelRosterDiffResponse:
+    """
+    Previews doctor roster differences between an uploaded Excel workbook and the department database.
+
+    Compares active department doctors in the database with doctors in the uploaded
+    Excel file (using case- and whitespace-insensitive name matching), identifying
+    missing database doctors and new Excel doctors.
+
+    Args:
+        session: Active database session.
+        file_bytes: Raw binary bytes of the uploaded .xlsx spreadsheet.
+        department_id: UUID of the target hospital department.
+        target_month: Target month in "YYYY-MM" format (defaults to "2026-11").
+
+    Returns:
+        ExcelRosterDiffResponse containing existing roster status, missing doctors,
+        and newly introduced doctors with their parsed positions and teams.
+
+    Raises:
+        ValueError: If the department does not exist or the Excel file is invalid.
+    """
+    department = department_repository.get_department_by_id_global(
+        session=session,
+        department_id=department_id
+    )
+
+    if not department or department.is_deleted:
+        raise ValueError(
+            "Department does not exist."
+        )
+
+    db_doctors = doctor_repository.get_active_doctors_for_department(
+        session=session,
+        department_id=department.id
+    )
+
+    db_teams = team_repository.get_active_teams_by_department(
+        session=session,
+        department_id=department.id
+    )
+
+    dept_domain = parse_excel_schedule_workbook(
+        file_bytes=file_bytes,
+        department_name=department.name,
+        target_month=target_month
+    )
+
+    # Map normalized Excel doctor name -> Team name (or None)
+    excel_team_by_name: dict[str, Optional[str]] = {}
+    for team in dept_domain.teams:
+        for doc in team.doctors:
+            excel_team_by_name[_norm(doc.name)] = team.name
+    for doc in dept_domain.teamless_doctors:
+        excel_team_by_name[_norm(doc.name)] = None
+
+    # Map normalized Excel doctor name -> list of position names
+    excel_positions_by_name: dict[str, list[str]] = defaultdict(list)
+    for pos in dept_domain.positions:
+        for doc in pos.eligible_doctors:
+            excel_positions_by_name[_norm(doc.name)].append(pos.name)
+
+    excel_doc_names = {_norm(doc.name) for doc in dept_domain.doctors}
+    db_doc_names = {_norm(doc.name) for doc in db_doctors}
+
+    db_team_name_by_id = {team.id: team.name for team in db_teams}
+
+    missing_from_excel: list[MissingDoctorDiffItem] = []
+    for doc_model in db_doctors:
+        if _norm(doc_model.name) not in excel_doc_names:
+            team_name = db_team_name_by_id.get(
+                doc_model.team_id) if doc_model.team_id else None
+            missing_from_excel.append(
+                MissingDoctorDiffItem(
+                    id=doc_model.id,
+                    name=doc_model.name,
+                    team_name=team_name,
+                )
+            )
+
+    new_in_excel: list[NewDoctorDiffItem] = []
+    for doc in dept_domain.doctors:
+        norm = _norm(doc.name)
+        if norm not in db_doc_names:
+            new_in_excel.append(
+                NewDoctorDiffItem(
+                    name=doc.name,
+                    team_name=excel_team_by_name.get(norm),
+                    positions=excel_positions_by_name.get(norm, [])
+                )
+            )
+
+    return ExcelRosterDiffResponse(
+        has_existing_roster=len(db_doctors) > 0,
+        missing_from_excel=missing_from_excel,
+        new_in_excel=new_in_excel,
+    )
