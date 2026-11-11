@@ -49,6 +49,20 @@ def get_doctor_by_id_for_department(
     return session.exec(statement).first()
 
 
+def get_doctor_by_name_for_department(
+    session: Session,
+    name: str,
+    department_id: uuid.UUID,
+) -> DoctorModel | None:
+    """Retrieves a doctor by name within a department (including soft-deleted)."""
+    statement = select(DoctorModel).where(
+        DoctorModel.department_id == department_id,
+        DoctorModel.name == name,
+    )
+
+    return session.exec(statement).first()
+
+
 def get_active_doctors_for_department(session: Session, department_id: uuid.UUID) -> list[DoctorModel]:
     """Retrieves all active doctors"""
     statement = select(DoctorModel).where(
@@ -186,8 +200,12 @@ def create_doctor_position(session: Session, doctor_id: str, doctor_pos_data: Do
     return new_doctor_pos
 
 
-def get_doctor_position_by_id(session: Session, doctor_id: str, position_id: str) -> DoctorPositionModel:
-    """Retrieves a doctor-position"""
+def get_doctor_position_by_id(
+    session: Session,
+    doctor_id: uuid.UUID | str,
+    position_id: uuid.UUID | str,
+) -> DoctorPositionModel | None:
+    """Retrieves a doctor-position link by doctor ID and position ID (including soft-deleted)."""
     statement = select(DoctorPositionModel).where(
         DoctorPositionModel.doctor_id == doctor_id,
         DoctorPositionModel.position_id == position_id,

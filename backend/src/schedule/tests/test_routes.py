@@ -1,6 +1,7 @@
 """Integration tests for the schedule FastAPI routes."""
 
 import io
+import json
 import uuid
 import openpyxl
 import pytest
@@ -1018,3 +1019,63 @@ def test_preview_excel_roster_diff_endpoint_rejects_non_excel(
 
     assert response.status_code == 400
     assert "Only .xlsx files are supported" in response.json()["detail"]
+
+
+def test_generate_schedule_endpoint_with_reconciliation_params(
+    client,
+    session,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+):
+    """Verify route endpoint processes remove_doctor_ids and ignored_new_doctors cleanly."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    # 1. Doctor to remove
+    doc_to_remove = doctor_repository.create_doctor(
+        session=session,
+        name="Dr. Bob Kelso",
+        department_id=dept.id,
+        team_id=None,
+    )
+
+    # 2. Excel workbook has 6 valid doctors + 1 doctor to ignore
+    doctor_rows = [
+        {"Name": "Dr. Gregory House", "Email": "house@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Allison Cameron", "Email": "cameron@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Eric Foreman", "Email": "foreman@hospital.org", "Position": "ER", "Team": "Alpha"},
+        {"Name": "Dr. Robert Chase", "Email": "chase@hospital.org", "Position": "ER", "Team": "Beta"},
+        {"Name": "Dr. James Wilson", "Email": "wilson@hospital.org", "Position": "ER", "Team": "Beta"},
+        {"Name": "Dr. Lisa Cuddy", "Email": "cuddy@hospital.org", "Position": "ER", "Team": "Beta"},
+        {"Name": "Dr. Temporary Resident", "Email": "temp@hospital.org", "Position": "ER", "Team": "Beta"},
+    ]
+    file_bytes = _create_test_workbook_bytes(doctor_rows)
+
+    response = client.post(
+        "/api/v1/schedules/generate-from-excel",
+        data={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+            "sync_roster": "true",
+            "remove_doctor_ids": json.dumps([str(doc_to_remove.id)]),
+            "ignored_new_doctors": json.dumps(["Dr. Temporary Resident"]),
+        },
+        files={
+            "file": ("november_roster.xlsx", file_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["status"] == "draft"
+
+    # Verify Dr. Bob Kelso was soft-deleted
+    session.refresh(doc_to_remove)
+    assert doc_to_remove.is_deleted is True
+
+    # Verify Dr. Temporary Resident has no assignments and wasn't saved
+    temp_assignments = [a for a in data["assignments"] if a["doctor_name"] == "Dr. Temporary Resident"]
+    assert len(temp_assignments) == 0

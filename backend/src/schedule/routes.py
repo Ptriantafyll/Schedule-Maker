@@ -1,11 +1,13 @@
 """Routes for schedule generation and retrieval."""
 
+import json
 import uuid
 from fastapi import (
     APIRouter,
     Depends,
     File,
     Form,
+    HTTPException,
     Query,
     UploadFile,
     status,
@@ -83,10 +85,38 @@ def generate_schedule_from_excel(
     department_id: uuid.UUID | None = Form(None),
     country_code: str | None = Form(None),
     sync_roster: bool = Form(False),
+    remove_doctor_ids: str | None = Form(None),
+    ignored_new_doctors: str | None = Form(None),
     session: Session = Depends(get_session),
     current_user: UserModel = Depends(require_department_admin),
 ):
     """Generate a monthly duty schedule draft from an uploaded Excel roster."""
+    parsed_remove_ids = None
+    if remove_doctor_ids:
+        try:
+            raw_ids = json.loads(remove_doctor_ids)
+            if not isinstance(raw_ids, list):
+                raise ValueError("Expected list of doctor IDs.")
+            parsed_remove_ids = [uuid.UUID(str(i)) for i in raw_ids]
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid remove_doctor_ids format: {exc}",
+            )
+
+    parsed_ignored = None
+    if ignored_new_doctors:
+        try:
+            raw_ignored = json.loads(ignored_new_doctors)
+            if not isinstance(raw_ignored, list):
+                raise ValueError("Expected list of doctor names.")
+            parsed_ignored = [str(name) for name in raw_ignored]
+        except (json.JSONDecodeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid ignored_new_doctors format: {exc}",
+            )
+
     file_bytes = file.file.read()
     return schedule_controllers.generate_schedule_from_excel_controller(
         session=session,
@@ -97,6 +127,8 @@ def generate_schedule_from_excel(
         filename=file.filename,
         country_code=country_code,
         sync_roster=sync_roster,
+        remove_doctor_ids=parsed_remove_ids,
+        ignored_new_doctors=parsed_ignored,
     )
 
 

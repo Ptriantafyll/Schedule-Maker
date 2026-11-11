@@ -26,8 +26,10 @@ from src.team import repository as team_repository
 
 from src.doctor import repository as doctor_repository
 from src.doctor.models import Doctor as DoctorModel
+from src.doctor.models import DoctorPosition as DoctorPositionModel
 from src.position import repository as position_repository
 from src.position.models import Position as PositionModel
+from src.team.models import Team as TeamModel
 from src.shift.models import Shift as ShiftModel, ShiftAssignment as ShiftAssignmentModel
 from src.shift.schemas import ShiftCreate
 from src.schedule.schemas import ExcelRosterDiffResponse, MissingDoctorDiffItem, NewDoctorDiffItem
@@ -100,15 +102,158 @@ def _solve_and_persist_draft(
     return schedule_repository.create_schedule_draft(session, draft)
 
 
+def _sync_roster_from_domain_to_db(
+    session: Session,
+    department_id: uuid.UUID,
+    dept_domain: Department,
+) -> None:
+    """Syncs roster from domain to db."""
+    team_id_by_name: dict[str, uuid.UUID] = {}
+
+    # For each team in dept_domain.teams, find existing TeamModel by name or insert a new one:
+    for team in dept_domain.teams:
+        team_model = team_repository.get_team_by_name_for_department(
+            session=session,
+            name=team.name,
+            department_id=department_id
+        )
+
+        if team_model:
+            if team_model.is_deleted:
+                team_model.is_deleted = False
+                team_model.updated_at = datetime.datetime.now(
+                    datetime.timezone.utc
+                )
+                session.add(team_model)
+        else:
+            team_model = TeamModel(
+                name=team.name,
+                department_id=department_id,
+            )
+            session.add(team_model)
+
+        session.flush()
+        team_id_by_name[team.name] = team_model.id
+
+    # Sync positions and shifts
+    pos_id_by_name: dict[str, uuid.UUID] = {}
+    for pos in dept_domain.positions:
+        pos_model = position_repository.get_position_by_name_for_department(
+            session=session,
+            position_name=pos.name,
+            department_id=department_id,
+        )
+        pos_duty_days = sorted(list(pos.duty_days))
+        if pos_model:
+            if pos_model.is_deleted:
+                pos_model.is_deleted = False
+            pos_model.duty_days = pos_duty_days
+            pos_model.updated_at = datetime.datetime.now(datetime.timezone.utc)
+            session.add(pos_model)
+        else:
+            pos_model = PositionModel(
+                name=pos.name,
+                department_id=department_id,
+                duty_days=pos_duty_days,
+            )
+            session.add(pos_model)
+        session.flush()
+        pos_id_by_name[pos.name] = pos_model.id
+
+        # Sync shifts for this position
+        for shift in pos.shifts:
+            shift_model = shift_repository.get_shift_by_name_for_position(
+                session=session,
+                shift_name=shift.name,
+                position_id=pos_model.id,
+            )
+            if shift_model:
+                if shift_model.is_deleted:
+                    shift_model.is_deleted = False
+                shift_model.doctors_per_shift = shift.doctors_per_shift
+                shift_model.grants_day_off = shift.grants_day_off
+                shift_model.updated_at = datetime.datetime.now(
+                    datetime.timezone.utc)
+                session.add(shift_model)
+            else:
+                shift_model = ShiftModel(
+                    name=shift.name,
+                    position_id=pos_model.id,
+                    doctors_per_shift=shift.doctors_per_shift,
+                    grants_day_off=shift.grants_day_off,
+                )
+                session.add(shift_model)
+        session.flush()
+
+    # Determine doctor team assignments
+    doc_team_id_by_name: dict[str, Optional[uuid.UUID]] = {}
+    for team in dept_domain.teams:
+        t_id = team_id_by_name.get(team.name)
+        for doc in team.doctors:
+            doc_team_id_by_name[doc.name] = t_id
+    for doc in dept_domain.teamless_doctors:
+        doc_team_id_by_name[doc.name] = None
+
+    # Sync Doctors & Link Position Eligibility
+    for doc in dept_domain.doctors:
+        assigned_team_id = doc_team_id_by_name.get(doc.name)
+
+        doc_model = doctor_repository.get_doctor_by_name_for_department(
+            session=session,
+            name=doc.name,
+            department_id=department_id,
+        )
+
+        if doc_model:
+            if doc_model.is_deleted:
+                doc_model.is_deleted = False
+            doc_model.team_id = assigned_team_id
+            doc_model.updated_at = datetime.datetime.now(datetime.timezone.utc)
+            session.add(doc_model)
+        else:
+            doc_model = DoctorModel(
+                name=doc.name,
+                department_id=department_id,
+                team_id=assigned_team_id,
+            )
+            session.add(doc_model)
+        session.flush()
+
+        # Link doctor to eligible positions in DoctorPositionModel
+        for pos in dept_domain.positions:
+            if doc in pos.eligible_doctors:
+                pos_id = pos_id_by_name[pos.name]
+                link = doctor_repository.get_doctor_position_by_id(
+                    session=session,
+                    doctor_id=doc_model.id,
+                    position_id=pos_id,
+                )
+                if link:
+                    if link.is_deleted:
+                        link.is_deleted = False
+                        link.updated_at = datetime.datetime.now(
+                            datetime.timezone.utc)
+                        session.add(link)
+                else:
+                    link = DoctorPositionModel(
+                        doctor_id=doc_model.id,
+                        position_id=pos_id,
+                    )
+                    session.add(link)
+        session.flush()
+
+
 def generate_schedule_from_excel(
     session: Session,
     file_bytes: bytes,
     department_id: uuid.UUID,
     target_month: str,
-    source_filename: str,
+    source_filename: str = "schedule.xlsx",
     config_override: Optional[ScheduleConfig] = None,
     country_code: Optional[str] = "GR",
-    sync_roster: bool = False
+    sync_roster: bool = False,
+    remove_doctor_ids: Optional[list[uuid.UUID]] = None,
+    ignored_new_doctors: Optional[list[str]] = None,
 ) -> ScheduleDraft:
     """
     Generates an optimized monthly schedule from an uploaded Excel workbook.
@@ -125,6 +270,8 @@ def generate_schedule_from_excel(
         source_filename: Name of the uploaded file for audit and display tracking.
         config_override: Optional custom solver weights and constraint limits.
         country_code: Country code used for holiday detection (defaults to "GR").
+        remove_doctor_ids: List of ids of the doctors that the user marked to remove from the roster,
+        ignored_new_doctors: List of doctor names that the user marked to ignore from the roster,
 
     Returns:
         The newly created and persisted ScheduleDraft record with its assignments.
@@ -146,6 +293,47 @@ def generate_schedule_from_excel(
     )
     if config_override:
         dept_domain.config = config_override
+
+    if sync_roster and ignored_new_doctors:
+        ignored_set = {_norm(name) for name in ignored_new_doctors}
+
+        # Prune from teams
+        for team in dept_domain.teams:
+            team.doctors = [d for d in team.doctors if _norm(
+                d.name) not in ignored_set]
+        # Prune from teamless doctors
+        dept_domain.teamless_doctors = [
+            d for d in dept_domain.teamless_doctors if _norm(d.name) not in ignored_set
+        ]
+        # Prune from position eligibility
+        for pos in dept_domain.positions:
+            pos.eligible_doctors = [
+                d for d in pos.eligible_doctors if _norm(d.name) not in ignored_set
+            ]
+        # Prune from doctor_order
+        dept_domain.doctor_order = [
+            d for d in dept_domain.doctor_order if _norm(d.name) not in ignored_set
+        ]
+
+    if sync_roster and remove_doctor_ids:
+        for doc_id in remove_doctor_ids:
+            doc = doctor_repository.get_doctor_by_id_for_department(
+                session=session,
+                doctor_id=doc_id,
+                department_id=department_id,
+            )
+            if doc and not doc.is_deleted:
+                doc.is_deleted = True
+                doc.updated_at = datetime.datetime.now(datetime.timezone.utc)
+                session.add(doc)
+        session.flush()
+
+    if sync_roster:
+        _sync_roster_from_domain_to_db(
+            session=session,
+            department_id=department_id,
+            dept_domain=dept_domain,
+        )
 
     return _solve_and_persist_draft(
         session=session,

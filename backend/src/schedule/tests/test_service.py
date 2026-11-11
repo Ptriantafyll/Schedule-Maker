@@ -21,7 +21,7 @@ from src.doctor.schemas import (
 )
 from sqlmodel import select
 from src.user.models import User as UserModel, UserRole
-from src.doctor.models import DoctorPosition as DoctorPositionModel
+from src.doctor.models import Doctor as DoctorModel, DoctorPosition as DoctorPositionModel
 from src.team.models import Team as TeamModel
 from src.position.models import Position as PositionModel
 from src.models import ScheduleConfig
