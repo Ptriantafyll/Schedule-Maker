@@ -69,7 +69,38 @@ def test_generate_schedule_endpoint_success(
     assert data["department_id"] == str(dept.id)
     assert data["source_filename"] == "november_roster.xlsx"
     assert data["solver_status"] in ("OPTIMAL", "FEASIBLE")
+    assert data["status"] == "one_time"
     assert len(data["assignments"]) == 30
+
+
+def test_generate_schedule_endpoint_sync_roster_true_sets_draft_status(
+    client,
+    department_factory,
+    user_factory,
+    auth_headers_factory,
+    valid_excel_bytes,
+):
+    """Verify endpoint creates draft with status 'draft' when sync_roster is True."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
+
+    response = client.post(
+        "/api/v1/schedules/generate-from-excel",
+        data={
+            "target_month": "2026-11",
+            "department_id": str(dept.id),
+            "sync_roster": "true",
+        },
+        files={
+            "file": ("november_roster.xlsx", valid_excel_bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        },
+        headers=headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["status"] == "draft"
 
 
 def test_generate_schedule_rejects_non_excel_extension(

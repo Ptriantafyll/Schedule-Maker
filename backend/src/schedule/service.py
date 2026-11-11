@@ -57,14 +57,17 @@ def _solve_and_persist_draft(
     target_month: str,
     source_filename: str,
     country_code: Optional[str] = "GR",
+    draft_status: str = "draft",
 ) -> ScheduleDraft:
     """Executes CP-SAT solving on a domain Department and persists the ScheduleDraft."""
     year, month = map(int, target_month.split("-"))
-    scheduler = ShiftScheduler(department=dept_domain, country_code=country_code)
-    status = scheduler.create_schedule(month=month, year=year)
-    status_name = scheduler.solver.status_name(status)
+    scheduler = ShiftScheduler(
+        department=dept_domain, country_code=country_code
+    )
+    solver_status = scheduler.create_schedule(month=month, year=year)
+    status_name = scheduler.solver.status_name(solver_status)
 
-    if status not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+    if solver_status not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
         raise ValueError(
             f"Unable to generate schedule. Constraints are infeasible (status: {status_name})."
         )
@@ -82,7 +85,7 @@ def _solve_and_persist_draft(
         source_filename=source_filename,
         total_duties=len(assignments),
         solver_status=status_name,
-        status="draft",
+        status=draft_status,
         assignments=assignments,
         unavailabilities=unavailabilities,
     )
@@ -98,6 +101,7 @@ def generate_schedule_from_excel(
     source_filename: str,
     config_override: Optional[ScheduleConfig] = None,
     country_code: Optional[str] = "GR",
+    sync_roster: bool = False
 ) -> ScheduleDraft:
     """
     Generates an optimized monthly schedule from an uploaded Excel workbook.
@@ -143,6 +147,7 @@ def generate_schedule_from_excel(
         target_month=target_month,
         source_filename=source_filename,
         country_code=country_code,
+        draft_status="draft" if sync_roster else "one_time"
     )
 
 
@@ -378,12 +383,18 @@ def publish_schedule_draft(
     department_id: uuid.UUID,
 ) -> ScheduleDraft:
     """Finalizes a schedule draft and publishes it to the db."""
+
     draft = schedule_repository.get_schedule_draft_by_id(session, draft_id)
     if draft is None or draft.is_deleted or draft.department_id != department_id:
         raise ValueError(f"Schedule draft not found: {draft_id}.")
 
     if draft.status == "published":
         raise ValueError(f"Schedule draft {draft_id} is already published.")
+
+    if draft.status == "one_time":
+        raise ValueError(
+            "One-time Excel schedules are for export only and cannot be published to the department."
+        )
 
     year, month = map(int, draft.target_month.split("-"))
 

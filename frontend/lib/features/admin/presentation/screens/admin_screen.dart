@@ -117,6 +117,8 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
           departmentId: user?.departmentId,
         );
 
+    
+
     if (!mounted) return;
 
     final currentState = ref.read(scheduleGenerationControllerProvider);

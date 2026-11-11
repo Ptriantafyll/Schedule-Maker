@@ -46,6 +46,7 @@ def get_schedule_draft_for_department_month(
             ScheduleDraft.department_id == department_id,
             ScheduleDraft.target_month == target_month,
             not_(ScheduleDraft.is_deleted),
+            ScheduleDraft.status != "one_time"
         )
         .order_by(desc(ScheduleDraft.created_at))
     )
@@ -78,7 +79,8 @@ def list_schedules_for_department(
     """
     statement = select(ScheduleDraft).where(
         ScheduleDraft.department_id == department_id,
-        not_(ScheduleDraft.is_deleted)
+        not_(ScheduleDraft.is_deleted),
+        ScheduleDraft.status != "one_time"
     ).order_by(
         desc(ScheduleDraft.target_month),
         desc(ScheduleDraft.created_at)

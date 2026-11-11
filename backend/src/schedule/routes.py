@@ -81,6 +81,7 @@ def generate_schedule_from_excel(
     target_month: str = Form(...),
     department_id: uuid.UUID | None = Form(None),
     country_code: str | None = Form(None),
+    sync_roster: bool = Form(False),
     session: Session = Depends(get_session),
     current_user: UserModel = Depends(require_department_admin),
 ):
@@ -94,6 +95,7 @@ def generate_schedule_from_excel(
         current_user=current_user,
         filename=file.filename,
         country_code=country_code,
+        sync_roster=sync_roster,
     )
 
 

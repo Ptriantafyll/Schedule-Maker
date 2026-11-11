@@ -114,6 +114,26 @@ void main() {
       expect(publishedDraft.isPublished, isTrue);
     });
 
+    test('isOneTime getter evaluates status string accurately', () {
+      expect(draft1.isOneTime, isFalse);
+
+      final oneTimeDraft = ScheduleDraft(
+        id: 'draft-uuid-3',
+        departmentId: 'dept-uuid-1',
+        targetMonth: '2026-11',
+        sourceFilename: 'november_roster.xlsx',
+        totalDuties: 28,
+        solverStatus: 'OPTIMAL',
+        status: 'one_time',
+        assignments: const [assignment],
+        unavailabilities: const {},
+        createdAt: createdAt,
+        updatedAt: updatedAt,
+      );
+
+      expect(oneTimeDraft.isOneTime, isTrue);
+    });
+
     test('toString includes id, month, totalDuties, and status', () {
       final str = draft1.toString();
       expect(str, contains('draft-uuid-1'));

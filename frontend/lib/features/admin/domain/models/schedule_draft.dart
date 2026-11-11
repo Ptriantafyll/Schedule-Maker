@@ -66,6 +66,8 @@ class ScheduleDraft {
 
   bool get isPublished => status == 'published';
 
+  bool get isOneTime => status == 'one_time';
+
   @override
   bool operator ==(Object other) {
     if (identical(this, other)) return true;

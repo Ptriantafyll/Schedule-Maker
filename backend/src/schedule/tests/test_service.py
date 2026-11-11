@@ -22,10 +22,12 @@ from src.doctor.schemas import (
 from src.user.models import UserRole
 from src.models import ScheduleConfig
 from src.schedule.models import ScheduleDraft
+from src.schedule import repository as schedule_repository
 from src.schedule.service import (
     generate_schedule_from_excel,
     generate_schedule_from_roster,
     export_schedule_draft_to_excel,
+    publish_schedule_draft,
 )
 
 
@@ -78,7 +80,7 @@ def test_generate_schedule_from_excel_success(session):
     assert draft.target_month == "2026-11"
     assert draft.source_filename == "november_roster.xlsx"
     assert draft.solver_status in ("OPTIMAL", "FEASIBLE")
-    assert draft.status == "draft"
+    assert draft.status == "one_time"
     assert draft.total_duties == 30  # 30 days in November
     assert len(draft.assignments) == 30
     assert draft.unavailabilities == {"Dr. Gregory House": [14]}
@@ -934,3 +936,142 @@ def test_generate_schedule_from_roster_validation_error_propagates(session):
             target_month="2026-11",
         )
 
+
+
+def test_generate_schedule_from_excel_defaults_to_one_time_status(session):
+    """Verify generate_schedule_from_excel sets status='one_time' when sync_roster is False (default)."""
+    dept = DepartmentModel(name="Emergency", code="EMERG")
+    session.add(dept)
+    session.commit()
+    session.refresh(dept)
+
+    doctor_rows = [
+        {"Name": "Dr. A", "Email": "a@hospital.org", "Position": "ER"},
+        {"Name": "Dr. B", "Email": "b@hospital.org", "Position": "ER"},
+        {"Name": "Dr. C", "Email": "c@hospital.org", "Position": "ER"},
+        {"Name": "Dr. D", "Email": "d@hospital.org", "Position": "ER"},
+        {"Name": "Dr. E", "Email": "e@hospital.org", "Position": "ER"},
+        {"Name": "Dr. F", "Email": "f@hospital.org", "Position": "ER"},
+    ]
+    file_bytes = _create_test_workbook_bytes(doctor_rows)
+
+    draft = generate_schedule_from_excel(
+        session=session,
+        file_bytes=file_bytes,
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="november_roster.xlsx",
+        sync_roster=False,
+    )
+
+    assert draft.status == "one_time"
+
+
+def test_generate_schedule_from_excel_sync_roster_true_sets_draft_status(session):
+    """Verify generate_schedule_from_excel sets status='draft' when sync_roster is True."""
+    dept = DepartmentModel(name="Emergency", code="EMERG")
+    session.add(dept)
+    session.commit()
+    session.refresh(dept)
+
+    doctor_rows = [
+        {"Name": "Dr. A", "Email": "a@hospital.org", "Position": "ER"},
+        {"Name": "Dr. B", "Email": "b@hospital.org", "Position": "ER"},
+        {"Name": "Dr. C", "Email": "c@hospital.org", "Position": "ER"},
+        {"Name": "Dr. D", "Email": "d@hospital.org", "Position": "ER"},
+        {"Name": "Dr. E", "Email": "e@hospital.org", "Position": "ER"},
+        {"Name": "Dr. F", "Email": "f@hospital.org", "Position": "ER"},
+    ]
+    file_bytes = _create_test_workbook_bytes(doctor_rows)
+
+    draft = generate_schedule_from_excel(
+        session=session,
+        file_bytes=file_bytes,
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="november_roster.xlsx",
+        sync_roster=True,
+    )
+
+    assert draft.status == "draft"
+
+
+def test_publish_schedule_draft_rejects_one_time_status(session):
+    """Verify publishing a one_time schedule draft raises ValueError."""
+    dept = DepartmentModel(name="Emergency", code="EMERG")
+    session.add(dept)
+    session.commit()
+    session.refresh(dept)
+
+    one_time_draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="one_time.xlsx",
+        total_duties=1,
+        solver_status="OPTIMAL",
+        status="one_time",
+        assignments=[
+            {
+                "date": "2026-11-01",
+                "doctor_name": "Dr. House",
+                "position": "ER",
+                "shift": "Duty",
+            }
+        ],
+    )
+    saved_draft = schedule_repository.create_schedule_draft(session, one_time_draft)
+
+    with pytest.raises(ValueError, match="One-time Excel schedules are for export only"):
+        publish_schedule_draft(
+            session=session,
+            draft_id=saved_draft.id,
+            department_id=dept.id,
+        )
+
+
+def test_repository_queries_exclude_one_time_drafts(session):
+    """Verify get_for_department_month and list_schedules exclude one_time drafts, but get_by_id allows them."""
+    dept = DepartmentModel(name="Pediatrics", code="PED")
+    session.add(dept)
+    session.commit()
+    session.refresh(dept)
+
+    one_time_draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="ad_hoc.xlsx",
+        status="one_time",
+    )
+    regular_draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="saved_roster.xlsx",
+        status="draft",
+    )
+    schedule_repository.create_schedule_draft(session, one_time_draft)
+    schedule_repository.create_schedule_draft(session, regular_draft)
+
+    # 1. get_schedule_draft_for_department_month ignores one_time and returns regular draft
+    active = schedule_repository.get_schedule_draft_for_department_month(
+        session=session,
+        department_id=dept.id,
+        target_month="2026-11",
+    )
+    assert active is not None
+    assert active.id == regular_draft.id
+
+    # 2. list_schedules_for_department excludes one_time
+    history = schedule_repository.list_schedules_for_department(
+        session=session,
+        department_id=dept.id,
+    )
+    assert len(history) == 1
+    assert history[0].id == regular_draft.id
+
+    # 3. get_schedule_draft_by_id still fetches one_time draft for export
+    resolved_by_id = schedule_repository.get_schedule_draft_by_id(
+        session=session,
+        draft_id=one_time_draft.id,
+    )
+    assert resolved_by_id is not None
+    assert resolved_by_id.id == one_time_draft.id

@@ -59,9 +59,22 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
 
   Widget _buildPublishButton({bool isCompact = false}) {
     final isAlreadyPublished = widget.draft?.isPublished ?? false;
+    final isOneTime = widget.draft?.isOneTime ?? false;
     final isEnabled =
-        !widget.isLoading && !widget.isPublishing && !isAlreadyPublished;
+        !widget.isLoading &&
+        !widget.isPublishing &&
+        !isAlreadyPublished &&
+        !isOneTime;
     final onPressed = isEnabled ? widget.onPublishPressed : null;
+
+    final String tooltipMessage;
+    if (isOneTime) {
+      tooltipMessage = 'One-time Excel schedules are for export only';
+    } else if (isAlreadyPublished) {
+      tooltipMessage = 'Schedule is already published';
+    } else {
+      tooltipMessage = 'Publish Schedule';
+    }
 
     if (isCompact) {
       if (widget.isPublishing) {
@@ -73,24 +86,27 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
       }
       return IconButton(
         onPressed: onPressed,
-        tooltip: 'Publish Schedule',
+        tooltip: tooltipMessage,
         icon: const Icon(Icons.cloud_upload_outlined),
       );
     }
 
-    return FilledButton.icon(
-      icon: widget.isPublishing
-          ? const SizedBox(
-              width: 14,
-              height: 14,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: Colors.white,
-              ),
-            )
-          : const Icon(Icons.cloud_upload_outlined, size: 18),
-      onPressed: onPressed,
-      label: const Text('Publish Schedule'),
+    return Tooltip(
+      message: tooltipMessage,
+      child: FilledButton.icon(
+        icon: widget.isPublishing
+            ? const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
+                ),
+              )
+            : const Icon(Icons.cloud_upload_outlined, size: 18),
+        onPressed: onPressed,
+        label: const Text('Publish Schedule'),
+      ),
     );
   }
 
@@ -111,8 +127,9 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
     }
 
     return OutlinedButton.icon(
-      onPressed:
-          (widget.isLoading || widget.isExporting) ? null : widget.onExportPressed,
+      onPressed: (widget.isLoading || widget.isExporting)
+          ? null
+          : widget.onExportPressed,
       label: const Text('Export to Excel'),
       icon: widget.isExporting
           ? const SizedBox(
@@ -267,10 +284,7 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
           key: ValueKey('shift_dot_${dateString}_${entry.key}'),
           width: 6,
           height: 6,
-          decoration: BoxDecoration(
-            color: dotColor,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: dotColor, shape: BoxShape.circle),
         );
       }).toList(),
     );
@@ -548,9 +562,8 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
                               onPressed: widget.isLoading
                                   ? null
                                   : () => setState(
-                                        () => _viewMode =
-                                            CanvasViewMode.calendar,
-                                      ),
+                                      () => _viewMode = CanvasViewMode.calendar,
+                                    ),
                               icon: const Icon(Icons.calendar_view_month),
                               tooltip: 'Calendar View',
                             ),
@@ -559,9 +572,8 @@ class _DraftPreviewCanvasState extends State<DraftPreviewCanvas> {
                               onPressed: widget.isLoading
                                   ? null
                                   : () => setState(
-                                        () => _viewMode =
-                                            CanvasViewMode.table,
-                                      ),
+                                      () => _viewMode = CanvasViewMode.table,
+                                    ),
                               icon: const Icon(Icons.table_chart_outlined),
                               tooltip: 'Table View',
                             ),

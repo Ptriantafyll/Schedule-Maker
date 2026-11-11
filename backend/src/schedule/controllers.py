@@ -96,6 +96,7 @@ def generate_schedule_from_excel_controller(
     filename: str | None = None,
     source_filename: str | None = None,
     country_code: str | None = None,
+    sync_roster: bool = False,
 ) -> ScheduleDraft:
     """Generate a schedule draft from Excel file bytes.
 
@@ -118,6 +119,7 @@ def generate_schedule_from_excel_controller(
             target_month=target_month,
             source_filename=actual_filename,
             country_code=country_code or "GR",
+            sync_roster=sync_roster
         )
     except ValueError as exc:
         raise HTTPException(

@@ -101,7 +101,7 @@ def test_parse_valid_excel_with_all_teams_defined():
 
 
 def test_parse_valid_excel_with_all_teams_blank():
-    """Verify that when all team values are blank, a single unified team is created."""
+    """Verify that when all team values are blank, doctors are placed in teamless_doctors."""
     rows = [
         {
             "Name": "Dr. Gregory House",
@@ -128,13 +128,15 @@ def test_parse_valid_excel_with_all_teams_blank():
         target_month="2026-11",
     )
 
-    assert len(dept.teams) == 1
-    assert dept.teams[0].name == "Team Pediatrics"
-    assert len(dept.teams[0].doctors) == 2
+    # No synthetic team created; both doctors are teamless
+    assert len(dept.teams) == 0
+    assert len(dept.teamless_doctors) == 2
+    assert len(dept.doctors) == 2
+    assert {d.name for d in dept.doctors} == {"Dr. Gregory House", "Dr. Allison Cameron"}
 
 
-def test_parse_mixed_teams_raises_validation_error():
-    """Verify that having some doctors with teams and some without raises a ValueError."""
+def test_parse_mixed_teams_and_teamless_doctors_success():
+    """Verify that a workbook with mixed team and teamless doctors parses correctly."""
     rows = [
         {
             "Name": "Dr. Gregory House",
@@ -148,19 +150,29 @@ def test_parse_mixed_teams_raises_validation_error():
             "Name": "Dr. Allison Cameron",
             "Email": "cameron@hospital.org",
             "Position": "ER",
-            "Team": "",  # Blank while another has Alpha!
+            "Team": "",  # Teamless!
             "Unavailability": "",
             "Pre-Assignments": "",
         },
     ]
 
     file_bytes = _create_workbook_bytes(rows)
-    with pytest.raises(ValueError, match="Team"):
-        parse_excel_schedule_workbook(
-            file_bytes=file_bytes,
-            department_name="Emergency",
-            target_month="2026-11",
-        )
+    dept = parse_excel_schedule_workbook(
+        file_bytes=file_bytes,
+        department_name="Emergency",
+        target_month="2026-11",
+    )
+
+    assert len(dept.teams) == 1
+    assert dept.teams[0].name == "Alpha"
+    assert len(dept.teams[0].doctors) == 1
+    assert dept.teams[0].doctors[0].name == "Dr. Gregory House"
+
+    assert len(dept.teamless_doctors) == 1
+    assert dept.teamless_doctors[0].name == "Dr. Allison Cameron"
+
+    # dept.doctors returns the combined list
+    assert len(dept.doctors) == 2
 
 
 def test_missing_doctors_sheet_raises_error():

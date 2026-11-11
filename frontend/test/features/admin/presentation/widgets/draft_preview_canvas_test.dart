@@ -410,6 +410,35 @@ void main() {
       expect(button.onPressed, isNull);
     });
 
+    testWidgets('disables Publish Schedule button and shows tooltip when draft status is one_time', (tester) async {
+      final oneTimeDraft = ScheduleDraft(
+        id: sampleDraft.id,
+        departmentId: sampleDraft.departmentId,
+        targetMonth: sampleDraft.targetMonth,
+        sourceFilename: sampleDraft.sourceFilename,
+        totalDuties: sampleDraft.totalDuties,
+        solverStatus: sampleDraft.solverStatus,
+        status: 'one_time',
+        assignments: sampleDraft.assignments,
+        unavailabilities: sampleDraft.unavailabilities,
+        createdAt: sampleDraft.createdAt,
+        updatedAt: sampleDraft.updatedAt,
+      );
+
+      await tester.pumpWidget(
+        createWidgetUnderTest(
+          isGenerated: true,
+          draft: oneTimeDraft,
+          onPublishPressed: () {},
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final button = tester.widget<FilledButton>(find.byType(FilledButton));
+      expect(button.onPressed, isNull);
+      expect(find.byTooltip('One-time Excel schedules are for export only'), findsOneWidget);
+    });
+
     testWidgets('renders Skeletonizer when isLoading is true without draft', (tester) async {
       await tester.pumpWidget(
         createWidgetUnderTest(

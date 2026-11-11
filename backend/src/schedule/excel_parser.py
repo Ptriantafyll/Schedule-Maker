@@ -395,21 +395,7 @@ def parse_excel_schedule_workbook(
     if not doctor_rows:
         raise ValueError("No doctor records found in 'Doctors' sheet")
 
-    # 5. Validate Teams (all-or-nothing)
-    has_teams = [
-        bool(r.get("Team") and str(r.get("Team").strip()))
-        for r in doctor_rows
-    ]
-
-    all_have_teams = all(has_teams)
-    none_have_teams = not any(has_teams)
-
-    if not (all_have_teams or none_have_teams):
-        raise ValueError(
-            "Team column must either be completely filled or completely blank."
-        )
-
-    # 6. Build Positions (Shifts sheet vs fallback)
+    # 5. Build Positions (Shifts sheet vs fallback)
     unique_positions: set[str] = set()
     for r in doctor_rows:
         pos_raw = str(r.get("Position") or "").strip()
@@ -423,9 +409,10 @@ def parse_excel_schedule_workbook(
     else:
         positions_by_name = _create_default_positions(unique_positions)
 
-    # 7. Build Doctor objects, teams, and return Department
+    # 6. Build Doctor objects, teams, and return Department
     has_explicit_shifts = "Shifts" in wb.sheetnames
     teams_dict: dict[str, list[Doctor]] = {}
+    teamless_doctors: list[Doctor] = []
     all_doctors: list[Doctor] = []
 
     for r in doctor_rows:
@@ -468,12 +455,16 @@ def parse_excel_schedule_workbook(
         for pos in doc_positions:
             pos.eligible_doctors.append(doc)
         all_doctors.append(doc)
-        # 2. Group into teams
-        team_name = f"Team {department_name}" if none_have_teams else str(
-            r.get("Team")).strip()
-        if team_name not in teams_dict:
-            teams_dict[team_name] = []
-        teams_dict[team_name].append(doc)
+
+        # 2. Group into teams or teamless
+        team_raw = r.get("Team")
+        if team_raw and str(team_raw).strip():
+            team_name = str(team_raw).strip()
+            if team_name not in teams_dict:
+                teams_dict[team_name] = []
+            teams_dict[team_name].append(doc)
+        else:
+            teamless_doctors.append(doc)
 
     teams = [
         Team(name=name, doctors=docs)
@@ -483,5 +474,6 @@ def parse_excel_schedule_workbook(
         name=department_name,
         positions=list(positions_by_name.values()),
         teams=teams,
+        teamless_doctors=teamless_doctors,
         doctor_order=all_doctors,
     )
