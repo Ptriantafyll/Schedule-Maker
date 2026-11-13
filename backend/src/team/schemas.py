@@ -43,7 +43,8 @@ class TeamUpdate(BaseModel):
     """
 
     name: Optional[str] = None
-    department_id: Optional[uuid.UUID] = None
+    
+    model_config = ConfigDict(extra="forbid")
 
 
 class TeamRead(TeamBase):

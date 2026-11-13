@@ -3,9 +3,29 @@ Team repository functions for handling database operations.
 """
 
 import uuid
+import datetime
 
 from sqlmodel import Session, not_, select
 from src.team.models import Team as TeamModel
+
+
+def _sync_metadata(
+    session: Session,
+    team: TeamModel,
+    *,
+    commit: bool = False
+) -> TeamModel:
+    """Syncs metadata and commits or flushes"""
+    team.sync_status = False
+    team.updated_at = datetime.datetime.now(datetime.timezone.utc)
+
+    session.add(team)
+    session.flush()
+    if commit:
+        session.commit()
+        session.refresh(team)
+
+    return team
 
 
 def get_team_by_name_for_department(
@@ -64,3 +84,43 @@ def create_team(
     session.commit()
     session.refresh(new_team)
     return new_team
+
+
+def restore_team(
+    session: Session,
+    team: TeamModel,
+    *,
+    commit: bool = False,
+) -> TeamModel:
+    """Restores a soft-deleted team"""
+    team.is_deleted = False
+    team = _sync_metadata(session, team, commit=commit)
+
+    return team
+
+
+def update_team(
+    session: Session,
+    team: TeamModel,
+    name: str,
+    *,
+    commit: bool = False
+) -> TeamModel:
+    """Updates a team's name"""
+    team.name = name
+    team = _sync_metadata(session, team, commit=commit)
+
+    return team
+
+
+def soft_delete_team(
+    session: Session,
+    team: TeamModel,
+    *,
+    commit: bool = False,
+) -> TeamModel:
+    """Soft-deletes a team"""
+    team.is_deleted = True
+    team = _sync_metadata(session, team, commit=commit)
+
+    return team

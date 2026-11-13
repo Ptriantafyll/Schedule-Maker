@@ -18,6 +18,7 @@ from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 from src.doctor.models import DoctorPosition as DoctorPositionModel
 from src.position.models import Position as PositionModel
+from src.team.models import Team as TeamModel
 
 
 def get_doctor_by_email(session: Session, email: str) -> DoctorModel | None:
@@ -317,3 +318,36 @@ def get_department_pre_assignments_for_month(
     )
 
     return list(session.exec(statement).all())
+
+
+def clear_team_from_doctors_for_department(
+    session: Session,
+    team_id: uuid.UUID,
+    department_id: uuid.UUID,
+    *,
+    commit: bool = False
+) -> list[DoctorModel]:
+    """Remove a team from doctors of that team in a department."""
+    statement = (
+        select(DoctorModel)
+        .where(
+            DoctorModel.department_id == department_id,
+            DoctorModel.team_id == team_id,
+            not_(DoctorModel.is_deleted),
+        )
+    )
+
+    doctors_found = list(session.exec(statement).all())
+
+    for doctor in doctors_found:
+        doctor.team_id = None
+        doctor.sync_status = False
+        doctor.updated_at = datetime.datetime.now(datetime.timezone.utc)
+        session.add(doctor)
+
+    session.flush()
+
+    if commit:
+        session.commit()
+
+    return doctors_found

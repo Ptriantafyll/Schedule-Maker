@@ -8,7 +8,7 @@ import pytest
 from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 
-from src.team.schemas import TeamCreate
+from src.team.schemas import TeamCreate, TeamUpdate
 from src.team import repository as team_repository
 from src.team import controllers as team_controllers
 from src.department.schemas import DepartmentCreate
@@ -78,6 +78,41 @@ def viewer_headers_fixture(viewer_user, auth_headers_factory):
     """Creates reusable viewer auth headers for tests"""
 
     return auth_headers_factory(viewer_user)
+
+
+@pytest.fixture(name="department_b")
+def department_b_fixture(session):
+    """Creates a secondary department for cross-tenant isolation tests."""
+    return department_repository.create_department(
+        session=session,
+        department_data=DepartmentCreate(name="Department B", code="DEPT B"),
+    )
+
+
+@pytest.fixture(name="team_factory")
+def team_factory_fixture(session, department):
+    """Factory fixture to create teams with customizable status flags."""
+
+    def _create_team(
+        name: str = "Factory Team",
+        department_id: uuid.UUID | None = None,
+        is_deleted: bool = False,
+        sync_status: bool = False,
+    ):
+        created = team_repository.create_team(
+            session=session,
+            name=name,
+            department_id=department_id or department.id,
+        )
+        if is_deleted or sync_status:
+            created.is_deleted = is_deleted
+            created.sync_status = sync_status
+            session.add(created)
+            session.commit()
+            session.refresh(created)
+        return created
+
+    return _create_team
 
 
 ################################
@@ -356,6 +391,159 @@ def test_get_team_controller_deleted(session, team):
 
     assert exc_info.value.status_code == 404
     assert "not found" in exc_info.value.detail
+
+
+def test_create_team_controller_restores_soft_deleted_team(
+    session,
+    department,
+    team_factory,
+):
+    """Test creating a team with a soft-deleted team's name restores it in place."""
+    deleted_team = team_factory(
+        name="Archived ER Team",
+        department_id=department.id,
+        is_deleted=True,
+        sync_status=True,
+    )
+    previous_updated_at = deleted_team.updated_at
+
+    restored = team_controllers.create_team_controller(
+        team_data=TeamCreate(name="Archived ER Team"),
+        department_id=department.id,
+        session=session,
+    )
+
+    assert restored.id == deleted_team.id
+    assert restored.name == "Archived ER Team"
+    assert restored.is_deleted is False
+    assert restored.sync_status is False
+    assert restored.updated_at >= previous_updated_at
+
+
+def test_update_team_controller_renames_team(session, team_factory):
+    """Test updating a team name updates persisted fields and sync metadata."""
+    target_team = team_factory(name="Before Rename", sync_status=True)
+    previous_updated_at = target_team.updated_at
+
+    updated = team_controllers.update_team_controller(
+        team_id=target_team.id,
+        team_data=TeamUpdate(name="After Rename"),
+        department_id=target_team.department_id,
+        session=session,
+    )
+
+    assert updated.id == target_team.id
+    assert updated.name == "After Rename"
+    assert updated.sync_status is False
+    assert updated.updated_at >= previous_updated_at
+
+
+@pytest.mark.parametrize("other_is_deleted", [False, True])
+def test_update_team_controller_rejects_colliding_name(
+    session,
+    team_factory,
+    other_is_deleted,
+):
+    """Test renaming a team to an existing (active or soft-deleted) name raises 400."""
+    team_a = team_factory(name="Team Alpha")
+    team_b = team_factory(name="Team Beta", is_deleted=other_is_deleted)
+
+    with pytest.raises(HTTPException) as exc_info:
+        team_controllers.update_team_controller(
+            team_id=team_a.id,
+            team_data=TeamUpdate(name=team_b.name),
+            department_id=team_a.department_id,
+            session=session,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "already exists" in exc_info.value.detail
+
+
+def test_update_team_controller_nonexistent_or_deleted_raises_404(
+    session,
+    department,
+    team_factory,
+):
+    """Test updating a missing or soft-deleted team raises 404."""
+    deleted_team = team_factory(name="Deleted Team", is_deleted=True)
+
+    for missing_id in (uuid.uuid4(), deleted_team.id):
+        with pytest.raises(HTTPException) as exc_info:
+            team_controllers.update_team_controller(
+                team_id=missing_id,
+                team_data=TeamUpdate(name="New Name"),
+                department_id=department.id,
+                session=session,
+            )
+
+        assert exc_info.value.status_code == 404
+        assert "not found" in exc_info.value.detail.lower()
+
+
+def test_delete_team_controller_soft_deletes_and_detaches_doctors(
+    session,
+    department,
+    team_factory,
+):
+    """Test soft-deleting a team detaches assigned doctors while keeping other teams intact."""
+    target_team = team_factory(name="Team To Delete", sync_status=True)
+    other_team = team_factory(name="Unaffected Team")
+
+    affected_doctor = doctor_repository.create_doctor(
+        session=session,
+        department_id=department.id,
+        name="Dr Affected",
+        team_id=target_team.id,
+    )
+    affected_doctor.sync_status = True
+    session.add(affected_doctor)
+    session.commit()
+
+    unaffected_doctor = doctor_repository.create_doctor(
+        session=session,
+        department_id=department.id,
+        name="Dr Unaffected",
+        team_id=other_team.id,
+    )
+
+    team_controllers.delete_team_controller(
+        team_id=target_team.id,
+        department_id=department.id,
+        session=session,
+    )
+
+    session.refresh(target_team)
+    session.refresh(affected_doctor)
+    session.refresh(unaffected_doctor)
+
+    assert target_team.is_deleted is True
+    assert target_team.sync_status is False
+    assert affected_doctor.team_id is None
+    assert affected_doctor.is_deleted is False
+    assert affected_doctor.sync_status is False
+    assert unaffected_doctor.team_id == other_team.id
+
+
+def test_delete_team_controller_nonexistent_or_deleted_raises_404(
+    session,
+    department,
+    team_factory,
+):
+    """Test deleting a missing or already soft-deleted team raises 404."""
+    deleted_team = team_factory(name="Already Deleted", is_deleted=True)
+
+    for missing_id in (uuid.uuid4(), deleted_team.id):
+        with pytest.raises(HTTPException) as exc_info:
+            team_controllers.delete_team_controller(
+                team_id=missing_id,
+                department_id=department.id,
+                session=session,
+            )
+
+        assert exc_info.value.status_code == 404
+        assert "not found" in exc_info.value.detail.lower()
+
 
 ###############################
 # Route tests
@@ -674,3 +862,265 @@ def test_department_member_cannot_get_team_from_another_department(
     assert response.status_code == 404
     assert response.json() == {"detail": "Team not found."}
     assert response.headers.get("WWW-Authenticate") is None
+
+
+def test_restore_soft_deleted_team_route(
+    client,
+    session,
+    department,
+    team_factory,
+    department_admin_headers,
+):
+    """Tests POST /teams/ restores a previously soft-deleted team with the same name."""
+    deleted_team = team_factory(
+        name="Restorable Team",
+        department_id=department.id,
+        is_deleted=True,
+        sync_status=True,
+    )
+
+    response = client.post(
+        "/api/v1/teams/",
+        json={"name": "Restorable Team"},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["id"] == str(deleted_team.id)
+    assert data["name"] == "Restorable Team"
+    assert data["is_deleted"] is False
+    assert data["sync_status"] is False
+
+    session.refresh(deleted_team)
+    assert deleted_team.is_deleted is False
+
+
+def test_update_team_route(
+    client,
+    session,
+    team_factory,
+    department_admin_headers,
+):
+    """Tests PATCH /teams/{team_id} renames an active team in the admin's department."""
+    target_team = team_factory(name="Original Name", sync_status=True)
+
+    response = client.patch(
+        f"/api/v1/teams/{target_team.id}",
+        json={"name": "Renamed Team"},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == str(target_team.id)
+    assert data["name"] == "Renamed Team"
+    assert data["department_id"] == str(target_team.department_id)
+    assert data["sync_status"] is False
+
+    session.refresh(target_team)
+    assert target_team.name == "Renamed Team"
+    assert target_team.sync_status is False
+
+
+@pytest.mark.parametrize("use_same_name", [True, False])
+def test_update_team_route_idempotent_same_name_or_empty_payload(
+    client,
+    team,
+    department_admin_headers,
+    use_same_name,
+):
+    """Tests PATCH /teams/{team_id} succeeds when keeping the same name or omitting fields."""
+    payload = {"name": team.name} if use_same_name else {}
+
+    response = client.patch(
+        f"/api/v1/teams/{team.id}",
+        json=payload,
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["name"] == team.name
+
+
+def test_update_team_route_rejects_supplied_department_id(
+    client,
+    session,
+    team,
+    department_b,
+    department_admin_headers,
+):
+    """Tests PATCH /teams/{team_id} rejects department_id in payload (extra='forbid')."""
+    response = client.patch(
+        f"/api/v1/teams/{team.id}",
+        json={
+            "name": "Attempted Move",
+            "department_id": str(department_b.id),
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 422
+    validation_errors = response.json()["detail"]
+    department_id_error = next(
+        (
+            error for error in validation_errors
+            if error["loc"] == ["body", "department_id"]
+        ),
+        None,
+    )
+    assert department_id_error is not None
+    assert department_id_error["type"] == "extra_forbidden"
+
+    session.refresh(team)
+    assert team.name == "ER Team A"
+    assert team.department_id != department_b.id
+
+
+def test_update_team_route_rejects_duplicate_name(
+    client,
+    session,
+    team,
+    team_factory,
+    department_admin_headers,
+):
+    """Tests PATCH /teams/{team_id} returns 400 when renaming to another team's name."""
+    other_team = team_factory(name="ICU Team B")
+
+    response = client.patch(
+        f"/api/v1/teams/{team.id}",
+        json={"name": other_team.name},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 400
+    assert "already exists" in response.json()["detail"]
+
+    session.refresh(team)
+    assert team.name == "ER Team A"
+
+
+def test_delete_team_route(
+    client,
+    session,
+    team,
+    doctor,
+    department_admin_headers,
+):
+    """Tests DELETE /teams/{team_id} soft-deletes the team and detaches assigned doctors."""
+    assert doctor.team_id == team.id
+
+    response = client.delete(
+        f"/api/v1/teams/{team.id}",
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+    session.refresh(team)
+    session.refresh(doctor)
+    assert team.is_deleted is True
+    assert team.sync_status is False
+    assert doctor.team_id is None
+    assert doctor.is_deleted is False
+
+    list_response = client.get("/api/v1/teams/", headers=department_admin_headers)
+    assert list_response.status_code == 200
+    assert all(item["id"] != str(team.id) for item in list_response.json())
+
+    get_response = client.get(
+        f"/api/v1/teams/{team.id}",
+        headers=department_admin_headers,
+    )
+    assert get_response.status_code == 404
+
+
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+@pytest.mark.parametrize("target_kind", ["missing", "deleted", "foreign_department"])
+def test_team_mutation_routes_return_404_for_missing_deleted_or_foreign_team(
+    client,
+    team_factory,
+    department_b,
+    department_admin_headers,
+    method,
+    target_kind,
+):
+    """Tests PATCH/DELETE return 404 for nonexistent, soft-deleted, or foreign teams."""
+    if target_kind == "missing":
+        target_id = uuid.uuid4()
+    elif target_kind == "deleted":
+        target_id = team_factory(name="Deleted Target", is_deleted=True).id
+    else:
+        target_id = team_factory(
+            name="Foreign Team",
+            department_id=department_b.id,
+        ).id
+
+    request_kwargs = {"json": {"name": "New Name"}} if method == "PATCH" else {}
+    response = client.request(
+        method,
+        f"/api/v1/teams/{target_id}",
+        headers=department_admin_headers,
+        **request_kwargs,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Team not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+def test_team_mutation_routes_require_authentication(client, team, method):
+    """Tests PATCH/DELETE /teams/{team_id} require authentication."""
+    request_kwargs = {"json": {"name": "No Auth"}} if method == "PATCH" else {}
+    response = client.request(method, f"/api/v1/teams/{team.id}", **request_kwargs)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+        UserRole.SUPER_ADMIN,
+    ],
+)
+def test_non_department_admin_cannot_update_or_delete_team(
+    client,
+    session,
+    department,
+    team,
+    doctor,
+    user_factory,
+    auth_headers_factory,
+    method,
+    role,
+):
+    """Tests that only DEPARTMENT_ADMIN can PATCH or DELETE teams."""
+    user = user_factory(
+        role=role,
+        department_id=None if role == UserRole.SUPER_ADMIN else department.id,
+        doctor_id=doctor.id if role == UserRole.DOCTOR else None,
+    )
+    headers = auth_headers_factory(user)
+    request_kwargs = {"json": {"name": "Blocked Rename"}} if method == "PATCH" else {}
+
+    response = client.request(
+        method,
+        f"/api/v1/teams/{team.id}",
+        headers=headers,
+        **request_kwargs,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Insufficient permissions for this operation."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+    session.refresh(team)
+    assert team.name == "ER Team A"
+    assert team.is_deleted is False

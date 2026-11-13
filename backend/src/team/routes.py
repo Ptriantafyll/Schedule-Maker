@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel import Session
 from src.db.connection import get_session
 
-from src.team.schemas import TeamCreate, TeamRead
+from src.team.schemas import TeamCreate, TeamRead, TeamUpdate
 from src.team import controllers as team_controllers
 from src.user.models import User as UserModel
 from src.auth.dependencies import (
@@ -62,4 +62,36 @@ def get_team(
         team_id=team_id,
         department_id=department_id,
         session=session,
+    )
+
+
+@router.patch("/{team_id}", response_model=TeamRead, status_code=status.HTTP_200_OK)
+def update_team(
+    team_id: uuid.UUID,
+    team_data: TeamUpdate,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope)
+):
+    """Updates a team by its UUID."""
+    return team_controllers.update_team_controller(
+        team_id=team_id,
+        team_data=team_data,
+        department_id=department_id,
+        session=session
+    )
+
+
+@router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_team(
+    team_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope)
+):
+    """Soft deletes a team by its UUID."""
+    return team_controllers.delete_team_controller(
+        team_id=team_id,
+        department_id=department_id,
+        session=session
     )
