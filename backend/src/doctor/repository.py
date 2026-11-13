@@ -2,7 +2,7 @@
 Doctor repository function for handling database operations.
 """
 
-from typing import Optional
+from typing import Optional, TypeVar
 import uuid
 import datetime
 import calendar
@@ -18,15 +18,22 @@ from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 from src.doctor.models import DoctorPosition as DoctorPositionModel
 from src.position.models import Position as PositionModel
-from src.team.models import Team as TeamModel
+
+_ModelT = TypeVar(
+    "_ModelT",
+    DoctorModel,
+    DoctorPositionModel,
+    DoctorPreAssignmentModel,
+    DoctorUnavailabilityModel,
+)
 
 
 def _sync_metadata(
     session: Session,
-    model: DoctorModel | DoctorPositionModel | DoctorPreAssignmentModel | DoctorUnavailabilityModel,
+    model: _ModelT,
     *,
-    commit: bool = False
-) -> DoctorModel:
+    commit: bool = False,
+) -> _ModelT:
     """Syncs metadata and commits or flushes"""
     model.sync_status = False
     model.updated_at = datetime.datetime.now(datetime.timezone.utc)
@@ -38,6 +45,18 @@ def _sync_metadata(
         session.refresh(model)
 
     return model
+
+
+def _set_deleted(
+    session: Session,
+    model: _ModelT,
+    *,
+    is_deleted: bool,
+    commit: bool = False,
+) -> _ModelT:
+    """Marks a doctor-domain record as soft-deleted or restored and syncs metadata."""
+    model.is_deleted = is_deleted
+    return _sync_metadata(session, model, commit=commit)
 
 
 def get_doctor_by_email(session: Session, email: str) -> DoctorModel | None:
@@ -143,30 +162,59 @@ def create_doctor_pre_assignment(session: Session, doctor_id: uuid.UUID, pre_ass
 # todo: add a month to get pre assignments for
 
 
-def get_doctor_pre_assignment_by_date(session: Session, doctor_id: str, target_date: datetime.date) -> DoctorPreAssignmentModel:
-    """Retrieves the unavailability of a doctor given a date"""
+def get_doctor_pre_assignment_by_date(
+    session: Session,
+    doctor_id: uuid.UUID | str,
+    target_date: datetime.date,
+    include_deleted: bool = False,
+) -> DoctorPreAssignmentModel | None:
+    """Retrieves a doctor's pre-assignment for a given date."""
 
     statement = select(DoctorPreAssignmentModel).where(
         DoctorPreAssignmentModel.doctor_id == doctor_id,
-        DoctorPreAssignmentModel.date == target_date
+        DoctorPreAssignmentModel.date == target_date,
     )
+
+    if not include_deleted:
+        statement = statement.where(not_(DoctorPreAssignmentModel.is_deleted))
 
     return session.exec(statement).first()
 
 
 def get_doctor_pre_assignments(session: Session, doctor_id: str) -> list[DoctorPreAssignmentModel]:
     """Retrieves all the pre assignments of a doctor"""
-    return list(
-        session.exec(
-            select(DoctorPreAssignmentModel).where(
-                DoctorPreAssignmentModel.doctor_id == doctor_id)
-        ).all()
+    statement = (
+        select(DoctorPreAssignmentModel).
+        where(
+            DoctorPreAssignmentModel.doctor_id == doctor_id,
+            not_(DoctorPreAssignmentModel.is_deleted)
+        )
     )
+
+    return list(session.exec(statement).all())
 
 
 def get_doctor_pre_assignment_by_id(session: Session, pre_assignment_id: str) -> DoctorPreAssignmentModel:
     """Retrieves a pre assignment by its unique id"""
     return session.get(DoctorPreAssignmentModel, pre_assignment_id)
+
+
+def get_doctor_pre_assignment_by_id_for_doctor(
+    session: Session,
+    pre_assignment_id: uuid.UUID,
+    doctor_id: uuid.UUID,
+) -> DoctorPreAssignmentModel | None:
+    """Retrieves an active pre-assignment by its unique ID scoped to a doctor."""
+    statement = (
+        select(DoctorPreAssignmentModel)
+        .where(
+            DoctorPreAssignmentModel.id == pre_assignment_id,
+            DoctorPreAssignmentModel.doctor_id == doctor_id,
+            not_(DoctorPreAssignmentModel.is_deleted)
+        )
+    )
+
+    return session.exec(statement).first()
 
 
 def create_doctor_unavailability(session: Session, doctor_id: str, doctor_unavailability_data: DoctorUnavailabilityCreate) -> DoctorUnavailabilityModel:
@@ -182,13 +230,21 @@ def create_doctor_unavailability(session: Session, doctor_id: str, doctor_unavai
     return new_doc_unavailability
 
 
-def get_doctor_unavailability_by_date(session: Session, doctor_id: str, target_date: datetime.date):
+def get_doctor_unavailability_by_date(
+    session: Session,
+    doctor_id: uuid.UUID | str,
+    target_date: datetime.date,
+    include_deleted: bool = False,
+) -> DoctorUnavailabilityModel | None:
     """Retrieves the unavailability of a doctor given a date"""
 
     statement = select(DoctorUnavailabilityModel).where(
         DoctorUnavailabilityModel.doctor_id == doctor_id,
         DoctorUnavailabilityModel.date == target_date,
     )
+
+    if not include_deleted:
+        statement = statement.where(not_(DoctorUnavailabilityModel.is_deleted))
 
     return session.exec(statement).first()
 
@@ -204,6 +260,24 @@ def get_doctor_unavailability(session: Session, doctor_id: str) -> list[DoctorUn
     )
 
     return session.exec(statement).all()
+
+
+def get_doctor_unavailability_by_id_for_doctor(
+    session: Session,
+    unavailability_id: uuid.UUID,
+    doctor_id: uuid.UUID,
+) -> DoctorUnavailabilityModel | None:
+    """Retrieves an active unavailability by its unique ID scoped to a doctor."""
+    statement = (
+        select(DoctorUnavailabilityModel)
+        .where(
+            DoctorUnavailabilityModel.id == unavailability_id,
+            DoctorUnavailabilityModel.doctor_id == doctor_id,
+            not_(DoctorUnavailabilityModel.is_deleted) 
+        )
+    )
+
+    return session.exec(statement).first()
 
 
 def create_doctor_position(session: Session, doctor_id: str, doctor_pos_data: DoctorPositionCreate) -> DoctorPositionModel:
@@ -239,18 +313,23 @@ def get_doctor_positions_for_department(
     doctor_id: uuid.UUID,
     department_id: uuid.UUID,
 ) -> list[DoctorPositionModel]:
-    """Retrieves the positions of a doctor within a department"""
+    """Retrieves the active positions of a doctor within a department."""
     statement = (
         select(DoctorPositionModel)
         .join(
             DoctorModel,
-            DoctorPositionModel.doctor_id == DoctorModel.id
+            DoctorPositionModel.doctor_id == DoctorModel.id,
+        )
+        .join(
+            PositionModel,
+            DoctorPositionModel.position_id == PositionModel.id,
         )
         .where(
             DoctorPositionModel.doctor_id == doctor_id,
             DoctorModel.department_id == department_id,
             not_(DoctorPositionModel.is_deleted),
             not_(DoctorModel.is_deleted),
+            not_(PositionModel.is_deleted),
         )
     )
 
@@ -393,9 +472,11 @@ def soft_delete_doctor_positions_for_position(
     links_to_delete = session.exec(statement).all()
     deleted_doc_pos_uuids: list[uuid.UUID] = []
     for doc_pos in links_to_delete:
-        doc_pos.is_deleted = True
-        doc_pos = _sync_metadata(session, doc_pos, commit=commit)
+        _set_deleted(session, doc_pos, is_deleted=True, commit=False)
         deleted_doc_pos_uuids.append(doc_pos.id)
+
+    if commit and deleted_doc_pos_uuids:
+        session.commit()
 
     return deleted_doc_pos_uuids
 
@@ -406,7 +487,7 @@ def soft_delete_upcoming_pre_assignments_for_shifts(
     department_id: uuid.UUID,
     from_date: datetime.date = None,
     *,
-    commit=False
+    commit: bool = False,
 ) -> list[uuid.UUID]:
     """Soft deletes upcoming pre assignments for a shift."""
     if not shift_ids:
@@ -429,8 +510,134 @@ def soft_delete_upcoming_pre_assignments_for_shifts(
     pre_assigments_to_delete = session.exec(statement).all()
     deleted_uuids: list[uuid.UUID] = []
     for pre_assignment in pre_assigments_to_delete:
-        pre_assignment.is_deleted = True
-        pre_assignment = _sync_metadata(session, pre_assignment, commit=commit)
+        _set_deleted(session, pre_assignment, is_deleted=True, commit=False)
         deleted_uuids.append(pre_assignment.id)
 
+    if commit and deleted_uuids:
+        session.commit()
+
     return deleted_uuids
+
+
+UNSET = object()
+
+
+def update_doctor(
+    session: Session,
+    doctor: DoctorModel,
+    *,
+    name: Optional[str] = None,
+    team_id: uuid.UUID | None | object = UNSET,
+    commit: bool = False,
+) -> DoctorModel:
+    """Updates a doctor's name and/or team assignment."""
+    if name is not None:
+        doctor.name = name
+
+    if team_id is not UNSET:
+        doctor.team_id = team_id
+
+    return _sync_metadata(session, doctor, commit=commit)
+
+
+def soft_delete_doctor(
+    session: Session,
+    doctor: DoctorModel,
+    *,
+    commit: bool = False,
+) -> DoctorModel:
+    """Soft deletes a doctor."""
+    return _set_deleted(session, doctor, is_deleted=True, commit=commit)
+
+
+def soft_delete_doctor_positions_for_doctor(
+    session: Session,
+    doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+    *,
+    commit: bool = False,
+) -> list[uuid.UUID]:
+    """Soft deletes a doctor's active doctor-position links."""
+    statement = (
+        select(DoctorPositionModel)
+        .join(DoctorModel, DoctorPositionModel.doctor_id == DoctorModel.id)
+        .where(
+            DoctorModel.department_id == department_id,
+            DoctorPositionModel.doctor_id == doctor_id,
+            not_(DoctorPositionModel.is_deleted),
+        )
+    )
+
+    doc_pos_to_delete = session.exec(statement).all()
+    deleted_uuids: list[uuid.UUID] = []
+
+    for doc_pos in doc_pos_to_delete:
+        _set_deleted(session, doc_pos, is_deleted=True, commit=False)
+        deleted_uuids.append(doc_pos.id)
+
+    if commit and deleted_uuids:
+        session.commit()
+
+    return deleted_uuids
+
+
+def soft_delete_doctor_position(
+    session: Session,
+    doctor_position: DoctorPositionModel,
+    *,
+    commit: bool = False,
+) -> DoctorPositionModel:
+    """Soft deletes a doctor-position link."""
+    return _set_deleted(session, doctor_position, is_deleted=True, commit=commit)
+
+
+def restore_doctor_position(
+    session: Session,
+    doctor_position: DoctorPositionModel,
+    *,
+    commit: bool = False,
+) -> DoctorPositionModel:
+    """Restores a soft-deleted doctor-position link in place."""
+    return _set_deleted(session, doctor_position, is_deleted=False, commit=commit)
+
+
+def soft_delete_doctor_unavailability(
+    session: Session,
+    unavailability: DoctorUnavailabilityModel,
+    *,
+    commit: bool = False,
+) -> DoctorUnavailabilityModel:
+    """Soft deletes a doctor unavailability entry."""
+    return _set_deleted(session, unavailability, is_deleted=True, commit=commit)
+
+
+def restore_doctor_unavailability(
+    session: Session,
+    unavailability: DoctorUnavailabilityModel,
+    *,
+    commit: bool = False,
+) -> DoctorUnavailabilityModel:
+    """Restores a soft-deleted doctor unavailability entry in place."""
+    return _set_deleted(session, unavailability, is_deleted=False, commit=commit)
+
+
+def soft_delete_doctor_pre_assignment(
+    session: Session,
+    pre_assignment: DoctorPreAssignmentModel,
+    *,
+    commit: bool = False,
+) -> DoctorPreAssignmentModel:
+    """Soft deletes a doctor pre-assignment entry."""
+    return _set_deleted(session, pre_assignment, is_deleted=True, commit=commit)
+
+
+def restore_doctor_pre_assignment(
+    session: Session,
+    pre_assignment: DoctorPreAssignmentModel,
+    shift_id: uuid.UUID,
+    *,
+    commit: bool = False,
+) -> DoctorPreAssignmentModel:
+    """Restores a soft-deleted doctor pre-assignment in place with the updated shift."""
+    pre_assignment.shift_id = shift_id
+    return _set_deleted(session, pre_assignment, is_deleted=False, commit=commit)

@@ -13,6 +13,8 @@ import uuid
 import datetime
 from pydantic import BaseModel, ConfigDict
 
+from sqlmodel import Field
+
 # ─── Doctor ───────────────────────────────────────────────
 
 
@@ -50,8 +52,9 @@ class DoctorUpdate(BaseModel):
     """
 
     name: Optional[str] = None
-    department_id: Optional[uuid.UUID] = None
     team_id: Optional[uuid.UUID] = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class DoctorRead(DoctorBase):
@@ -69,6 +72,7 @@ class DoctorRead(DoctorBase):
     updated_at: datetime.datetime
     is_deleted: bool = False
     sync_status: bool = False
+    position_ids: list[uuid.UUID] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

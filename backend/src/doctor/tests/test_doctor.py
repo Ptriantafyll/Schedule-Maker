@@ -7,6 +7,7 @@ import uuid
 import datetime
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlmodel import Session
 
 
@@ -20,6 +21,8 @@ from src.position.models import Position as PositionModel
 from src.doctor.models import Doctor as DoctorModel
 from src.doctor.schemas import (
     DoctorCreate,
+    DoctorRead,
+    DoctorUpdate,
     DoctorPreAssignmentCreate,
     DoctorUnavailabilityCreate,
     DoctorPositionCreate,
@@ -2760,3 +2763,879 @@ def test_get_department_pre_assignments_for_month(
     assert len(results) == 1
     assert pa1.id in result_ids
     assert pa_deleted.id not in result_ids
+
+
+#####################
+# Step 5 Task 5.1 Slice 4:
+# Doctor PATCH/DELETE, Sub-resource DELETEs, Restore-in-Place & DoctorRead.position_ids
+#####################
+
+
+# --- Schemas ---
+
+
+def test_doctor_update_schema_valid():
+    """DoctorUpdate accepts name, team_id (including explicit None), or empty payload."""
+    team_id = uuid.uuid4()
+
+    rename_only = DoctorUpdate(name="Dr Renamed")
+    assert rename_only.model_dump(exclude_unset=True) == {"name": "Dr Renamed"}
+
+    unassign_team = DoctorUpdate(team_id=None)
+    assert unassign_team.model_dump(exclude_unset=True) == {"team_id": None}
+
+    reassign_team = DoctorUpdate(team_id=team_id)
+    assert reassign_team.model_dump(exclude_unset=True) == {"team_id": team_id}
+
+    empty = DoctorUpdate()
+    assert empty.model_dump(exclude_unset=True) == {}
+
+
+def test_doctor_update_schema_rejects_department_id_and_extra_fields():
+    """DoctorUpdate forbids department_id and arbitrary extra fields."""
+    with pytest.raises(ValidationError):
+        DoctorUpdate(department_id=uuid.uuid4())
+
+    with pytest.raises(ValidationError):
+        DoctorUpdate(unknown_field="unexpected")
+
+
+def test_doctor_read_schema_defaults_position_ids():
+    """DoctorRead defaults position_ids to an empty list."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+    schema = DoctorRead(
+        id=uuid.uuid4(),
+        name="Dr Schema",
+        department_id=uuid.uuid4(),
+        created_at=now,
+        updated_at=now,
+    )
+    assert schema.position_ids == []
+
+
+# --- DoctorRead.position_ids in Doctor Responses & Roster Exclusion ---
+
+
+def test_list_doctors_route_includes_position_ids_and_excludes_deleted(
+    client,
+    session,
+    department,
+    new_doctor,
+    other_doctor,
+    position,
+    department_admin_headers,
+):
+    """GET /api/v1/doctors populates active position_ids and excludes soft-deleted links or positions."""
+    deleted_link_pos = position_repository.create_position(
+        session=session,
+        position_name="ICU",
+        department_id=department.id,
+        duty_days=[1, 2],
+    )
+    deleted_pos = position_repository.create_position(
+        session=session,
+        position_name="OnCall",
+        department_id=department.id,
+        duty_days=[4, 5],
+    )
+
+    create_test_doctor_position(session, new_doctor, position)
+    deleted_link = create_test_doctor_position(session, new_doctor, deleted_link_pos)
+    deleted_link.is_deleted = True
+    session.add(deleted_link)
+
+    create_test_doctor_position(session, new_doctor, deleted_pos)
+    deleted_pos.is_deleted = True
+    session.add(deleted_pos)
+    session.commit()
+
+    response = client.get("api/v1/doctors", headers=department_admin_headers)
+    assert response.status_code == 200
+
+    doctors_by_id = {item["id"]: item for item in response.json()}
+    assert doctors_by_id[str(new_doctor.id)]["position_ids"] == [str(position.id)]
+    assert doctors_by_id[str(other_doctor.id)]["position_ids"] == []
+
+
+def test_get_doctor_route_includes_position_ids(
+    client,
+    session,
+    new_doctor,
+    position,
+    department_admin_headers,
+):
+    """GET /api/v1/doctors/{doctor_id} returns active position_ids."""
+    create_test_doctor_position(session, new_doctor, position)
+
+    response = client.get(
+        f"api/v1/doctors/{new_doctor.id}",
+        headers=department_admin_headers,
+    )
+    assert response.status_code == 200
+    assert response.json()["position_ids"] == [str(position.id)]
+
+
+def test_create_doctor_route_includes_empty_position_ids(
+    client,
+    team,
+    department_admin_headers,
+):
+    """POST /api/v1/doctors returns position_ids defaulting to []."""
+    response = client.post(
+        "api/v1/doctors",
+        json={"name": "Dr Fresh", "team_id": str(team.id)},
+        headers=department_admin_headers,
+    )
+    assert response.status_code == 201
+    assert response.json()["position_ids"] == []
+
+
+def test_list_doctors_roster_route_excludes_position_ids(
+    client,
+    session,
+    new_doctor,
+    position,
+    viewer_headers,
+):
+    """GET /api/v1/doctors/roster keeps minimal DoctorRosterRead shape without position_ids."""
+    create_test_doctor_position(session, new_doctor, position)
+
+    response = client.get("api/v1/doctors/roster", headers=viewer_headers)
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert set(data[0].keys()) == {"id", "name", "department_id", "team_id"}
+
+
+# --- PATCH /api/v1/doctors/{doctor_id} ---
+
+
+def test_update_doctor_route_rename_keeps_team_and_position_ids(
+    client,
+    session,
+    new_doctor,
+    team,
+    position,
+    department_admin_headers,
+):
+    """PATCH /doctors/{id} renaming only leaves team_id untouched and returns position_ids."""
+    create_test_doctor_position(session, new_doctor, position)
+    new_doctor.sync_status = True
+    session.add(new_doctor)
+    session.commit()
+
+    response = client.patch(
+        f"api/v1/doctors/{new_doctor.id}",
+        json={"name": "Dr Panos Updated"},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Dr Panos Updated"
+    assert data["team_id"] == str(team.id)
+    assert data["position_ids"] == [str(position.id)]
+    assert data["sync_status"] is False
+
+    session.refresh(new_doctor)
+    assert new_doctor.name == "Dr Panos Updated"
+    assert new_doctor.team_id == team.id
+    assert new_doctor.sync_status is False
+
+
+def test_update_doctor_route_reassign_team(
+    client,
+    session,
+    department,
+    new_doctor,
+    department_admin_headers,
+):
+    """PATCH /doctors/{id} can reassign a doctor to another active team in the same department."""
+    team_two = create_team(session=session, name="ER Team B", department_id=department.id)
+
+    response = client.patch(
+        f"api/v1/doctors/{new_doctor.id}",
+        json={"team_id": str(team_two.id)},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["team_id"] == str(team_two.id)
+    session.refresh(new_doctor)
+    assert new_doctor.team_id == team_two.id
+
+
+def test_update_doctor_route_unassign_team_with_null(
+    client,
+    session,
+    new_doctor,
+    department_admin_headers,
+):
+    """PATCH /doctors/{id} with {"team_id": null} unassigns the doctor's team."""
+    assert new_doctor.team_id is not None
+
+    response = client.patch(
+        f"api/v1/doctors/{new_doctor.id}",
+        json={"team_id": None},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["team_id"] is None
+    session.refresh(new_doctor)
+    assert new_doctor.team_id is None
+
+
+def test_update_doctor_route_empty_payload_idempotent(
+    client,
+    new_doctor,
+    team,
+    department_admin_headers,
+):
+    """PATCH /doctors/{id} with {} returns 200 and preserves existing name and team_id."""
+    response = client.patch(
+        f"api/v1/doctors/{new_doctor.id}",
+        json={},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"] == "Dr Panos"
+    assert data["team_id"] == str(team.id)
+
+
+def test_update_doctor_route_rejects_department_id(
+    client,
+    new_doctor,
+    department_b,
+    department_admin_headers,
+):
+    """PATCH /doctors/{id} rejects client-supplied department_id with 422."""
+    response = client.patch(
+        f"api/v1/doctors/{new_doctor.id}",
+        json={"department_id": str(department_b.id)},
+        headers=department_admin_headers,
+    )
+    assert response.status_code == 422
+
+
+def test_update_doctor_route_invalid_team_returns_404(
+    client,
+    session,
+    department,
+    new_doctor,
+    team_b,
+    department_admin_headers,
+):
+    """PATCH /doctors/{id} returns 404 for nonexistent, foreign, or soft-deleted team_id."""
+    deleted_team = create_team(session=session, name="Deleted Team", department_id=department.id)
+    deleted_team.is_deleted = True
+    session.add(deleted_team)
+    session.commit()
+
+    for bad_team_id in (uuid.uuid4(), team_b.id, deleted_team.id):
+        response = client.patch(
+            f"api/v1/doctors/{new_doctor.id}",
+            json={"team_id": str(bad_team_id)},
+            headers=department_admin_headers,
+        )
+        assert response.status_code == 404
+
+
+def test_update_doctor_route_missing_deleted_or_foreign_doctor_returns_404(
+    client,
+    session,
+    new_doctor,
+    doctor_b,
+    department_admin_headers,
+):
+    """PATCH /doctors/{id} returns 404 for unknown, soft-deleted, or cross-department doctor."""
+    new_doctor.is_deleted = True
+    session.add(new_doctor)
+    session.commit()
+
+    for bad_doctor_id in (uuid.uuid4(), new_doctor.id, doctor_b.id):
+        response = client.patch(
+            f"api/v1/doctors/{bad_doctor_id}",
+            json={"name": "Dr Nope"},
+            headers=department_admin_headers,
+        )
+        assert response.status_code == 404
+
+
+def test_update_doctor_route_auth_guards(
+    client,
+    new_doctor,
+    viewer_headers,
+    doctor_headers,
+):
+    """PATCH /doctors/{id} requires authentication (401) and DEPARTMENT_ADMIN role (403)."""
+    unauth = client.patch(
+        f"api/v1/doctors/{new_doctor.id}",
+        json={"name": "Blocked"},
+    )
+    assert unauth.status_code == 401
+
+    viewer_resp = client.patch(
+        f"api/v1/doctors/{new_doctor.id}",
+        json={"name": "Blocked"},
+        headers=viewer_headers,
+    )
+    assert viewer_resp.status_code == 403
+
+    doctor_resp = client.patch(
+        f"api/v1/doctors/{new_doctor.id}",
+        json={"name": "Blocked"},
+        headers=doctor_headers,
+    )
+    assert doctor_resp.status_code == 403
+
+
+# --- DELETE /api/v1/doctors/{doctor_id} ---
+
+
+def test_delete_doctor_route_soft_deletes_doctor_and_positions_keeps_user_active(
+    client,
+    session,
+    new_doctor,
+    position,
+    doctor_user,
+    department_admin_headers,
+    viewer_headers,
+):
+    """DELETE /doctors/{id} soft-deletes Doctor and active DoctorPosition links, keeping User active."""
+    doc_pos = create_test_doctor_position(session, new_doctor, position)
+    new_doctor.sync_status = True
+    doc_pos.sync_status = True
+    session.add(new_doctor)
+    session.add(doc_pos)
+    session.commit()
+
+    response = client.delete(
+        f"api/v1/doctors/{new_doctor.id}",
+        headers=department_admin_headers,
+    )
+    assert response.status_code == 204
+    assert response.content == b""
+
+    session.refresh(new_doctor)
+    session.refresh(doc_pos)
+    session.refresh(doctor_user)
+    assert new_doctor.is_deleted is True
+    assert new_doctor.sync_status is False
+    assert doc_pos.is_deleted is True
+    assert doc_pos.sync_status is False
+    assert doctor_user.is_deleted is False
+
+    list_resp = client.get("api/v1/doctors", headers=department_admin_headers)
+    assert list_resp.status_code == 200
+    assert all(d["id"] != str(new_doctor.id) for d in list_resp.json())
+
+    roster_resp = client.get("api/v1/doctors/roster", headers=viewer_headers)
+    assert roster_resp.status_code == 200
+    assert all(d["id"] != str(new_doctor.id) for d in roster_resp.json())
+
+
+def test_delete_doctor_route_missing_deleted_or_foreign_returns_404(
+    client,
+    session,
+    new_doctor,
+    doctor_b,
+    department_admin_headers,
+):
+    """DELETE /doctors/{id} returns 404 for unknown, already deleted, or foreign-department doctor."""
+    new_doctor.is_deleted = True
+    session.add(new_doctor)
+    session.commit()
+
+    for bad_doctor_id in (uuid.uuid4(), new_doctor.id, doctor_b.id):
+        response = client.delete(
+            f"api/v1/doctors/{bad_doctor_id}",
+            headers=department_admin_headers,
+        )
+        assert response.status_code == 404
+
+
+def test_delete_doctor_route_auth_guards(
+    client,
+    new_doctor,
+    viewer_headers,
+    doctor_headers,
+):
+    """DELETE /doctors/{id} requires authentication (401) and DEPARTMENT_ADMIN role (403)."""
+    assert client.delete(f"api/v1/doctors/{new_doctor.id}").status_code == 401
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}", headers=viewer_headers
+        ).status_code
+        == 403
+    )
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}", headers=doctor_headers
+        ).status_code
+        == 403
+    )
+
+
+# --- DELETE /api/v1/doctors/{doctor_id}/position/{position_id} & Restore-in-Place ---
+
+
+def test_delete_doctor_position_route_and_restore_in_place(
+    client,
+    session,
+    new_doctor,
+    position,
+    department_admin_headers,
+):
+    """DELETE /doctors/{id}/position/{position_id} soft-deletes the link; re-adding restores in place."""
+    link = create_test_doctor_position(session, new_doctor, position)
+    original_link_id = link.id
+    link.sync_status = True
+    session.add(link)
+    session.commit()
+
+    delete_resp = client.delete(
+        f"api/v1/doctors/{new_doctor.id}/position/{position.id}",
+        headers=department_admin_headers,
+    )
+    assert delete_resp.status_code == 204
+    assert delete_resp.content == b""
+
+    session.refresh(link)
+    assert link.is_deleted is True
+    assert link.sync_status is False
+
+    # Position listing and DoctorRead.position_ids omit soft-deleted link
+    pos_list_resp = client.get(
+        f"api/v1/doctors/{new_doctor.id}/position",
+        headers=department_admin_headers,
+    )
+    assert pos_list_resp.status_code == 200
+    assert pos_list_resp.json() == []
+
+    doc_resp = client.get(
+        f"api/v1/doctors/{new_doctor.id}",
+        headers=department_admin_headers,
+    )
+    assert doc_resp.status_code == 200
+    assert doc_resp.json()["position_ids"] == []
+
+    # Deleting already-deleted link returns 404
+    second_delete = client.delete(
+        f"api/v1/doctors/{new_doctor.id}/position/{position.id}",
+        headers=department_admin_headers,
+    )
+    assert second_delete.status_code == 404
+
+    # Re-assigning the same position restores the existing link row in place
+    restore_resp = client.post(
+        f"api/v1/doctors/{new_doctor.id}/position",
+        json={"position_id": str(position.id)},
+        headers=department_admin_headers,
+    )
+    assert restore_resp.status_code == 201
+    restored_data = restore_resp.json()
+    assert restored_data["id"] == str(original_link_id)
+    assert restored_data["is_deleted"] is False
+    assert restored_data["sync_status"] is False
+
+
+def test_delete_doctor_position_route_missing_or_foreign_returns_404(
+    client,
+    new_doctor,
+    doctor_b,
+    position,
+    position_b,
+    department_admin_headers,
+):
+    """DELETE /doctors/{id}/position/{pos_id} returns 404 when link, doctor, or position is missing/foreign."""
+    assert (
+        client.delete(
+            f"api/v1/doctors/{uuid.uuid4()}/position/{position.id}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}/position/{uuid.uuid4()}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(
+            f"api/v1/doctors/{doctor_b.id}/position/{position_b.id}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+
+
+def test_delete_doctor_position_route_auth_guards(
+    client,
+    session,
+    new_doctor,
+    position,
+    viewer_headers,
+    doctor_headers,
+):
+    """DELETE /doctors/{id}/position/{pos_id} requires authentication (401) and DEPARTMENT_ADMIN (403)."""
+    create_test_doctor_position(session, new_doctor, position)
+    url = f"api/v1/doctors/{new_doctor.id}/position/{position.id}"
+
+    assert client.delete(url).status_code == 401
+    assert client.delete(url, headers=viewer_headers).status_code == 403
+    assert client.delete(url, headers=doctor_headers).status_code == 403
+
+
+# --- DELETE /api/v1/doctors/{doctor_id}/unavailability/{unavailability_id} & Soft-Delete Filters / Restore ---
+
+
+def test_delete_doctor_unavailability_route_admin_and_doctor_self(
+    client,
+    session,
+    new_doctor,
+    unavailability,
+    department_admin_headers,
+    doctor_headers,
+):
+    """Both DEPARTMENT_ADMIN and the owning DOCTOR can delete an unavailability entry."""
+    unavailability.sync_status = True
+    session.add(unavailability)
+    session.commit()
+
+    admin_del = client.delete(
+        f"api/v1/doctors/{new_doctor.id}/unavailability/{unavailability.id}",
+        headers=department_admin_headers,
+    )
+    assert admin_del.status_code == 204
+    assert admin_del.content == b""
+
+    session.refresh(unavailability)
+    assert unavailability.is_deleted is True
+    assert unavailability.sync_status is False
+
+    list_resp = client.get(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        headers=department_admin_headers,
+    )
+    assert list_resp.status_code == 200
+    assert list_resp.json() == []
+
+    # Doctor deletes their own newly created unavailability
+    self_unavail = create_test_unavailability(
+        session, new_doctor, datetime.date(2026, 8, 20)
+    )
+    doc_del = client.delete(
+        f"api/v1/doctors/{new_doctor.id}/unavailability/{self_unavail.id}",
+        headers=doctor_headers,
+    )
+    assert doc_del.status_code == 204
+    session.refresh(self_unavail)
+    assert self_unavail.is_deleted is True
+
+
+def test_delete_doctor_unavailability_route_doctor_cannot_delete_other_doctor_returns_403(
+    client,
+    session,
+    other_doctor,
+    doctor_headers,
+):
+    """A DOCTOR cannot delete another doctor's unavailability entry."""
+    other_unavail = create_test_unavailability(
+        session, other_doctor, datetime.date(2026, 8, 15)
+    )
+
+    response = client.delete(
+        f"api/v1/doctors/{other_doctor.id}/unavailability/{other_unavail.id}",
+        headers=doctor_headers,
+    )
+    assert response.status_code == 403
+
+
+def test_delete_doctor_unavailability_route_missing_deleted_wrong_doctor_or_foreign_returns_404(
+    client,
+    session,
+    new_doctor,
+    other_doctor,
+    doctor_b,
+    unavailability,
+    department_admin_headers,
+):
+    """DELETE unavailability returns 404 for unknown, deleted, wrong-doctor, or cross-department IDs."""
+    other_unavail = create_test_unavailability(
+        session, other_doctor, datetime.date(2026, 8, 16)
+    )
+    foreign_unavail = create_test_unavailability(
+        session, doctor_b, datetime.date(2026, 8, 16)
+    )
+    unavailability.is_deleted = True
+    session.add(unavailability)
+    session.commit()
+
+    # Unknown ID
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}/unavailability/{uuid.uuid4()}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+    # Already soft-deleted ID
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}/unavailability/{unavailability.id}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+    # Valid unavailability owned by other_doctor referenced under new_doctor's URL
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}/unavailability/{other_unavail.id}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+    # Foreign department doctor
+    assert (
+        client.delete(
+            f"api/v1/doctors/{doctor_b.id}/unavailability/{foreign_unavail.id}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+
+
+def test_delete_doctor_unavailability_route_auth_guards(
+    client,
+    new_doctor,
+    unavailability,
+    viewer_headers,
+):
+    """DELETE unavailability requires authentication (401) and forbids VIEWER (403)."""
+    url = f"api/v1/doctors/{new_doctor.id}/unavailability/{unavailability.id}"
+    assert client.delete(url).status_code == 401
+    assert client.delete(url, headers=viewer_headers).status_code == 403
+
+
+def test_deleted_unavailability_does_not_block_pre_assignment_and_restores_in_place(
+    client,
+    session,
+    new_doctor,
+    shift,
+    unavailability,
+    department_admin_headers,
+):
+    """Soft-deleted unavailability does not block pre-assignment on the same date and restores in place."""
+    original_id = unavailability.id
+    target_date = unavailability.date
+
+    del_resp = client.delete(
+        f"api/v1/doctors/{new_doctor.id}/unavailability/{original_id}",
+        headers=department_admin_headers,
+    )
+    assert del_resp.status_code == 204
+
+    assert (
+        doctor_repository.get_doctor_unavailability_by_date(
+            session, new_doctor.id, target_date
+        )
+        is None
+    )
+
+    # Deleted unavailability must NOT trigger 422 conflict when adding a pre-assignment
+    pa_resp = client.post(
+        f"api/v1/doctors/{new_doctor.id}/pre-assignments",
+        json={"date": target_date.isoformat(), "shift_id": str(shift.id)},
+        headers=department_admin_headers,
+    )
+    assert pa_resp.status_code == 201
+    pa_id = pa_resp.json()["id"]
+
+    # Remove that pre-assignment so we can restore the soft-deleted unavailability row
+    pa_del_resp = client.delete(
+        f"api/v1/doctors/{new_doctor.id}/pre-assignments/{pa_id}",
+        headers=department_admin_headers,
+    )
+    assert pa_del_resp.status_code == 204
+
+    restore_resp = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        json={"date": target_date.isoformat()},
+        headers=department_admin_headers,
+    )
+    assert restore_resp.status_code == 201
+    restored = restore_resp.json()
+    assert restored["id"] == str(original_id)
+    assert restored["is_deleted"] is False
+    assert restored["sync_status"] is False
+
+
+# --- DELETE /api/v1/doctors/{doctor_id}/pre-assignments/{pre_assignment_id} & Soft-Delete Filters / Restore ---
+
+
+def test_delete_doctor_pre_assignment_route_soft_deletes_and_excludes_from_list(
+    client,
+    session,
+    new_doctor,
+    pre_assignment,
+    department_admin_headers,
+):
+    """DELETE pre-assignment soft-deletes the row and excludes it from active queries and GET lists."""
+    pre_assignment.sync_status = True
+    session.add(pre_assignment)
+    session.commit()
+
+    response = client.delete(
+        f"api/v1/doctors/{new_doctor.id}/pre-assignments/{pre_assignment.id}",
+        headers=department_admin_headers,
+    )
+    assert response.status_code == 204
+    assert response.content == b""
+
+    session.refresh(pre_assignment)
+    assert pre_assignment.is_deleted is True
+    assert pre_assignment.sync_status is False
+
+    assert (
+        doctor_repository.get_doctor_pre_assignment_by_date(
+            session, new_doctor.id, pre_assignment.date
+        )
+        is None
+    )
+
+    list_resp = client.get(
+        f"api/v1/doctors/{new_doctor.id}/pre-assignments",
+        headers=department_admin_headers,
+    )
+    assert list_resp.status_code == 200
+    assert list_resp.json() == []
+
+
+def test_delete_doctor_pre_assignment_route_missing_deleted_wrong_doctor_or_foreign_returns_404(
+    client,
+    session,
+    new_doctor,
+    other_doctor,
+    doctor_b,
+    shift,
+    shift_b,
+    pre_assignment,
+    department_admin_headers,
+):
+    """DELETE pre-assignment returns 404 for unknown, deleted, wrong-doctor, or foreign IDs."""
+    other_pa = create_test_pre_assignment(
+        session, shift.id, other_doctor, datetime.date(2026, 8, 17)
+    )
+    foreign_pa = create_test_pre_assignment(
+        session, shift_b.id, doctor_b, datetime.date(2026, 8, 17)
+    )
+    pre_assignment.is_deleted = True
+    session.add(pre_assignment)
+    session.commit()
+
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}/pre-assignments/{uuid.uuid4()}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}/pre-assignments/{pre_assignment.id}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}/pre-assignments/{other_pa.id}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+    assert (
+        client.delete(
+            f"api/v1/doctors/{doctor_b.id}/pre-assignments/{foreign_pa.id}",
+            headers=department_admin_headers,
+        ).status_code
+        == 404
+    )
+
+
+def test_delete_doctor_pre_assignment_route_auth_guards(
+    client,
+    new_doctor,
+    pre_assignment,
+    viewer_headers,
+    doctor_headers,
+):
+    """DELETE pre-assignment requires authentication (401) and DEPARTMENT_ADMIN role (403)."""
+    url = f"api/v1/doctors/{new_doctor.id}/pre-assignments/{pre_assignment.id}"
+    assert client.delete(url).status_code == 401
+    assert client.delete(url, headers=viewer_headers).status_code == 403
+    assert client.delete(url, headers=doctor_headers).status_code == 403
+
+
+def test_deleted_pre_assignment_does_not_block_unavailability_and_restores_in_place_with_new_shift(
+    client,
+    session,
+    new_doctor,
+    position,
+    pre_assignment,
+    department_admin_headers,
+):
+    """Soft-deleted pre-assignment does not block unavailability and restores in place with updated shift_id."""
+    original_id = pre_assignment.id
+    target_date = pre_assignment.date
+    second_shift = shift_repository.create_shift(
+        session,
+        ShiftCreate(
+            name="ER 2",
+            position_id=position.id,
+            grants_day_off=True,
+            doctors_per_shift=1,
+        ),
+    )
+
+    del_resp = client.delete(
+        f"api/v1/doctors/{new_doctor.id}/pre-assignments/{original_id}",
+        headers=department_admin_headers,
+    )
+    assert del_resp.status_code == 204
+
+    # Deleted pre-assignment must NOT trigger 422 conflict when adding unavailability
+    unavail_resp = client.post(
+        f"api/v1/doctors/{new_doctor.id}/unavailability",
+        json={"date": target_date.isoformat()},
+        headers=department_admin_headers,
+    )
+    assert unavail_resp.status_code == 201
+    unavail_id = unavail_resp.json()["id"]
+
+    # Remove unavailability so we can restore the soft-deleted pre-assignment with second_shift
+    assert (
+        client.delete(
+            f"api/v1/doctors/{new_doctor.id}/unavailability/{unavail_id}",
+            headers=department_admin_headers,
+        ).status_code
+        == 204
+    )
+
+    restore_resp = client.post(
+        f"api/v1/doctors/{new_doctor.id}/pre-assignments",
+        json={"date": target_date.isoformat(), "shift_id": str(second_shift.id)},
+        headers=department_admin_headers,
+    )
+    assert restore_resp.status_code == 201
+    restored = restore_resp.json()
+    assert restored["id"] == str(original_id)
+    assert restored["shift_id"] == str(second_shift.id)
+    assert restored["is_deleted"] is False
+    assert restored["sync_status"] is False
+

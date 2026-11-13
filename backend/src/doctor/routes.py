@@ -11,6 +11,7 @@ from src.db.connection import get_session
 from src.doctor.schemas import (
     DoctorCreate,
     DoctorRead,
+    DoctorUpdate,
     DoctorRosterRead,
     DoctorPreAssignmentCreate,
     DoctorPreAssignmentRead,
@@ -98,6 +99,42 @@ def get_doctor(
     )
 
 
+@router.patch("/{doctor_id}", response_model=DoctorRead, status_code=status.HTTP_200_OK)
+def update_doctor(
+    doctor_id: uuid.UUID,
+    doctor_data: DoctorUpdate,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """
+    Partially updates a doctor's name and/or team assignment.
+    """
+    return doctor_controllers.update_doctor_controller(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+        doctor_data=doctor_data,
+    )
+
+
+@router.delete("/{doctor_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_doctor(
+    doctor_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """
+    Soft-deletes a doctor and their active position links.
+    """
+    return doctor_controllers.delete_doctor_controller(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
+
+
 @router.post("/{doctor_id}/pre-assignments", response_model=DoctorPreAssignmentRead, status_code=status.HTTP_201_CREATED)
 def create_doctor_pre_assignments(
     doctor_id: uuid.UUID,
@@ -132,6 +169,28 @@ def list_doctor_pre_assignments(
     return doctor_controllers.list_doctor_pre_assignments_controller(
         session=session,
         doctor_id=doctor_id,
+        department_id=department_id,
+    )
+
+
+@router.delete(
+    "/{doctor_id}/pre-assignments/{pre_assignment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_doctor_pre_assignment(
+    doctor_id: uuid.UUID,
+    pre_assignment_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """
+    Soft-deletes a pre-assignment entry for a doctor.
+    """
+    return doctor_controllers.delete_doctor_pre_assignment_controller(
+        session=session,
+        doctor_id=doctor_id,
+        pre_assignment_id=pre_assignment_id,
         department_id=department_id,
     )
 
@@ -175,6 +234,29 @@ def list_doctor_unavailabilities(
     # todo: make this give a month and return the unav for the month
 
 
+@router.delete(
+    "/{doctor_id}/unavailability/{unavailability_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_doctor_unavailability(
+    doctor_id: uuid.UUID,
+    unavailability_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    current_user: UserModel = Depends(require_doctor_or_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """
+    Soft-deletes an unavailability entry for a doctor.
+    """
+    return doctor_controllers.delete_doctor_unavailability_controller(
+        session=session,
+        doctor_id=doctor_id,
+        unavailability_id=unavailability_id,
+        department_id=department_id,
+        current_user=current_user,
+    )
+
+
 @router.post("/{doctor_id}/position", response_model=DoctorPositionRead, status_code=status.HTTP_201_CREATED)
 def create_doctor_position(
     doctor_id: uuid.UUID,
@@ -207,5 +289,27 @@ def list_doctor_positions(
     return doctor_controllers.list_doctor_positions_controller(
         session=session,
         doctor_id=doctor_id,
+        department_id=department_id,
+    )
+
+
+@router.delete(
+    "/{doctor_id}/position/{position_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_doctor_position(
+    doctor_id: uuid.UUID,
+    position_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """
+    Soft-deletes a doctor-position eligibility link.
+    """
+    return doctor_controllers.delete_doctor_position_controller(
+        session=session,
+        doctor_id=doctor_id,
+        position_id=position_id,
         department_id=department_id,
     )
