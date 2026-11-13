@@ -7,7 +7,9 @@ import 'package:frontend/features/admin/presentation/controllers/schedule_genera
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/data/repositories/schedule_draft_repository.dart';
+import 'package:frontend/features/admin/domain/models/excel_roster_diff.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
+import 'package:frontend/features/admin/presentation/widgets/roster_reconciliation_dialog.dart';
 import 'package:frontend/features/admin/presentation/screens/admin_screen.dart';
 import 'package:frontend/features/auth/domain/models/user.dart';
 import 'package:frontend/features/auth/domain/models/user_role.dart';
@@ -58,17 +60,42 @@ class FakeAdminScheduleDraftRepository implements ScheduleDraftRepository {
   int generateFromExcelCallCount = 0;
   int generateFromRosterCallCount = 0;
   int publishScheduleDraftCallCount = 0;
+  int previewExcelRosterDiffCallCount = 0;
   List<ScheduleSummary> historyToReturn = const [];
+
+  ExcelRosterDiff? diffToReturn;
+  bool? capturedSyncRoster;
+  List<String>? capturedRemoveDoctorIds;
+  List<String>? capturedIgnoredNewDoctors;
 
   @override
   Future<ScheduleDraft> generateFromExcel({
     required PlatformFile file,
     required String targetMonth,
     String? departmentId,
+    String? countryCode,
+    bool syncRoster = false,
+    List<String>? removeDoctorIds,
+    List<String>? ignoredNewDoctors,
   }) async {
     generateFromExcelCallCount++;
+    capturedSyncRoster = syncRoster;
+    capturedRemoveDoctorIds = removeDoctorIds;
+    capturedIgnoredNewDoctors = ignoredNewDoctors;
     if (errorToThrow != null) throw errorToThrow!;
     return draftToReturn ?? _createSampleDraft();
+  }
+
+  @override
+  Future<ExcelRosterDiff> previewExcelRosterDiff({
+    required PlatformFile file,
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
+    previewExcelRosterDiffCallCount++;
+    if (errorToThrow != null) throw errorToThrow!;
+    return diffToReturn ?? const ExcelRosterDiff(hasExistingRoster: false);
   }
 
   @override
@@ -162,6 +189,7 @@ void main() {
       required String fileName,
       required List<int> bytes,
     })? onSaveFile,
+    Future<PlatformFile?> Function()? onPickExcelFile,
   }) {
     return ProviderScope(
       overrides: [
@@ -175,6 +203,7 @@ void main() {
           onSaveFile: onSaveFile ??
               ({required fileName, required bytes}) async =>
                   '/downloads/$fileName',
+          onPickExcelFile: onPickExcelFile,
         ),
       ),
     );
@@ -311,6 +340,145 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(ExcelUploadDialog), findsNothing);
+    });
+
+    testWidgets('generating from Excel with syncRoster false generates directly as one-time schedule', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      final testFile = FakePlatformFile(name: 'november_roster.xlsx');
+
+      await tester.pumpWidget(createWidgetUnderTest(
+        repository: fakeRepo,
+        onPickExcelFile: () async => testFile,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Generate Schedule'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Import from Excel (.xlsx)'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Click to select .xlsx file'));
+      await tester.pumpAndSettle();
+
+      final dialogGenerateBtn = find.descendant(
+        of: find.byType(ExcelUploadDialog),
+        matching: find.widgetWithText(FilledButton, 'Generate Schedule'),
+      );
+      await tester.tap(dialogGenerateBtn);
+      await tester.pumpAndSettle();
+
+      expect(fakeRepo.generateFromExcelCallCount, equals(1));
+      expect(fakeRepo.capturedSyncRoster, isFalse);
+      expect(fakeRepo.capturedRemoveDoctorIds, isNull);
+      expect(fakeRepo.capturedIgnoredNewDoctors, isNull);
+      expect(find.text('Schedule generated from november_roster.xlsx'), findsOneWidget);
+    });
+
+    testWidgets('generating from Excel with syncRoster true and diff opens RosterReconciliationDialog and passes choices', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      final testFile = FakePlatformFile(name: 'november_roster.xlsx');
+      fakeRepo.diffToReturn = const ExcelRosterDiff(
+        hasExistingRoster: true,
+        missingFromExcel: [
+          MissingDoctorDiffItem(id: 'doc-1', name: 'Dr. Bob Kelso'),
+        ],
+        newInExcel: [
+          NewDoctorDiffItem(name: 'Dr. Allison Cameron', positions: ['ER']),
+        ],
+      );
+
+      await tester.pumpWidget(createWidgetUnderTest(
+        repository: fakeRepo,
+        onPickExcelFile: () async => testFile,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Generate Schedule'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Import from Excel (.xlsx)'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Click to select .xlsx file'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(CheckboxListTile));
+      await tester.pumpAndSettle();
+
+      final dialogGenerateBtn = find.descendant(
+        of: find.byType(ExcelUploadDialog),
+        matching: find.widgetWithText(FilledButton, 'Generate Schedule'),
+      );
+      await tester.tap(dialogGenerateBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RosterReconciliationDialog), findsOneWidget);
+      expect(fakeRepo.previewExcelRosterDiffCallCount, equals(1));
+
+      // In RosterReconciliationDialog:
+      await tester.ensureVisible(find.text('Remove').first);
+      await tester.tap(find.text('Remove').first);
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.text('Skip'));
+      await tester.tap(find.text('Skip'));
+      await tester.pumpAndSettle();
+
+      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Confirm & Generate'));
+      await tester.tap(find.widgetWithText(FilledButton, 'Confirm & Generate'));
+      await tester.pumpAndSettle();
+
+      expect(fakeRepo.generateFromExcelCallCount, equals(1));
+      expect(fakeRepo.capturedSyncRoster, isTrue);
+      expect(fakeRepo.capturedRemoveDoctorIds, equals(['doc-1']));
+      expect(fakeRepo.capturedIgnoredNewDoctors, equals(['Dr. Allison Cameron']));
+      expect(find.text('Schedule generated from november_roster.xlsx'), findsOneWidget);
+    });
+
+    testWidgets('cancelling inside RosterReconciliationDialog aborts generation', (tester) async {
+      final fakeRepo = FakeAdminScheduleDraftRepository();
+      final testFile = FakePlatformFile(name: 'november_roster.xlsx');
+      fakeRepo.diffToReturn = const ExcelRosterDiff(
+        hasExistingRoster: true,
+        missingFromExcel: [
+          MissingDoctorDiffItem(id: 'doc-1', name: 'Dr. Bob Kelso'),
+        ],
+        newInExcel: [],
+      );
+
+      await tester.pumpWidget(createWidgetUnderTest(
+        repository: fakeRepo,
+        onPickExcelFile: () async => testFile,
+      ));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Generate Schedule'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Import from Excel (.xlsx)'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Click to select .xlsx file'));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(CheckboxListTile));
+      await tester.pumpAndSettle();
+
+      final dialogGenerateBtn = find.descendant(
+        of: find.byType(ExcelUploadDialog),
+        matching: find.widgetWithText(FilledButton, 'Generate Schedule'),
+      );
+      await tester.tap(dialogGenerateBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RosterReconciliationDialog), findsOneWidget);
+
+      await tester.tap(find.text('Cancel'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RosterReconciliationDialog), findsNothing);
+      expect(fakeRepo.generateFromExcelCallCount, equals(0));
     });
 
     testWidgets('automatically loads active draft on startup for admin department and renders draft canvas', (tester) async {

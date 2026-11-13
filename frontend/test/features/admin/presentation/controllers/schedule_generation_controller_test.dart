@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/data/repositories/schedule_draft_repository.dart';
+import 'package:frontend/features/admin/domain/models/excel_roster_diff.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
 import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
 import 'package:frontend/features/admin/domain/models/target_month_info.dart';
@@ -47,12 +48,18 @@ class FakeScheduleDraftRepository implements ScheduleDraftRepository {
   int fetchScheduleHistoryCallCount = 0;
   int fetchTargetMonthInfoCallCount = 0;
   int publishScheduleDraftCallCount = 0;
+  int previewExcelRosterDiffCallCount = 0;
 
   PlatformFile? capturedFile;
   String? capturedTargetMonth;
   String? capturedDepartmentId;
+  String? capturedCountryCode;
+  bool? capturedSyncRoster;
+  List<String>? capturedRemoveDoctorIds;
+  List<String>? capturedIgnoredNewDoctors;
 
   ScheduleDraft? scheduleDraftToReturn;
+  ExcelRosterDiff? diffToReturn;
   List<int> exportBytesToReturn = [1, 2, 3];
   List<ScheduleSummary> historyToReturn = const [];
   TargetMonthInfo targetMonthInfoToReturn = const TargetMonthInfo(nextTargetMonth: '2026-12');
@@ -64,13 +71,37 @@ class FakeScheduleDraftRepository implements ScheduleDraftRepository {
     required PlatformFile file,
     required String targetMonth,
     String? departmentId,
+    String? countryCode,
+    bool syncRoster = false,
+    List<String>? removeDoctorIds,
+    List<String>? ignoredNewDoctors,
   }) async {
     generateFromExcelCallCount++;
     capturedFile = file;
     capturedTargetMonth = targetMonth;
     capturedDepartmentId = departmentId;
+    capturedCountryCode = countryCode;
+    capturedSyncRoster = syncRoster;
+    capturedRemoveDoctorIds = removeDoctorIds;
+    capturedIgnoredNewDoctors = ignoredNewDoctors;
     if (exceptionToThrow != null) throw exceptionToThrow!;
     return scheduleDraftToReturn ?? _createDummyDraft();
+  }
+
+  @override
+  Future<ExcelRosterDiff> previewExcelRosterDiff({
+    required PlatformFile file,
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
+    previewExcelRosterDiffCallCount++;
+    capturedFile = file;
+    capturedTargetMonth = targetMonth;
+    capturedDepartmentId = departmentId;
+    capturedCountryCode = countryCode;
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return diffToReturn ?? const ExcelRosterDiff(hasExistingRoster: false);
   }
 
   @override
@@ -96,8 +127,6 @@ class FakeScheduleDraftRepository implements ScheduleDraftRepository {
     if (exceptionToThrow != null) throw exceptionToThrow!;
     return exportBytesToReturn;
   }
-
-  String? capturedCountryCode;
 
   @override
   Future<ScheduleDraft> generateFromRoster({
@@ -291,6 +320,49 @@ void main() {
       expect(state.isSolving, isFalse);
       expect(state.draft, isNull);
       expect(state.errorMessage, contains('Infeasible shift requirements'));
+    });
+
+    test('generateFromExcel passes syncRoster, removeDoctorIds, and ignoredNewDoctors to repository', () async {
+      final dummyDraft = FakeScheduleDraftRepository._createDummyDraft();
+      fakeRepository.scheduleDraftToReturn = dummyDraft;
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+      final testFile = FakePlatformFile(name: 'sync_roster.xlsx');
+
+      await controller.generateFromExcel(
+        testFile,
+        targetMonth: '2026-11',
+        departmentId: 'dept-1',
+        syncRoster: true,
+        removeDoctorIds: ['doc-1'],
+        ignoredNewDoctors: ['Dr. New'],
+      );
+
+      expect(fakeRepository.capturedSyncRoster, isTrue);
+      expect(fakeRepository.capturedRemoveDoctorIds, equals(['doc-1']));
+      expect(fakeRepository.capturedIgnoredNewDoctors, equals(['Dr. New']));
+    });
+
+    test('previewExcelRosterDiff delegates to repository and returns ExcelRosterDiff', () async {
+      const sampleDiff = ExcelRosterDiff(
+        hasExistingRoster: true,
+        missingFromExcel: [MissingDoctorDiffItem(id: 'doc-1', name: 'Dr. House')],
+        newInExcel: [],
+      );
+      fakeRepository.diffToReturn = sampleDiff;
+      final controller = container.read(scheduleGenerationControllerProvider.notifier);
+      final testFile = FakePlatformFile(name: 'preview_diff.xlsx');
+
+      final result = await controller.previewExcelRosterDiff(
+        testFile,
+        targetMonth: '2026-11',
+        departmentId: 'dept-1',
+      );
+
+      expect(fakeRepository.previewExcelRosterDiffCallCount, equals(1));
+      expect(fakeRepository.capturedFile?.name, equals('preview_diff.xlsx'));
+      expect(fakeRepository.capturedTargetMonth, equals('2026-11'));
+      expect(fakeRepository.capturedDepartmentId, equals('dept-1'));
+      expect(result, equals(sampleDiff));
     });
 
     test('exportCurrentDraft toggles isExporting flag and returns file bytes', () async {

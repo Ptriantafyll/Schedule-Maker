@@ -1,6 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/admin/data/datasources/schedule_draft_remote_data_source.dart';
+import 'package:frontend/features/admin/domain/models/excel_roster_diff.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
 import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
 import 'package:frontend/features/admin/domain/models/target_month_info.dart';
@@ -17,6 +18,17 @@ abstract class ScheduleDraftRepository {
     required PlatformFile file,
     required String targetMonth,
     String? departmentId,
+    String? countryCode,
+    bool syncRoster = false,
+    List<String>? removeDoctorIds,
+    List<String>? ignoredNewDoctors,
+  });
+
+  Future<ExcelRosterDiff> previewExcelRosterDiff({
+    required PlatformFile file,
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
   });
 
   Future<ScheduleDraft> generateFromRoster({
@@ -49,11 +61,34 @@ class ScheduleDraftRepositoryImpl implements ScheduleDraftRepository {
     required PlatformFile file,
     required String targetMonth,
     String? departmentId,
+    String? countryCode,
+    bool syncRoster = false,
+    List<String>? removeDoctorIds,
+    List<String>? ignoredNewDoctors,
   }) async {
     return await remoteDataSource.generateFromExcel(
       file: file,
       targetMonth: targetMonth,
       departmentId: departmentId,
+      countryCode: countryCode,
+      syncRoster: syncRoster,
+      removeDoctorIds: removeDoctorIds,
+      ignoredNewDoctors: ignoredNewDoctors,
+    );
+  }
+
+  @override
+  Future<ExcelRosterDiff> previewExcelRosterDiff({
+    required PlatformFile file,
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
+    return await remoteDataSource.previewExcelRosterDiff(
+      file: file,
+      targetMonth: targetMonth,
+      departmentId: departmentId,
+      countryCode: countryCode,
     );
   }
 

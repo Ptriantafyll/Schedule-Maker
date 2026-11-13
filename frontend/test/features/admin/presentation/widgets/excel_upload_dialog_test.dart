@@ -123,8 +123,32 @@ void main() {
       expect(generateButton.onPressed, isNull);
     });
 
-    testWidgets('tapping Generate Schedule pops dialog returning the picked PlatformFile', (tester) async {
-      PlatformFile? returnedFile;
+    testWidgets('displays sync roster checkbox defaulting to false', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ExcelUploadDialog(
+              onPickFile: () async => testFile,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Sync department roster with this spreadsheet'), findsOneWidget);
+      expect(
+        find.text(
+          'Update your department permanent roster from this file. When unchecked, creates a one-time export schedule.',
+        ),
+        findsOneWidget,
+      );
+
+      final checkbox = tester.widget<CheckboxListTile>(find.byType(CheckboxListTile));
+      expect(checkbox.value, isFalse);
+    });
+
+    testWidgets('tapping Generate Schedule pops dialog returning ExcelUploadSelection with syncRoster false by default', (tester) async {
+      ExcelUploadSelection? returnedSelection;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -132,7 +156,7 @@ void main() {
             body: Builder(
               builder: (context) => ElevatedButton(
                 onPressed: () async {
-                  returnedFile = await showDialog<PlatformFile>(
+                  returnedSelection = await showDialog<ExcelUploadSelection>(
                     context: context,
                     builder: (_) => ExcelUploadDialog(
                       onPickFile: () async => testFile,
@@ -155,16 +179,18 @@ void main() {
       await tester.tap(find.text('Click to select .xlsx file'));
       await tester.pumpAndSettle();
 
-      // Tap Generate Schedule
+      // Tap Generate Schedule without toggling checkbox
       await tester.tap(find.widgetWithText(FilledButton, 'Generate Schedule'));
       await tester.pumpAndSettle();
 
-      expect(returnedFile, equals(testFile));
+      expect(returnedSelection, isNotNull);
+      expect(returnedSelection!.file, equals(testFile));
+      expect(returnedSelection!.syncRoster, isFalse);
       expect(find.byType(ExcelUploadDialog), findsNothing);
     });
 
-    testWidgets('tapping Cancel dismisses dialog returning null', (tester) async {
-      PlatformFile? returnedFile = testFile;
+    testWidgets('checking sync roster checkbox pops ExcelUploadSelection with syncRoster true', (tester) async {
+      ExcelUploadSelection? returnedSelection;
 
       await tester.pumpWidget(
         MaterialApp(
@@ -172,7 +198,53 @@ void main() {
             body: Builder(
               builder: (context) => ElevatedButton(
                 onPressed: () async {
-                  returnedFile = await showDialog<PlatformFile>(
+                  returnedSelection = await showDialog<ExcelUploadSelection>(
+                    context: context,
+                    builder: (_) => ExcelUploadDialog(
+                      onPickFile: () async => testFile,
+                    ),
+                  );
+                },
+                child: const Text('Open Modal'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Open dialog
+      await tester.tap(find.text('Open Modal'));
+      await tester.pumpAndSettle();
+
+      // Pick file
+      await tester.tap(find.text('Click to select .xlsx file'));
+      await tester.pumpAndSettle();
+
+      // Check the checkbox
+      await tester.tap(find.byType(CheckboxListTile));
+      await tester.pumpAndSettle();
+
+      // Tap Generate Schedule
+      await tester.tap(find.widgetWithText(FilledButton, 'Generate Schedule'));
+      await tester.pumpAndSettle();
+
+      expect(returnedSelection, isNotNull);
+      expect(returnedSelection!.file, equals(testFile));
+      expect(returnedSelection!.syncRoster, isTrue);
+      expect(find.byType(ExcelUploadDialog), findsNothing);
+    });
+
+    testWidgets('tapping Cancel dismisses dialog returning null', (tester) async {
+      ExcelUploadSelection? returnedSelection = ExcelUploadSelection(file: testFile, syncRoster: true);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () async {
+                  returnedSelection = await showDialog<ExcelUploadSelection>(
                     context: context,
                     builder: (_) => const ExcelUploadDialog(),
                   );
@@ -193,7 +265,7 @@ void main() {
       await tester.tap(find.text('Cancel'));
       await tester.pumpAndSettle();
 
-      expect(returnedFile, isNull);
+      expect(returnedSelection, isNull);
       expect(find.byType(ExcelUploadDialog), findsNothing);
     });
   });

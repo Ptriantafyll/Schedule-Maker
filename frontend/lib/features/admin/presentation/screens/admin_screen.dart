@@ -7,19 +7,26 @@ import 'package:frontend/features/admin/presentation/widgets/admin_hero_card.dar
 // import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.dart';
 import 'package:frontend/features/admin/presentation/widgets/draft_preview_canvas.dart';
 import 'package:frontend/features/admin/presentation/widgets/excel_upload_dialog.dart';
+import 'package:frontend/features/admin/presentation/widgets/roster_reconciliation_dialog.dart';
 import 'package:frontend/features/admin/presentation/widgets/generation_mode_dialog.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/shared/widgets/bottom_nav_bar.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
 
 class AdminScreen extends ConsumerStatefulWidget {
-  const AdminScreen({super.key, this.onSaveFile});
+  const AdminScreen({
+    super.key,
+    this.onSaveFile,
+    this.onPickExcelFile,
+  });
 
   final Future<String?> Function({
     required String fileName,
     required List<int> bytes,
   })?
   onSaveFile;
+
+  final Future<PlatformFile?> Function()? onPickExcelFile;
 
   @override
   ConsumerState<AdminScreen> createState() => _AdminScreenState();
@@ -130,21 +137,65 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
   }
 
   Future<void> _generateFromExcelUpload() async {
-    final file = await showDialog<PlatformFile>(
+    final selection = await showDialog<ExcelUploadSelection>(
       context: context,
-      builder: (_) => const ExcelUploadDialog(),
+      builder: (_) => ExcelUploadDialog(onPickFile: widget.onPickExcelFile),
     );
 
-    if (!mounted || file == null) return;
+    if (!mounted || selection == null) return;
 
     final user = ref.read(currentUserProvider);
     final genState = ref.read(scheduleGenerationControllerProvider);
+    final targetMonth = genState.selectedMonth;
+    final departmentId = user?.departmentId;
+
+    List<String>? removeDoctorIds;
+    List<String>? ignoredNewDoctors;
+
+    if (selection.syncRoster) {
+      try {
+        final diff = await ref
+            .read(scheduleGenerationControllerProvider.notifier)
+            .previewExcelRosterDiff(
+              selection.file,
+              targetMonth: targetMonth,
+              departmentId: departmentId,
+            );
+
+        if (!mounted) return;
+
+        if (diff.requiresReconciliation) {
+          final choices = await showDialog<RosterReconciliationChoices>(
+            context: context,
+            builder: (_) => RosterReconciliationDialog(diff: diff),
+          );
+
+          if (!mounted || choices == null) return;
+
+          removeDoctorIds = choices.removeDoctorIds;
+          ignoredNewDoctors = choices.ignoredNewDoctors;
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to preview roster diff: ${e.toString()}'),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+        return;
+      }
+    }
+
     await ref
         .read(scheduleGenerationControllerProvider.notifier)
         .generateFromExcel(
-          file,
-          targetMonth: genState.selectedMonth,
-          departmentId: user?.departmentId,
+          selection.file,
+          targetMonth: targetMonth,
+          departmentId: departmentId,
+          syncRoster: selection.syncRoster,
+          removeDoctorIds: removeDoctorIds,
+          ignoredNewDoctors: ignoredNewDoctors,
         );
 
     if (!mounted) return;
@@ -152,7 +203,7 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
     final currentState = ref.read(scheduleGenerationControllerProvider);
     if (currentState.status == GenerationStatus.success) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Schedule generated from ${file.name}')),
+        SnackBar(content: Text('Schedule generated from ${selection.file.name}')),
       );
     }
   }

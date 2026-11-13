@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/network/api_exception.dart';
 import 'package:frontend/features/admin/data/datasources/schedule_draft_remote_data_source.dart';
+import 'package:frontend/features/admin/domain/models/excel_roster_diff.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
 
 base class FakePlatformFile extends PlatformFile {
@@ -196,6 +197,104 @@ void main() {
       expect(
         formData.fields.any((f) => f.key == 'country_code' && f.value == 'GR'),
         isTrue,
+      );
+    });
+
+    test('includes sync_roster, remove_doctor_ids, and ignored_new_doctors in FormData when syncing roster', () async {
+      fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules/generate-from-excel'),
+        statusCode: 201,
+        data: sampleDraftPayload,
+      );
+
+      await dataSource.generateFromExcel(
+        file: testFile,
+        targetMonth: '2026-11',
+        departmentId: 'dept-uuid-1',
+        syncRoster: true,
+        removeDoctorIds: ['doc-id-1', 'doc-id-2'],
+        ignoredNewDoctors: ['Dr. Ignored'],
+      );
+
+      final formData = fakeApiClient.capturedData as FormData;
+      expect(
+        formData.fields.any((f) => f.key == 'sync_roster' && f.value == 'true'),
+        isTrue,
+      );
+      expect(
+        formData.fields.any((f) => f.key == 'remove_doctor_ids' && f.value == '["doc-id-1","doc-id-2"]'),
+        isTrue,
+      );
+      expect(
+        formData.fields.any((f) => f.key == 'ignored_new_doctors' && f.value == '["Dr. Ignored"]'),
+        isTrue,
+      );
+    });
+  });
+
+  group('ScheduleDraftRemoteDataSource.previewExcelRosterDiff', () {
+    final sampleDiffPayload = <String, dynamic>{
+      'has_existing_roster': true,
+      'missing_from_excel': [
+        {
+          'id': 'doc-id-1',
+          'name': 'Dr. Bob Kelso',
+          'team_name': 'Alpha',
+        }
+      ],
+      'new_in_excel': [
+        {
+          'name': 'Dr. Allison Cameron',
+          'team_name': 'Beta',
+          'positions': ['ER'],
+        }
+      ],
+    };
+
+    test('sends multipart POST to /api/v1/schedules/preview-excel-roster-diff and returns ExcelRosterDiff', () async {
+      fakeApiClient.responseToReturn = Response<Map<String, dynamic>>(
+        requestOptions: RequestOptions(path: '/api/v1/schedules/preview-excel-roster-diff'),
+        statusCode: 200,
+        data: sampleDiffPayload,
+      );
+
+      final result = await dataSource.previewExcelRosterDiff(
+        file: testFile,
+        targetMonth: '2026-11',
+        departmentId: 'dept-uuid-1',
+      );
+
+      expect(fakeApiClient.capturedPath, equals('/api/v1/schedules/preview-excel-roster-diff'));
+      expect(fakeApiClient.capturedContentType, equals('multipart/form-data'));
+      expect(fakeApiClient.capturedData, isA<FormData>());
+
+      final formData = fakeApiClient.capturedData as FormData;
+      expect(formData.fields.any((f) => f.key == 'target_month' && f.value == '2026-11'), isTrue);
+      expect(formData.fields.any((f) => f.key == 'department_id' && f.value == 'dept-uuid-1'), isTrue);
+      expect(formData.files.any((f) => f.key == 'file' && f.value.filename == 'nov_roster.xlsx'), isTrue);
+
+      expect(result, isA<ExcelRosterDiff>());
+      expect(result.hasExistingRoster, isTrue);
+      expect(result.missingFromExcel.length, 1);
+      expect(result.missingFromExcel.first.name, 'Dr. Bob Kelso');
+      expect(result.newInExcel.length, 1);
+      expect(result.newInExcel.first.name, 'Dr. Allison Cameron');
+      expect(result.requiresReconciliation, isTrue);
+    });
+
+    test('propagates ApiException when diff preview fails', () async {
+      fakeApiClient.exceptionToThrow = const ApiException(
+        type: ApiErrorType.network,
+        statusCode: 500,
+        message: 'Diff error',
+      );
+
+      expect(
+        () => dataSource.previewExcelRosterDiff(
+          file: testFile,
+          targetMonth: '2026-11',
+        ),
+        throwsA(isA<ApiException>()),
       );
     });
   });

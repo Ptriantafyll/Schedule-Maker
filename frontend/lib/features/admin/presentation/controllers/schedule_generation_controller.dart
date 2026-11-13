@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/network/api_exception.dart';
 import 'package:frontend/features/admin/data/repositories/schedule_draft_repository.dart';
+import 'package:frontend/features/admin/domain/models/excel_roster_diff.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
 import 'package:frontend/features/admin/presentation/state/schedule_generation_state.dart';
 
@@ -61,6 +62,9 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
     PlatformFile file, {
     String? targetMonth,
     String? departmentId,
+    bool syncRoster = false,
+    List<String>? removeDoctorIds,
+    List<String>? ignoredNewDoctors,
   }) async {
     state = state.copyWith(status: GenerationStatus.solving, clearError: true);
 
@@ -74,6 +78,9 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
         file: file,
         targetMonth: effectiveTargetMonth,
         departmentId: departmentId,
+        syncRoster: syncRoster,
+        removeDoctorIds: removeDoctorIds,
+        ignoredNewDoctors: ignoredNewDoctors,
       );
       state = state.copyWith(
         status: GenerationStatus.success,
@@ -88,6 +95,23 @@ class ScheduleGenerationController extends Notifier<ScheduleGenerationState> {
         clearDraft: true,
       );
     }
+  }
+
+  Future<ExcelRosterDiff> previewExcelRosterDiff(
+    PlatformFile file, {
+    String? targetMonth,
+    String? departmentId,
+  }) async {
+    final effectiveTargetMonth = (targetMonth != null && targetMonth.isNotEmpty)
+        ? targetMonth
+        : (state.selectedMonth.isNotEmpty ? state.selectedMonth : '2026-11');
+
+    final repository = ref.read(scheduleDraftRepositoryProvider);
+    return await repository.previewExcelRosterDiff(
+      file: file,
+      targetMonth: effectiveTargetMonth,
+      departmentId: departmentId,
+    );
   }
 
   Future<List<int>?> exportCurrentDraft({

@@ -1,10 +1,13 @@
+import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/widgets.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/network/api_exception.dart';
+import 'package:frontend/features/admin/data/dtos/excel_roster_diff_dto.dart';
 import 'package:frontend/features/admin/data/dtos/schedule_draft_dto.dart';
+import 'package:frontend/features/admin/domain/models/excel_roster_diff.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
 import 'package:frontend/features/admin/data/dtos/schedule_summary_dto.dart';
 import 'package:frontend/features/admin/data/dtos/target_month_info_dto.dart';
@@ -63,6 +66,9 @@ class ScheduleDraftRemoteDataSource {
     required String targetMonth,
     String? departmentId,
     String? countryCode,
+    bool syncRoster = false,
+    List<String>? removeDoctorIds,
+    List<String>? ignoredNewDoctors,
   }) async {
     // 1. Read bytes asynchronously using file_picker 13.x API
     final bytes = await file.readAsBytes();
@@ -71,12 +77,22 @@ class ScheduleDraftRemoteDataSource {
     final effectiveCountryCode = _resolveCountryCode(countryCode);
 
     // 2. Build FormData matching backend requirements
-    final formData = FormData.fromMap({
+    final formDataMap = <String, dynamic>{
       'file': multipartFile,
       'target_month': targetMonth,
       'department_id': ?departmentId,
       'country_code': effectiveCountryCode,
-    });
+      'sync_roster': syncRoster.toString(),
+    };
+
+    if (removeDoctorIds != null && removeDoctorIds.isNotEmpty) {
+      formDataMap['remove_doctor_ids'] = jsonEncode(removeDoctorIds);
+    }
+    if (ignoredNewDoctors != null && ignoredNewDoctors.isNotEmpty) {
+      formDataMap['ignored_new_doctors'] = jsonEncode(ignoredNewDoctors);
+    }
+
+    final formData = FormData.fromMap(formDataMap);
 
     // 3. Post to backend solver endpoint
     final response = await _apiClient.post<Map<String, dynamic>>(
@@ -87,6 +103,30 @@ class ScheduleDraftRemoteDataSource {
 
     // 4. Parse DTO and return domain model directly
     return ScheduleDraftDto.fromJson(response.data!).toDomain();
+  }
+
+  Future<ExcelRosterDiff> previewExcelRosterDiff({
+    required PlatformFile file,
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
+    final bytes = await file.readAsBytes();
+    final multipartFile = MultipartFile.fromBytes(bytes, filename: file.name);
+
+    final formData = FormData.fromMap({
+      'file': multipartFile,
+      'target_month': targetMonth,
+      'department_id': ?departmentId,
+    });
+
+    final response = await _apiClient.post<Map<String, dynamic>>(
+      '/api/v1/schedules/preview-excel-roster-diff',
+      data: formData,
+      contentType: 'multipart/form-data',
+    );
+
+    return ExcelRosterDiffDto.fromJson(response.data!).toDomain();
   }
 
   Future<ScheduleDraft?> getActiveDraft({

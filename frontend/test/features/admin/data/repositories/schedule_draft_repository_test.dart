@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/features/admin/data/datasources/schedule_draft_remote_data_source.dart';
 import 'package:frontend/features/admin/data/repositories/schedule_draft_repository.dart';
+import 'package:frontend/features/admin/domain/models/excel_roster_diff.dart';
 import 'package:frontend/features/admin/domain/models/schedule_draft.dart';
 import 'package:frontend/features/admin/domain/models/schedule_summary.dart';
 import 'package:frontend/features/admin/domain/models/target_month_info.dart';
@@ -48,9 +49,13 @@ class FakeScheduleDraftRemoteDataSource implements ScheduleDraftRemoteDataSource
   List<int>? bytesToReturn;
   List<ScheduleSummary>? historyToReturn;
   TargetMonthInfo? targetMonthInfoToReturn;
+  ExcelRosterDiff? diffToReturn;
   Exception? exceptionToThrow;
 
   String? capturedCountryCode;
+  bool? capturedSyncRoster;
+  List<String>? capturedRemoveDoctorIds;
+  List<String>? capturedIgnoredNewDoctors;
 
   @override
   Future<ScheduleDraft> generateFromRoster({
@@ -72,13 +77,36 @@ class FakeScheduleDraftRemoteDataSource implements ScheduleDraftRemoteDataSource
     required String targetMonth,
     String? departmentId,
     String? countryCode,
+    bool syncRoster = false,
+    List<String>? removeDoctorIds,
+    List<String>? ignoredNewDoctors,
   }) async {
     capturedFile = file;
     capturedTargetMonth = targetMonth;
     capturedDepartmentId = departmentId;
+    capturedCountryCode = countryCode;
+    capturedSyncRoster = syncRoster;
+    capturedRemoveDoctorIds = removeDoctorIds;
+    capturedIgnoredNewDoctors = ignoredNewDoctors;
 
     if (exceptionToThrow != null) throw exceptionToThrow!;
     return draftToReturn!;
+  }
+
+  @override
+  Future<ExcelRosterDiff> previewExcelRosterDiff({
+    required PlatformFile file,
+    required String targetMonth,
+    String? departmentId,
+    String? countryCode,
+  }) async {
+    capturedFile = file;
+    capturedTargetMonth = targetMonth;
+    capturedDepartmentId = departmentId;
+    capturedCountryCode = countryCode;
+
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return diffToReturn!;
   }
 
   @override
@@ -204,11 +232,63 @@ void main() {
       expect(result, equals(sampleDraft));
     });
 
+    test('delegates syncRoster, removeDoctorIds, and ignoredNewDoctors to remoteDataSource', () async {
+      fakeRemoteDataSource.draftToReturn = sampleDraft;
+
+      final result = await repository.generateFromExcel(
+        file: testFile,
+        targetMonth: '2026-11',
+        departmentId: 'dept-1',
+        syncRoster: true,
+        removeDoctorIds: ['doc-1'],
+        ignoredNewDoctors: ['Dr. Who'],
+      );
+
+      expect(fakeRemoteDataSource.capturedSyncRoster, isTrue);
+      expect(fakeRemoteDataSource.capturedRemoveDoctorIds, equals(['doc-1']));
+      expect(fakeRemoteDataSource.capturedIgnoredNewDoctors, equals(['Dr. Who']));
+      expect(result, equals(sampleDraft));
+    });
+
     test('propagates exception when remoteDataSource throws', () async {
       fakeRemoteDataSource.exceptionToThrow = Exception('Network error');
 
       expect(
         () => repository.generateFromExcel(file: testFile, targetMonth: '2026-11'),
+        throwsException,
+      );
+    });
+  });
+
+  group('ScheduleDraftRepositoryImpl.previewExcelRosterDiff', () {
+    const sampleDiff = ExcelRosterDiff(
+      hasExistingRoster: true,
+      missingFromExcel: [
+        MissingDoctorDiffItem(id: 'doc-1', name: 'Dr. House'),
+      ],
+      newInExcel: [],
+    );
+
+    test('delegates to remoteDataSource and passes parameters', () async {
+      fakeRemoteDataSource.diffToReturn = sampleDiff;
+
+      final result = await repository.previewExcelRosterDiff(
+        file: testFile,
+        targetMonth: '2026-11',
+        departmentId: 'dept-1',
+      );
+
+      expect(fakeRemoteDataSource.capturedFile?.name, equals('nov.xlsx'));
+      expect(fakeRemoteDataSource.capturedTargetMonth, equals('2026-11'));
+      expect(fakeRemoteDataSource.capturedDepartmentId, equals('dept-1'));
+      expect(result, equals(sampleDiff));
+    });
+
+    test('propagates exception when remoteDataSource throws', () async {
+      fakeRemoteDataSource.exceptionToThrow = Exception('Network error');
+
+      expect(
+        () => repository.previewExcelRosterDiff(file: testFile, targetMonth: '2026-11'),
         throwsException,
       );
     });

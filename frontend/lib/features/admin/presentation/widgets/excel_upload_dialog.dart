@@ -1,6 +1,26 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
+class ExcelUploadSelection {
+  const ExcelUploadSelection({
+    required this.file,
+    required this.syncRoster,
+  });
+
+  final PlatformFile file;
+  final bool syncRoster;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ExcelUploadSelection &&
+          other.file == file &&
+          other.syncRoster == syncRoster;
+
+  @override
+  int get hashCode => Object.hash(file, syncRoster);
+}
+
 class ExcelUploadDialog extends StatefulWidget {
   const ExcelUploadDialog({super.key, this.onPickFile});
 
@@ -12,6 +32,7 @@ class ExcelUploadDialog extends StatefulWidget {
 
 class _ExcelUploadDialogState extends State<ExcelUploadDialog> {
   PlatformFile? _selectedFile;
+  bool _syncRoster = false;
 
   @override
   Widget build(BuildContext context) {
@@ -98,6 +119,18 @@ class _ExcelUploadDialogState extends State<ExcelUploadDialog> {
                 ],
               ),
             ),
+          const SizedBox(height: 12),
+          CheckboxListTile(
+            title: const Text('Sync department roster with this spreadsheet'),
+            subtitle: Text(
+              'Update your department permanent roster from this file. When unchecked, creates a one-time export schedule.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            value: _syncRoster,
+            onChanged: (val) => setState(() => _syncRoster = val ?? false),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+          ),
         ],
       ),
       actions: [
@@ -108,7 +141,12 @@ class _ExcelUploadDialogState extends State<ExcelUploadDialog> {
         FilledButton(
           onPressed: _selectedFile == null
               ? null
-              : () => Navigator.of(context).pop(_selectedFile),
+              : () => Navigator.of(context).pop(
+                    ExcelUploadSelection(
+                      file: _selectedFile!,
+                      syncRoster: _syncRoster,
+                    ),
+                  ),
           child: const Text('Generate Schedule'),
         ),
       ],
