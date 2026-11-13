@@ -468,6 +468,55 @@ When a doctor leaves a department and is removed from the roster, their `Doctor`
 - Removing a doctor soft-deletes the `Doctor` row while preserving the `User` row.
 - A user whose doctor profile was removed or who has no active department is routed to a custom informational screen rather than encountering 403/404 dashboard errors.
 
+### BL-021: Revisit Structural Synchronization from Excel (Positions, Shifts, Teams)
+
+**Area:** Roster Synchronization / Excel Import (Backend + Frontend)  
+**Priority:** Medium
+
+#### Problem
+
+Currently, `_sync_roster_from_domain_to_db` uses a purely additive approach for organizational entities (Positions, Shifts, and Teams): any position, shift, or team parsed from the spreadsheet is automatically upserted into the department database. While flexible and zero-friction for initial onboarding, this introduces potential integrity risks:
+1. **Typo-Induced Ghost Entities**: If an administrator uploads an Excel workbook with a typo in a position header (e.g., `"Emergancy"` instead of `"Emergency"` or trailing whitespace), a brand new `Position` entity is silently created in the database.
+2. **Unchecked Configuration Overwrite**: If an uploaded spreadsheet template contains altered `duty_days` for a position or different `doctors_per_shift` for a shift, the department's permanent settings are updated without explicit confirmation.
+3. **De-allocation / Position Unlinking**: When a doctor's position eligibility in Excel is narrower than in the database (e.g., doctor was previously linked to both `ER` and `ICU`, but the spreadsheet only schedules them for `ER`), the existing `ICU` link is left active in the database.
+
+#### Proposed Alternatives to Revisit
+
+- **Approach B (Strict Separation of Structure vs. Doctors)**: Positions, Shifts, and Teams are managed exclusively via the Admin Roster Management screens (Step 5). Excel sync only manages doctors and team/position assignments, and any unknown position/shift name in the spreadsheet fails fast with a validation error.
+- **Approach C (Structural Diff Warning in Reconciliation Dialog)**: Extend `preview_excel_roster_diff` to detect structural changes (new positions/shifts, modified duty days, or unlinked positions) and present an expandable structural review section in `RosterReconciliationDialog` before applying changes.
+
+#### Completion criteria
+
+- Evaluate operational trade-offs with user feedback once the Step 5 Admin Roster Management screens are active.
+- Decide whether to restrict structural changes to the Admin UI or require explicit confirmation for new positions/shifts in the reconciliation dialog.
+- Implement safeguards against typo-based duplicate position creation.
+
+### BL-022: Super Admin Cross-Department Roster Management Scope
+
+**Area:** Authorization / Multi-Tenant Roster Management (Backend + Frontend)  
+**Priority:** Medium
+
+#### Problem
+
+Currently, all departmental roster and schedule endpoints (`/api/v1/teams`, `/positions`, `/shifts`, `/doctors`, `/schedule`) require `UserRole.DEPARTMENT_ADMIN` via `require_department_admin` and resolve tenant ownership exclusively from `current_user.department_id` via `require_department_scope`. Because `UserRole.SUPER_ADMIN` accounts have `department_id = None`, Super Admins cannot view or manage teams, positions, shifts, or doctors for a chosen department in the frontend.
+
+#### Required work
+
+1. **Scoped Department Dependency (`resolve_target_department_id`)**:
+   - Upgrade selected departmental roster management routes from `require_department_admin` to `require_admin` (`SUPER_ADMIN` or `DEPARTMENT_ADMIN`).
+   - Accept an optional `department_id: Optional[uuid.UUID]` query parameter:
+     - For `DEPARTMENT_ADMIN`: enforce `current_user.department_id` (explicitly reject with HTTP `403` if a different `department_id` query parameter is provided).
+     - For `SUPER_ADMIN`: require the `department_id` query parameter (HTTP `400`/`422` if omitted) and verify the target `Department` exists and is not soft-deleted.
+2. **Keep Entity-Move Boundaries Strict**:
+   - Continue forbidding `department_id` mutations inside `PATCH` request bodies (`*Update` schemas) so existing doctors, teams, positions, and their historical assignments cannot be silently moved between departments.
+3. **Frontend Department Selector**:
+   - Allow Super Admins to select an active department from `/api/v1/departments/` and pass `?department_id=<uuid>` when viewing or editing that department's roster.
+
+#### Completion criteria
+
+- A `SUPER_ADMIN` can select any active department in the UI and perform CRUD operations on its teams, positions, shifts, and doctors.
+- A `DEPARTMENT_ADMIN` remains strictly locked to their own `department_id` and receives `403 Forbidden` when attempting to scope to another department.
+
 ## Resolved / Closed
 
 
