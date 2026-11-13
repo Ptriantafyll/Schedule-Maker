@@ -13,6 +13,25 @@ from src.shift.models import Shift as ShiftModel
 from src.shift.models import ShiftAssignment as ShiftAssignmentModel
 
 
+def _sync_metadata(
+    session: Session,
+    shift: ShiftModel,
+    *,
+    commit: bool = False
+) -> ShiftModel:
+    """Syncs metadata and commits or flushes"""
+    shift.sync_status = False
+    shift.updated_at = datetime.datetime.now(datetime.timezone.utc)
+
+    session.add(shift)
+    session.flush()
+    if commit:
+        session.commit()
+        session.refresh(shift)
+
+    return shift
+
+
 def create_shift(session: Session, shift_data: ShiftCreate) -> ShiftModel:
     """Create a new shift in the database"""
     new_shift = ShiftModel(
@@ -38,6 +57,7 @@ def stage_shift(session: Session, shift_data: ShiftCreate) -> ShiftModel:
     session.add(new_shift)
     session.flush()
     return new_shift
+
 
 def get_shift_by_id_for_department(
     session: Session,
@@ -253,3 +273,31 @@ def bulk_create_shift_assignments(
         session.refresh(assignment)
 
     return assignments
+
+
+def soft_delete_shifts_for_position(
+    session: Session,
+    position_id: uuid.UUID,
+    department_id: uuid.UUID,
+    *,
+    commit: bool = False,
+) -> list[uuid.UUID]:
+    """Soft deletes shifts of a position given the position UUID."""
+    statement = (
+        select(ShiftModel)
+        .join(PositionModel, ShiftModel.position_id == PositionModel.id)
+        .where(
+            ShiftModel.position_id == position_id,
+            PositionModel.department_id == department_id,
+            not_(ShiftModel.is_deleted)
+        )
+    )
+
+    shifts_to_delete = session.exec(statement).all()
+    deleted_uuids: list[uuid.UUID] = []
+    for shift in shifts_to_delete:
+        shift.is_deleted = True
+        shift = _sync_metadata(session, shift, commit=commit)
+        deleted_uuids.append(shift.id)
+
+    return deleted_uuids

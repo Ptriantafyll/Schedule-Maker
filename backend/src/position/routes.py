@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel import Session
 from src.db.connection import get_session
 
-from src.position.schemas import PositionCreate, PositionRead
+from src.position.schemas import PositionCreate, PositionRead, PositionUpdate
 from src.position import controllers as position_controllers
 from src.auth.dependencies import (
     require_department_admin,
@@ -63,4 +63,36 @@ def get_positions(
         position_id=position_id,
         department_id=department_id,
         session=session,
+    )
+
+
+@router.patch("/{position_id}", response_model=PositionRead, status_code=status.HTTP_200_OK)
+def update_position(
+    position_id: uuid.UUID,
+    position_data: PositionUpdate,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope)
+):
+    """Updates a position by its UUID."""
+    return position_controllers.update_position_controller(
+        position_id=position_id,
+        position_data=position_data,
+        department_id=department_id,
+        session=session
+    )
+
+
+@router.delete("/{position_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_position(
+    position_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope)
+):
+    """Soft deletes a position by its UUID."""
+    return position_controllers.delete_position_controller(
+        position_id=position_id,
+        department_id=department_id,
+        session=session
     )

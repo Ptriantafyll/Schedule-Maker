@@ -69,8 +69,9 @@ class PositionUpdate(BaseModel):
     """
 
     name: Optional[str] = None
-    department_id: Optional[uuid.UUID] = None
     duty_days: Optional[list[int]] = None
+
+    model_config = ConfigDict(extra="forbid")
 
     @field_validator("duty_days")
     @classmethod

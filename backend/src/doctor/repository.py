@@ -6,7 +6,7 @@ from typing import Optional
 import uuid
 import datetime
 import calendar
-from sqlmodel import Session, not_, select
+from sqlmodel import Session, not_, select, col
 from src.user.models import User as UserModel
 from src.doctor.schemas import (
     DoctorPreAssignmentCreate,
@@ -19,6 +19,25 @@ from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 from src.doctor.models import DoctorPosition as DoctorPositionModel
 from src.position.models import Position as PositionModel
 from src.team.models import Team as TeamModel
+
+
+def _sync_metadata(
+    session: Session,
+    model: DoctorModel | DoctorPositionModel | DoctorPreAssignmentModel | DoctorUnavailabilityModel,
+    *,
+    commit: bool = False
+) -> DoctorModel:
+    """Syncs metadata and commits or flushes"""
+    model.sync_status = False
+    model.updated_at = datetime.datetime.now(datetime.timezone.utc)
+
+    session.add(model)
+    session.flush()
+    if commit:
+        session.commit()
+        session.refresh(model)
+
+    return model
 
 
 def get_doctor_by_email(session: Session, email: str) -> DoctorModel | None:
@@ -351,3 +370,67 @@ def clear_team_from_doctors_for_department(
         session.commit()
 
     return doctors_found
+
+
+def soft_delete_doctor_positions_for_position(
+    session: Session,
+    position_id: uuid.UUID,
+    department_id: uuid.UUID,
+    *,
+    commit: bool = False
+) -> list[uuid.UUID]:
+    """Soft deletes doctor-position links for a position."""
+    statement = (
+        select(DoctorPositionModel)
+        .join(DoctorModel, DoctorPositionModel.doctor_id == DoctorModel.id)
+        .where(
+            DoctorPositionModel.position_id == position_id,
+            DoctorModel.department_id == department_id,
+            not_(DoctorPositionModel.is_deleted),
+        )
+    )
+
+    links_to_delete = session.exec(statement).all()
+    deleted_doc_pos_uuids: list[uuid.UUID] = []
+    for doc_pos in links_to_delete:
+        doc_pos.is_deleted = True
+        doc_pos = _sync_metadata(session, doc_pos, commit=commit)
+        deleted_doc_pos_uuids.append(doc_pos.id)
+
+    return deleted_doc_pos_uuids
+
+
+def soft_delete_upcoming_pre_assignments_for_shifts(
+    session: Session,
+    shift_ids: list[uuid.UUID],
+    department_id: uuid.UUID,
+    from_date: datetime.date = None,
+    *,
+    commit=False
+) -> list[uuid.UUID]:
+    """Soft deletes upcoming pre assignments for a shift."""
+    if not shift_ids:
+        return []
+
+    cutoff_date = from_date or datetime.date.today()
+
+    statement = (
+        select(DoctorPreAssignmentModel)
+        .join(DoctorModel, DoctorPreAssignmentModel.doctor_id == DoctorModel.id)
+        .where(
+            DoctorModel.department_id == department_id,
+            col(DoctorPreAssignmentModel.shift_id)  # pylint: disable=no-member
+            .in_(shift_ids),
+            DoctorPreAssignmentModel.date >= cutoff_date,
+            not_(DoctorPreAssignmentModel.is_deleted)
+        )
+    )
+
+    pre_assigments_to_delete = session.exec(statement).all()
+    deleted_uuids: list[uuid.UUID] = []
+    for pre_assignment in pre_assigments_to_delete:
+        pre_assignment.is_deleted = True
+        pre_assignment = _sync_metadata(session, pre_assignment, commit=commit)
+        deleted_uuids.append(pre_assignment.id)
+
+    return deleted_uuids
