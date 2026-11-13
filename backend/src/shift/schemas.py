@@ -53,7 +53,8 @@ class ShiftUpdate(BaseModel):
         description="Minimum number of doctors needed per shift.",
     )
     grants_day_off: Optional[bool] = None
-    position_id: Optional[uuid.UUID] = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class ShiftRead(ShiftBase):

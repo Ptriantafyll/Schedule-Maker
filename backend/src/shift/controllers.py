@@ -6,7 +6,7 @@ import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session
 from src.shift import repository
-from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate
+from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate, ShiftUpdate
 from src.shift.models import Shift as ShiftModel
 from src.shift.models import ShiftAssignment as ShiftAssignmentModel
 from src.doctor import repository as doctor_repository
@@ -36,9 +36,18 @@ def create_shift_controller(
         position_id=shift_data.position_id
     )
     if existing_shift:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Shift already exists"
+        if not existing_shift.is_deleted:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Shift already exists"
+            )
+
+        return repository.restore_shift(
+            session=session,
+            shift=existing_shift,
+            doctors_per_shift=shift_data.doctors_per_shift,
+            grants_day_off=shift_data.grants_day_off,
+            commit=True,
         )
 
     return repository.create_shift(
@@ -159,3 +168,93 @@ def list_shift_assignments_controller(
         session=session,
         department_id=department_id,
     )
+
+
+def update_shift_controller(
+    shift_id: uuid.UUID,
+    shift_data: ShiftUpdate,
+    department_id: uuid.UUID,
+    session: Session,
+) -> ShiftModel:
+    """Handles logic for updating a specific shift."""
+    shift_to_update = repository.get_shift_by_id_for_department(
+        session=session,
+        shift_id=shift_id,
+        department_id=department_id,
+    )
+    if shift_to_update is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shift not found.",
+        )
+
+    update_data = shift_data.model_dump(exclude_unset=True)
+    new_name = update_data.get("name")
+    new_doctors = update_data.get("doctors_per_shift")
+    new_grants_day_off = update_data.get("grants_day_off")
+
+    name_changed = new_name is not None and new_name != shift_to_update.name
+    doctors_changed = (
+        new_doctors is not None
+        and new_doctors != shift_to_update.doctors_per_shift
+    )
+    grants_day_off_changed = (
+        new_grants_day_off is not None
+        and new_grants_day_off != shift_to_update.grants_day_off
+    )
+
+    if not name_changed and not doctors_changed and not grants_day_off_changed:
+        return shift_to_update
+
+    if name_changed:
+        existing_shift = repository.get_shift_by_name_for_position(
+            session=session,
+            shift_name=new_name,
+            position_id=shift_to_update.position_id,
+        )
+        if existing_shift and existing_shift.id != shift_to_update.id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"A shift named '{new_name}' already exists.",
+            )
+
+    return repository.update_shift(
+        session=session,
+        shift=shift_to_update,
+        name=new_name if name_changed else None,
+        doctors_per_shift=new_doctors if doctors_changed else None,
+        grants_day_off=new_grants_day_off if grants_day_off_changed else None,
+        commit=True,
+    )
+
+
+def delete_shift_controller(
+    shift_id: uuid.UUID,
+    department_id: uuid.UUID,
+    session: Session,
+) -> None:
+    """Handles logic for soft-deleting a shift and upcoming pre-assignments."""
+    shift_to_delete = repository.get_shift_by_id_for_department(
+        session=session,
+        shift_id=shift_id,
+        department_id=department_id,
+    )
+    if shift_to_delete is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Shift not found.",
+        )
+
+    doctor_repository.soft_delete_upcoming_pre_assignments_for_shifts(
+        session=session,
+        shift_ids=[shift_id],
+        department_id=department_id,
+        commit=False,
+    )
+    repository.soft_delete_shift(
+        session=session,
+        shift=shift_to_delete,
+        commit=False,
+    )
+    session.commit()
+    return None

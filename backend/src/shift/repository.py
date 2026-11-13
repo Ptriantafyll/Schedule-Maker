@@ -301,3 +301,51 @@ def soft_delete_shifts_for_position(
         deleted_uuids.append(shift.id)
 
     return deleted_uuids
+
+
+def restore_shift(
+    session: Session,
+    shift: ShiftModel,
+    doctors_per_shift: int,
+    grants_day_off: bool,
+    *,
+    commit: bool = False,
+) -> ShiftModel:
+    """Restores a soft-deleted shift and updates its settings."""
+    shift.is_deleted = False
+    shift.doctors_per_shift = doctors_per_shift
+    shift.grants_day_off = grants_day_off
+    return _sync_metadata(session, shift, commit=commit)
+
+
+def update_shift(
+    session: Session,
+    shift: ShiftModel,
+    *,
+    name: str | None = None,
+    doctors_per_shift: int | None = None,
+    grants_day_off: bool | None = None,
+    commit: bool = False,
+) -> ShiftModel:
+    """Updates editable attributes on an active shift."""
+    if name is not None:
+        shift.name = name
+
+    if doctors_per_shift is not None:
+        shift.doctors_per_shift = doctors_per_shift
+
+    if grants_day_off is not None:
+        shift.grants_day_off = grants_day_off
+
+    return _sync_metadata(session, shift, commit=commit)
+
+
+def soft_delete_shift(
+    session: Session,
+    shift: ShiftModel,
+    *,
+    commit: bool = False,
+) -> ShiftModel:
+    """Soft-deletes a shift."""
+    shift.is_deleted = True
+    return _sync_metadata(session, shift, commit=commit)

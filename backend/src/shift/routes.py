@@ -7,7 +7,13 @@ from fastapi import APIRouter, Depends, status
 from sqlmodel import Session
 from src.db.connection import get_session
 
-from src.shift.schemas import ShiftCreate, ShiftRead, ShiftAssignmentCreate, ShiftAssignmentRead
+from src.shift.schemas import (
+    ShiftCreate,
+    ShiftRead,
+    ShiftUpdate,
+    ShiftAssignmentCreate,
+    ShiftAssignmentRead,
+)
 from src.shift import controllers as shift_controllers
 from src.auth.dependencies import (
     require_department_member,
@@ -90,4 +96,36 @@ def create_shift_assignment(
         shift_assignment_data=shift_assignment_data,
         shift_id=shift_id,
         department_id=department_id
+    )
+
+
+@router.patch("/{shift_id}", response_model=ShiftRead, status_code=status.HTTP_200_OK)
+def update_shift(
+    shift_id: uuid.UUID,
+    shift_data: ShiftUpdate,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """Updates a shift by its UUID."""
+    return shift_controllers.update_shift_controller(
+        shift_id=shift_id,
+        shift_data=shift_data,
+        department_id=department_id,
+        session=session,
+    )
+
+
+@router.delete("/{shift_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_shift(
+    shift_id: uuid.UUID,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """Soft-deletes a shift by its UUID."""
+    return shift_controllers.delete_shift_controller(
+        shift_id=shift_id,
+        department_id=department_id,
+        session=session,
     )

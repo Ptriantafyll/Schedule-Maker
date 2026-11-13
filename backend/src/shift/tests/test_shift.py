@@ -6,10 +6,11 @@ import uuid
 import datetime
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 from sqlmodel import Session, select
 from sqlalchemy.exc import IntegrityError
 
-from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate
+from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate, ShiftUpdate
 from src.shift.models import Shift as ShiftModel
 from src.shift.models import ShiftAssignment as ShiftAssignmentModel
 from src.shift import repository as shift_repository
@@ -17,7 +18,11 @@ from src.shift import controllers as shift_controllers
 from src.position.schemas import PositionCreate
 from src.position import repository as position_repository
 from src.doctor.models import Doctor as DoctorModel
-from src.doctor.schemas import DoctorCreate, DoctorUnavailabilityCreate
+from src.doctor.schemas import (
+    DoctorCreate,
+    DoctorPreAssignmentCreate,
+    DoctorUnavailabilityCreate,
+)
 from src.doctor import repository as doctor_repository
 from src.department.schemas import DepartmentCreate
 from src.department import repository as department_repository
@@ -230,6 +235,38 @@ def doctor_b_fixture(session, department_b, team_b):
 def shift_b_fixture(session, position_b):
     """Creates a reusable Department B shift for tenant-isolation tests."""
     return create_new_shift(session, "ICU 1", position_b.id, False, 2)
+
+
+@pytest.fixture(name="shift_factory")
+def shift_factory_fixture(session, position):
+    """Factory fixture to create shifts with customizable fields and flags."""
+
+    def _create_shift(
+        name: str = "Factory Shift",
+        position_id: uuid.UUID | None = None,
+        doctors_per_shift: int = 1,
+        grants_day_off: bool = False,
+        is_deleted: bool = False,
+        sync_status: bool = False,
+    ) -> ShiftModel:
+        created = shift_repository.create_shift(
+            session=session,
+            shift_data=ShiftCreate(
+                name=name,
+                position_id=position_id or position.id,
+                doctors_per_shift=doctors_per_shift,
+                grants_day_off=grants_day_off,
+            ),
+        )
+        if is_deleted or sync_status:
+            created.is_deleted = is_deleted
+            created.sync_status = sync_status
+            session.add(created)
+            session.commit()
+            session.refresh(created)
+        return created
+
+    return _create_shift
 
 
 #####################
@@ -1465,6 +1502,277 @@ def test_create_shift_assignment_controller_scope_check_precedes_duplicate_check
     ]
 
 
+def test_create_shift_controller_restores_soft_deleted_shift(
+    session,
+    department,
+    position,
+    shift_factory,
+):
+    """Tests creating a shift with a soft-deleted shift's name restores it and updates settings."""
+    deleted_shift = shift_factory(
+        name="Archived Night",
+        position_id=position.id,
+        doctors_per_shift=1,
+        grants_day_off=False,
+        is_deleted=True,
+        sync_status=True,
+    )
+    previous_updated_at = deleted_shift.updated_at
+
+    restored = shift_controllers.create_shift_controller(
+        shift_data=ShiftCreate(
+            name="Archived Night",
+            position_id=position.id,
+            doctors_per_shift=3,
+            grants_day_off=True,
+        ),
+        department_id=department.id,
+        session=session,
+    )
+
+    assert restored.id == deleted_shift.id
+    assert restored.name == "Archived Night"
+    assert restored.doctors_per_shift == 3
+    assert restored.grants_day_off is True
+    assert restored.is_deleted is False
+    assert restored.sync_status is False
+    assert restored.updated_at >= previous_updated_at
+
+
+@pytest.mark.parametrize(
+    ("update_kwargs", "expected_name", "expected_doctors", "expected_day_off"),
+    [
+        pytest.param({"name": "Updated Shift"}, "Updated Shift", 2, False, id="name-only"),
+        pytest.param({"doctors_per_shift": 4}, "Initial Shift", 4, False, id="doctors-only"),
+        pytest.param({"grants_day_off": True}, "Initial Shift", 2, True, id="day-off-only"),
+        pytest.param(
+            {"name": "Night Shift", "doctors_per_shift": 3, "grants_day_off": True},
+            "Night Shift",
+            3,
+            True,
+            id="all-fields",
+        ),
+    ],
+)
+def test_update_shift_controller_updates_fields(
+    session,
+    department,
+    shift_factory,
+    update_kwargs,
+    expected_name,
+    expected_doctors,
+    expected_day_off,
+):
+    """Tests partial and full updates via update_shift_controller."""
+    target_shift = shift_factory(
+        name="Initial Shift",
+        doctors_per_shift=2,
+        grants_day_off=False,
+        sync_status=True,
+    )
+    previous_updated_at = target_shift.updated_at
+
+    updated = shift_controllers.update_shift_controller(
+        shift_id=target_shift.id,
+        shift_data=ShiftUpdate(**update_kwargs),
+        department_id=department.id,
+        session=session,
+    )
+
+    assert updated.id == target_shift.id
+    assert updated.name == expected_name
+    assert updated.doctors_per_shift == expected_doctors
+    assert updated.grants_day_off is expected_day_off
+    assert updated.sync_status is False
+    assert updated.updated_at >= previous_updated_at
+
+
+@pytest.mark.parametrize("other_is_deleted", [False, True])
+def test_update_shift_controller_rejects_colliding_name(
+    session,
+    department,
+    shift_factory,
+    other_is_deleted,
+):
+    """Tests renaming a shift to an existing (active or soft-deleted) name in the same position raises 400."""
+    shift_a = shift_factory(name="Shift Alpha")
+    shift_b_same_pos = shift_factory(name="Shift Beta", is_deleted=other_is_deleted)
+
+    with pytest.raises(HTTPException) as exc_info:
+        shift_controllers.update_shift_controller(
+            shift_id=shift_a.id,
+            shift_data=ShiftUpdate(name=shift_b_same_pos.name),
+            department_id=department.id,
+            session=session,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert "already exists" in exc_info.value.detail
+
+
+def test_update_shift_controller_allows_same_name_under_another_position(
+    session,
+    department,
+    position,
+    shift_factory,
+):
+    """Tests that shifts in two different positions of the same department may share a name."""
+    other_position = position_repository.create_position(
+        session=session,
+        position_name="ICU",
+        department_id=department.id,
+        duty_days=[0, 1, 2],
+    )
+    shift_pos_a = shift_factory(name="Day", position_id=position.id)
+    shift_pos_b = shift_factory(name="Evening", position_id=other_position.id)
+
+    updated = shift_controllers.update_shift_controller(
+        shift_id=shift_pos_b.id,
+        shift_data=ShiftUpdate(name=shift_pos_a.name),
+        department_id=department.id,
+        session=session,
+    )
+
+    assert updated.name == "Day"
+
+
+def test_update_shift_controller_nonexistent_deleted_or_foreign_raises_404(
+    session,
+    department,
+    shift_factory,
+    shift_b,
+):
+    """Tests updating a missing, soft-deleted, or foreign shift raises 404."""
+    deleted_shift = shift_factory(name="Deleted Shift", is_deleted=True)
+
+    for missing_id in (uuid.uuid4(), deleted_shift.id, shift_b.id):
+        with pytest.raises(HTTPException) as exc_info:
+            shift_controllers.update_shift_controller(
+                shift_id=missing_id,
+                shift_data=ShiftUpdate(name="New Name"),
+                department_id=department.id,
+                session=session,
+            )
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Shift not found."
+
+
+def test_delete_shift_controller_soft_deletes_shift_and_upcoming_pre_assignments(
+    session,
+    department,
+    position,
+    new_doctor,
+    shift_factory,
+):
+    """Tests soft-deleting a shift soft-deletes upcoming pre-assignments while keeping history."""
+    target_shift = shift_factory(name="Target Shift", sync_status=True)
+    sibling_shift = shift_factory(name="Sibling Shift")
+
+    today = datetime.date.today()
+    upcoming_today_pre = doctor_repository.create_doctor_pre_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        pre_assignment_data=DoctorPreAssignmentCreate(
+            shift_id=target_shift.id,
+            date=today,
+        ),
+    )
+    upcoming_today_pre.sync_status = True
+    session.add(upcoming_today_pre)
+    session.commit()
+
+    upcoming_future_pre = doctor_repository.create_doctor_pre_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        pre_assignment_data=DoctorPreAssignmentCreate(
+            shift_id=target_shift.id,
+            date=today + datetime.timedelta(days=4),
+        ),
+    )
+    historical_pre = doctor_repository.create_doctor_pre_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        pre_assignment_data=DoctorPreAssignmentCreate(
+            shift_id=target_shift.id,
+            date=today - datetime.timedelta(days=1),
+        ),
+    )
+    sibling_pre = doctor_repository.create_doctor_pre_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        pre_assignment_data=DoctorPreAssignmentCreate(
+            shift_id=sibling_shift.id,
+            date=today + datetime.timedelta(days=6),
+        ),
+    )
+
+    future_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=target_shift.id,
+        date=today + datetime.timedelta(days=2),
+    )
+    past_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=target_shift.id,
+        date=today - datetime.timedelta(days=3),
+    )
+
+    shift_controllers.delete_shift_controller(
+        shift_id=target_shift.id,
+        department_id=department.id,
+        session=session,
+    )
+
+    for obj in (
+        target_shift,
+        upcoming_today_pre,
+        upcoming_future_pre,
+        historical_pre,
+        future_assignment,
+        past_assignment,
+        sibling_shift,
+        sibling_pre,
+    ):
+        session.refresh(obj)
+
+    assert target_shift.is_deleted is True
+    assert target_shift.sync_status is False
+    assert upcoming_today_pre.is_deleted is True
+    assert upcoming_today_pre.sync_status is False
+    assert upcoming_future_pre.is_deleted is True
+
+    # Historical pre-assignments, all ShiftAssignments, and sibling entities stay active
+    assert historical_pre.is_deleted is False
+    assert future_assignment.is_deleted is False
+    assert past_assignment.is_deleted is False
+    assert sibling_shift.is_deleted is False
+    assert sibling_pre.is_deleted is False
+
+
+def test_delete_shift_controller_nonexistent_deleted_or_foreign_raises_404(
+    session,
+    department,
+    shift_factory,
+    shift_b,
+):
+    """Tests deleting a missing, already soft-deleted, or foreign shift raises 404."""
+    deleted_shift = shift_factory(name="Already Gone", is_deleted=True)
+
+    for missing_id in (uuid.uuid4(), deleted_shift.id, shift_b.id):
+        with pytest.raises(HTTPException) as exc_info:
+            shift_controllers.delete_shift_controller(
+                shift_id=missing_id,
+                department_id=department.id,
+                session=session,
+            )
+
+        assert exc_info.value.status_code == 404
+        assert exc_info.value.detail == "Shift not found."
+
+
 #####################
 # Route Tests
 #####################
@@ -2100,4 +2408,321 @@ def test_shift_update_schema_validates_doctors_per_shift_and_grants_day_off(posi
     with pytest.raises(ValidationError) as exc_info:
         ShiftUpdate(doctors_per_shift=-1)
     assert "greater than 0" in str(exc_info.value)
+
+
+def test_shift_update_schema_rejects_position_id():
+    """Verifies ShiftUpdate forbids client-supplied position_id."""
+    with pytest.raises(ValidationError):
+        ShiftUpdate(name="Moved Shift", position_id=uuid.uuid4())
+
+
+def test_restore_soft_deleted_shift_route(
+    client,
+    session,
+    position,
+    shift_factory,
+    department_admin_headers,
+):
+    """Tests POST /shifts/ restores a soft-deleted shift and updates its configuration."""
+    deleted_shift = shift_factory(
+        name="Restorable Night",
+        position_id=position.id,
+        doctors_per_shift=1,
+        grants_day_off=False,
+        is_deleted=True,
+        sync_status=True,
+    )
+
+    response = client.post(
+        "/api/v1/shifts/",
+        json={
+            "name": "Restorable Night",
+            "position_id": str(position.id),
+            "doctors_per_shift": 3,
+            "grants_day_off": True,
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["id"] == str(deleted_shift.id)
+    assert data["name"] == "Restorable Night"
+    assert data["doctors_per_shift"] == 3
+    assert data["grants_day_off"] is True
+    assert data["is_deleted"] is False
+    assert data["sync_status"] is False
+
+    session.refresh(deleted_shift)
+    assert deleted_shift.is_deleted is False
+    assert deleted_shift.doctors_per_shift == 3
+    assert deleted_shift.grants_day_off is True
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_name", "expected_doctors", "expected_day_off"),
+    [
+        pytest.param({"name": "Renamed ER 1"}, "Renamed ER 1", 2, False, id="name-only"),
+        pytest.param({"doctors_per_shift": 5}, "ER 1", 5, False, id="doctors-only"),
+        pytest.param({"grants_day_off": True}, "ER 1", 2, True, id="day-off-only"),
+        pytest.param(
+            {"name": "ER 1", "doctors_per_shift": 2, "grants_day_off": False},
+            "ER 1",
+            2,
+            False,
+            id="same-values",
+        ),
+        pytest.param({}, "ER 1", 2, False, id="empty-body"),
+    ],
+)
+def test_update_shift_route(
+    client,
+    session,
+    shift,
+    department_admin_headers,
+    payload,
+    expected_name,
+    expected_doctors,
+    expected_day_off,
+):
+    """Tests PATCH /shifts/{shift_id} supports partial, full, and idempotent updates."""
+    response = client.patch(
+        f"/api/v1/shifts/{shift.id}",
+        json=payload,
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == str(shift.id)
+    assert data["name"] == expected_name
+    assert data["doctors_per_shift"] == expected_doctors
+    assert data["grants_day_off"] is expected_day_off
+    assert data["position_id"] == str(shift.position_id)
+    assert data["sync_status"] is False
+
+    session.refresh(shift)
+    assert shift.name == expected_name
+    assert shift.doctors_per_shift == expected_doctors
+    assert shift.grants_day_off is expected_day_off
+
+
+def test_update_shift_route_rejects_supplied_position_id(
+    client,
+    session,
+    department,
+    shift,
+    department_admin_headers,
+):
+    """Tests PATCH /shifts/{shift_id} rejects position_id in payload (extra='forbid')."""
+    other_position = position_repository.create_position(
+        session=session,
+        position_name="Other Pos",
+        department_id=department.id,
+        duty_days=[0, 1],
+    )
+    original_position_id = shift.position_id
+
+    response = client.patch(
+        f"/api/v1/shifts/{shift.id}",
+        json={
+            "name": "Attempted Move",
+            "position_id": str(other_position.id),
+        },
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 422
+    validation_errors = response.json()["detail"]
+    position_id_error = next(
+        (
+            error for error in validation_errors
+            if error["loc"] == ["body", "position_id"]
+        ),
+        None,
+    )
+    assert position_id_error is not None
+    assert position_id_error["type"] == "extra_forbidden"
+
+    session.refresh(shift)
+    assert shift.name == "ER 1"
+    assert shift.position_id == original_position_id
+
+
+@pytest.mark.parametrize("bad_doctors", [0, -1])
+def test_update_shift_route_rejects_non_positive_doctors_per_shift(
+    client,
+    shift,
+    department_admin_headers,
+    bad_doctors,
+):
+    """Tests PATCH /shifts/{shift_id} returns 422 when doctors_per_shift <= 0."""
+    response = client.patch(
+        f"/api/v1/shifts/{shift.id}",
+        json={"doctors_per_shift": bad_doctors},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 422
+
+
+def test_update_shift_route_rejects_duplicate_name_in_same_position(
+    client,
+    session,
+    shift,
+    shift_factory,
+    department_admin_headers,
+):
+    """Tests PATCH /shifts/{shift_id} returns 400 when renaming to another shift in the same position."""
+    other_shift = shift_factory(name="ER 2", position_id=shift.position_id)
+
+    response = client.patch(
+        f"/api/v1/shifts/{shift.id}",
+        json={"name": other_shift.name},
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 400
+    assert "already exists" in response.json()["detail"]
+
+    session.refresh(shift)
+    assert shift.name == "ER 1"
+
+
+def test_delete_shift_route(
+    client,
+    session,
+    shift,
+    new_doctor,
+    department_admin_headers,
+):
+    """Tests DELETE /shifts/{shift_id} soft-deletes the shift and upcoming pre-assignments."""
+    today = datetime.date.today()
+    upcoming_pre = doctor_repository.create_doctor_pre_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        pre_assignment_data=DoctorPreAssignmentCreate(
+            shift_id=shift.id,
+            date=today + datetime.timedelta(days=3),
+        ),
+    )
+    assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=today + datetime.timedelta(days=4),
+    )
+
+    response = client.delete(
+        f"/api/v1/shifts/{shift.id}",
+        headers=department_admin_headers,
+    )
+
+    assert response.status_code == 204
+    assert response.content == b""
+
+    for obj in (shift, upcoming_pre, assignment):
+        session.refresh(obj)
+
+    assert shift.is_deleted is True
+    assert shift.sync_status is False
+    assert upcoming_pre.is_deleted is True
+    assert assignment.is_deleted is False
+
+    list_response = client.get("/api/v1/shifts/", headers=department_admin_headers)
+    assert list_response.status_code == 200
+    assert all(item["id"] != str(shift.id) for item in list_response.json())
+
+    get_response = client.get(
+        f"/api/v1/shifts/{shift.id}",
+        headers=department_admin_headers,
+    )
+    assert get_response.status_code == 404
+
+
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+@pytest.mark.parametrize("target_kind", ["missing", "deleted", "foreign_department"])
+def test_shift_mutation_routes_return_404_for_missing_deleted_or_foreign_shift(
+    client,
+    shift_factory,
+    shift_b,
+    department_admin_headers,
+    method,
+    target_kind,
+):
+    """Tests PATCH/DELETE return 404 for nonexistent, soft-deleted, or foreign shifts."""
+    if target_kind == "missing":
+        target_id = uuid.uuid4()
+    elif target_kind == "deleted":
+        target_id = shift_factory(name="Deleted Target", is_deleted=True).id
+    else:
+        target_id = shift_b.id
+
+    request_kwargs = {"json": {"name": "New Name"}} if method == "PATCH" else {}
+    response = client.request(
+        method,
+        f"/api/v1/shifts/{target_id}",
+        headers=department_admin_headers,
+        **request_kwargs,
+    )
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Shift not found."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+def test_shift_mutation_routes_require_authentication(client, shift, method):
+    """Tests PATCH/DELETE /shifts/{shift_id} require authentication."""
+    request_kwargs = {"json": {"name": "No Auth"}} if method == "PATCH" else {}
+    response = client.request(method, f"/api/v1/shifts/{shift.id}", **request_kwargs)
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": "Unauthorized"}
+    assert response.headers.get("WWW-Authenticate") == "Bearer"
+
+
+@pytest.mark.parametrize("method", ["PATCH", "DELETE"])
+@pytest.mark.parametrize(
+    "role",
+    [
+        UserRole.DOCTOR,
+        UserRole.VIEWER,
+        UserRole.SUPER_ADMIN,
+    ],
+)
+def test_non_department_admin_cannot_update_or_delete_shift(
+    client,
+    session,
+    department,
+    shift,
+    new_doctor,
+    user_factory,
+    auth_headers_factory,
+    method,
+    role,
+):
+    """Tests that only DEPARTMENT_ADMIN can PATCH or DELETE shifts."""
+    user = user_factory(
+        role=role,
+        department_id=None if role == UserRole.SUPER_ADMIN else department.id,
+        doctor_id=new_doctor.id if role == UserRole.DOCTOR else None,
+    )
+    headers = auth_headers_factory(user)
+    request_kwargs = {"json": {"name": "Blocked Rename"}} if method == "PATCH" else {}
+
+    response = client.request(
+        method,
+        f"/api/v1/shifts/{shift.id}",
+        headers=headers,
+        **request_kwargs,
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Insufficient permissions for this operation."}
+    assert response.headers.get("WWW-Authenticate") is None
+
+    session.refresh(shift)
+    assert shift.name == "ER 1"
+    assert shift.is_deleted is False
 
