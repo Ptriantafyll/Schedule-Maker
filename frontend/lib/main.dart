@@ -8,14 +8,16 @@ void main() {
   runApp(const ProviderScope(child: App()));
 }
 
-class App extends StatelessWidget {
+class App extends ConsumerWidget {
   const App({super.key});
 
   // This widget is the root of your application.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp(
-      themeMode: ThemeMode.system,
+      themeMode: themeMode,
       title: 'Shift scheduling app',
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,

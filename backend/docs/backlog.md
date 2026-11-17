@@ -517,6 +517,30 @@ Currently, all departmental roster and schedule endpoints (`/api/v1/teams`, `/po
 - A `SUPER_ADMIN` can select any active department in the UI and perform CRUD operations on its teams, positions, shifts, and doctors.
 - A `DEPARTMENT_ADMIN` remains strictly locked to their own `department_id` and receives `403 Forbidden` when attempting to scope to another department.
 
+### BL-023: Batch Date Endpoints for Doctor Unavailabilities and Pre-Assignments
+
+**Area:** Doctor Roster Management API (Backend + Frontend)  
+**Priority:** Medium
+
+#### Problem
+
+Currently, `POST /api/v1/doctors/{doctor_id}/unavailability` and `POST /api/v1/doctors/{doctor_id}/pre-assignments` accept only a single `date` per HTTP request. When an admin or doctor selects multiple dates at once in the Flutter `Schedule Dates` dialog (`addDoctorUnavailabilities` / `addDoctorPreAssignments`), the client must loop through each selected date sequentially in separate network round-trips. If one date in the batch conflicts (`422 Unprocessable Content`), earlier dates in the loop remain committed while later dates are not sent.
+
+#### Required work
+
+1. **Batch Request Schemas & Endpoints** (or accept `dates: list[datetime.date]`):
+   - Add batch creation support (e.g., `POST /api/v1/doctors/{doctor_id}/unavailability/batch` and `POST /api/v1/doctors/{doctor_id}/pre-assignments/batch`, or extend the existing `POST` schemas to accept `dates: list[datetime.date]`).
+2. **Atomic Unit-of-Work Validation & Persistence**:
+   - Validate all requested dates against active unavailabilities and pre-assignments up front before mutating, returning all conflicting dates in the `422` detail if any overlap exists.
+   - Restore previously soft-deleted rows (`is_deleted = True`) in place and stage new rows with `flush()` (`commit=False`), executing a single atomic `session.commit()` for the entire batch.
+3. **Frontend Integration**:
+   - Replace the sequential client-side `for` loops in `RosterManagementController.addDoctorUnavailabilities` and `addDoctorPreAssignments` with single batch repository calls.
+
+#### Completion criteria
+
+- Adding multiple unavailable dates or pre-assignments executes in a single HTTP request and a single atomic database transaction.
+- Any conflict across the submitted dates rolls back the entire batch and reports the conflicting date(s).
+
 ## Resolved / Closed
 
 

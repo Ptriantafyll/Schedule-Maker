@@ -202,5 +202,31 @@ void main() {
 
       expect(find.byType(PopupMenuButton<String>), findsNothing);
     });
+
+    testWidgets('renders Manage Roster button when onManageRosterPressed is provided and invokes callback', (tester) async {
+      var managePressed = false;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminHeroCard(
+              targetMonth: '2026-11',
+              onGeneratePressed: () {},
+              onManageRosterPressed: () {
+                managePressed = true;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final manageButton = find.widgetWithText(OutlinedButton, 'Manage Roster');
+      expect(manageButton, findsOneWidget);
+      await tester.tap(manageButton);
+      await tester.pumpAndSettle();
+
+      expect(managePressed, isTrue);
+    });
   });
 }

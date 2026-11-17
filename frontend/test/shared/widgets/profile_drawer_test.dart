@@ -7,6 +7,7 @@ import 'package:frontend/features/auth/domain/models/user_role.dart';
 import 'package:frontend/features/auth/domain/state/auth_state.dart';
 import 'package:frontend/features/auth/presentation/controllers/auth_controller.dart';
 import 'package:frontend/shared/widgets/profile_drawer.dart';
+import 'package:frontend/theme/app_theme.dart';
 
 class FakeAuthRepository implements AuthRepository {
   int logoutCallCount = 0;
@@ -110,6 +111,37 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(fakeRepository.logoutCallCount, equals(1));
+    });
+
+    testWidgets('toggling Dark Mode switch updates themeModeProvider', (tester) async {
+      final container = ProviderContainer(
+        overrides: [
+          authRepositoryProvider.overrideWithValue(fakeRepository),
+          currentUserProvider.overrideWithValue(testUser),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const MaterialApp(
+            home: Scaffold(
+              body: ProfileDrawer(),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Dark Mode'), findsOneWidget);
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+      expect(container.read(themeModeProvider), ThemeMode.dark);
+
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
+      expect(container.read(themeModeProvider), ThemeMode.light);
     });
   });
 }

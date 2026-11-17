@@ -8,6 +8,7 @@ class AdminHeroCard extends StatelessWidget {
     this.statusLabel = 'Draft',
     this.isGenerating = false,
     required this.onGeneratePressed,
+    this.onManageRosterPressed,
     this.isPublished = false,
     this.availableMonths = const [],
     this.onMonthSelected,
@@ -18,6 +19,7 @@ class AdminHeroCard extends StatelessWidget {
   final String statusLabel;
   final bool isGenerating;
   final VoidCallback? onGeneratePressed;
+  final VoidCallback? onManageRosterPressed;
   final bool isPublished;
   final List<String> availableMonths;
   final ValueChanged<String>? onMonthSelected;
@@ -131,19 +133,31 @@ class AdminHeroCard extends StatelessWidget {
               ),
 
               const SizedBox(height: 20),
-              FilledButton.icon(
-                onPressed: isGenerating ? null : onGeneratePressed,
-                icon: isGenerating
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.auto_awesome),
-                label: const Text('Generate Schedule'),
+              Wrap(
+                spacing: 12,
+                runSpacing: 8,
+                children: [
+                  FilledButton.icon(
+                    onPressed: isGenerating ? null : onGeneratePressed,
+                    icon: isGenerating
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Icon(Icons.auto_awesome),
+                    label: const Text('Generate Schedule'),
+                  ),
+                  if (onManageRosterPressed != null)
+                    OutlinedButton.icon(
+                      onPressed: isLoading ? null : onManageRosterPressed,
+                      icon: const Icon(Icons.groups_outlined),
+                      label: const Text('Manage Roster'),
+                    ),
+                ],
               ),
             ],
           ),

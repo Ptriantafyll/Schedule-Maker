@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/admin/presentation/controllers/schedule_generation_controller.dart';
+import 'package:frontend/features/admin/presentation/screens/roster_management_screen.dart';
 import 'package:frontend/features/admin/presentation/widgets/admin_hero_card.dart';
 // import 'package:frontend/features/admin/presentation/widgets/admin_metric_cards.dart';
 import 'package:frontend/features/admin/presentation/widgets/draft_preview_canvas.dart';
@@ -305,6 +306,13 @@ class _AdminScreenState extends ConsumerState<AdminScreen> {
                       .selectMonth(month, departmentId: user?.departmentId);
                 },
                 onGeneratePressed: _handleGeneratePressed,
+                onManageRosterPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const RosterManagementScreen(),
+                    ),
+                  );
+                },
                 isGenerating: genState.isSolving,
                 isLoading: genState.isLoadingDashboard,
               ),
