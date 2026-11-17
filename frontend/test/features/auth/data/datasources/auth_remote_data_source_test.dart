@@ -52,6 +52,24 @@ class FakeApiClient implements ApiClient {
 
     return responseToReturn as Response<T>;
   }
+
+  @override
+  Future<Response<T>> patch<T>(
+    String path, {
+    Object? data,
+    Map<String, dynamic>? queryParameters,
+    String? contentType,
+    bool requiresAuth = true,
+  }) => throw UnimplementedError('patch not used in auth tests');
+
+  @override
+  Future<Response<T>> delete<T>(
+    String path, {
+    Object? data,
+    Map<String, dynamic>? queryParameters,
+    String? contentType,
+    bool requiresAuth = true,
+  }) => throw UnimplementedError('delete not used in auth tests');
 }
 
 void main() {

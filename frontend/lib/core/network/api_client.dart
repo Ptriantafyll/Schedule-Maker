@@ -34,19 +34,12 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     bool requiresAuth = true,
     ResponseType? responseType,
-  }) {
-    return _send(() async {
-      final options = await _requestOptions(requiresAuth: requiresAuth);
-      if (responseType != null) {
-        options.responseType = responseType;
-      }
-      return _dio.get<T>(
-        path,
-        queryParameters: queryParameters,
-        options: options,
-      );
-    }, requiresAuth: requiresAuth);
-  }
+  }) => _sendWithOptions(
+    (options) =>
+        _dio.get<T>(path, queryParameters: queryParameters, options: options),
+    requiresAuth: requiresAuth,
+    responseType: responseType,
+  );
 
   Future<Response<T>> post<T>(
     String path, {
@@ -54,23 +47,73 @@ class ApiClient {
     Map<String, dynamic>? queryParameters,
     String? contentType,
     bool requiresAuth = true,
+  }) => _sendWithOptions(
+    (options) => _dio.post<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    ),
+    requiresAuth: requiresAuth,
+    contentType: contentType,
+  );
+
+  Future<Response<T>> patch<T>(
+    String path, {
+    Object? data,
+    Map<String, dynamic>? queryParameters,
+    String? contentType,
+    bool requiresAuth = true,
+  }) => _sendWithOptions(
+    (options) => _dio.patch<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    ),
+    requiresAuth: requiresAuth,
+    contentType: contentType,
+  );
+
+  Future<Response<T>> delete<T>(
+    String path, {
+    Object? data,
+    Map<String, dynamic>? queryParameters,
+    String? contentType,
+    bool requiresAuth = true,
+  }) => _sendWithOptions(
+    (options) => _dio.delete<T>(
+      path,
+      data: data,
+      queryParameters: queryParameters,
+      options: options,
+    ),
+    requiresAuth: requiresAuth,
+    contentType: contentType,
+  );
+
+  Future<Response<T>> _sendWithOptions<T>(
+    Future<Response<T>> Function(Options options) request, {
+    required bool requiresAuth,
+    String? contentType,
+    ResponseType? responseType,
   }) {
-    return _send(() async {
-      return _dio.post<T>(
-        path,
-        data: data,
-        queryParameters: queryParameters,
-        options: await _requestOptions(
+    return _send(
+      () async => request(
+        await _requestOptions(
           requiresAuth: requiresAuth,
           contentType: contentType,
+          responseType: responseType,
         ),
-      );
-    }, requiresAuth: requiresAuth);
+      ),
+      requiresAuth: requiresAuth,
+    );
   }
 
   Future<Options> _requestOptions({
     required bool requiresAuth,
     String? contentType,
+    ResponseType? responseType,
   }) async {
     final headers = <String, dynamic>{};
 
@@ -90,6 +133,7 @@ class ApiClient {
     return Options(
       headers: headers.isNotEmpty ? headers : null,
       contentType: contentType,
+      responseType: responseType,
     );
   }
 
