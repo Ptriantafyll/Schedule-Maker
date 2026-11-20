@@ -59,6 +59,59 @@ class _SelectableTile extends StatelessWidget {
   }
 }
 
+class _RosterFormDialog extends StatefulWidget {
+  const _RosterFormDialog({
+    required this.title,
+    required this.formKey,
+    required this.child,
+    required this.onCancel,
+    required this.onSave,
+  });
+
+  final String title;
+  final GlobalKey<FormState> formKey;
+  final Widget child;
+  final VoidCallback onCancel;
+  final VoidCallback onSave;
+
+  @override
+  State<_RosterFormDialog> createState() => _RosterFormDialogState();
+}
+
+class _RosterFormDialogState extends State<_RosterFormDialog> {
+  final _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      title: Text(widget.title),
+      content: Form(
+        key: widget.formKey,
+        child: Scrollbar(
+          controller: _scrollController,
+          thumbVisibility: true,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            padding: const EdgeInsets.only(top: 6, right: 8),
+            child: widget.child,
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: widget.onCancel, child: const Text('Cancel')),
+        FilledButton(onPressed: widget.onSave, child: const Text('Save')),
+      ],
+    );
+  }
+}
+
 class PositionFormResult {
   const PositionFormResult({required this.name, required this.dutyDays});
   final String name;
@@ -126,36 +179,25 @@ Future<String?> showRosterTeamDialog(
 
   return showDialog<String>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: Text(initialTeam == null ? 'Add Team' : 'Rename Team'),
-      content: Form(
-        key: formKey,
-        child: TextFormField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Team Name',
-            hintText: 'e.g. Cardiology Alpha',
-            border: OutlineInputBorder(),
-          ),
-          validator: (value) =>
-              (value == null || value.trim().isEmpty) ? 'Required' : null,
+    builder: (dialogContext) => _RosterFormDialog(
+      title: initialTeam == null ? 'Add Team' : 'Rename Team',
+      formKey: formKey,
+      onCancel: () => Navigator.of(dialogContext).pop(),
+      onSave: () {
+        if (formKey.currentState!.validate()) {
+          Navigator.of(dialogContext).pop(controller.text.trim());
+        }
+      },
+      child: TextFormField(
+        controller: controller,
+        decoration: const InputDecoration(
+          labelText: 'Team Name',
+          hintText: 'e.g. Cardiology Alpha',
+          border: OutlineInputBorder(),
         ),
+        validator: (value) =>
+            (value == null || value.trim().isEmpty) ? 'Required' : null,
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(dialogContext).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          onPressed: () {
-            if (formKey.currentState!.validate()) {
-              Navigator.of(dialogContext).pop(controller.text.trim());
-            }
-          },
-          child: const Text('Save'),
-        ),
-      ],
     ),
   );
 }
@@ -176,104 +218,89 @@ Future<PositionFormResult?> showRosterPositionDialog(
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setState) {
         final scheme = Theme.of(context).colorScheme;
-        return AlertDialog(
-          title: Text(
-            initialPosition == null ? 'Add Position' : 'Edit Position',
-          ),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextFormField(
-                    controller: nameController,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Position Name',
-                      hintText: 'e.g. Emergency Room',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (v) =>
-                        (v == null || v.trim().isEmpty) ? 'Required' : null,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Active Duty Days',
-                    style: Theme.of(context).textTheme.labelLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  for (var row = 0; row < 2; row++) ...[
-                    if (row > 0) const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        for (var col = 0; col < 4; col++) ...[
-                          if (col > 0) const SizedBox(width: 6),
-                          Expanded(
-                            child: (row * 4 + col) < kWeekdayLabels.length
-                                ? SizedBox(
-                                    height: 38,
-                                    child: _SelectableTile(
-                                      label: kWeekdayLabels[row * 4 + col],
-                                      selected: selectedDays.contains(
-                                        row * 4 + col,
-                                      ),
-                                      onTap: () {
-                                        final day = row * 4 + col;
-                                        setState(() {
-                                          if (selectedDays.contains(day)) {
-                                            selectedDays.remove(day);
-                                          } else {
-                                            selectedDays.add(day);
-                                          }
-                                          showDaysError = false;
-                                        });
-                                      },
-                                    ),
-                                  )
-                                : const SizedBox(height: 38),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ],
-                  if (showDaysError) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      'Select at least one duty day.',
-                      style: TextStyle(color: scheme.error, fontSize: 12),
-                    ),
-                  ],
-                ],
+        return _RosterFormDialog(
+          title: initialPosition == null ? 'Add Position' : 'Edit Position',
+          formKey: formKey,
+          onCancel: () => Navigator.of(dialogContext).pop(),
+          onSave: () {
+            final validName = formKey.currentState!.validate();
+            if (selectedDays.isEmpty) {
+              setState(() => showDaysError = true);
+              return;
+            }
+            if (validName) {
+              final sorted = selectedDays.toList()..sort();
+              Navigator.of(dialogContext).pop(
+                PositionFormResult(
+                  name: nameController.text.trim(),
+                  dutyDays: sorted,
+                ),
+              );
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Position Name',
+                  hintText: 'e.g. Emergency Room',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (v) =>
+                    (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
-            ),
+              const SizedBox(height: 16),
+              Text(
+                'Active Duty Days',
+                style: Theme.of(context).textTheme.labelLarge,
+              ),
+              const SizedBox(height: 8),
+              for (var row = 0; row < 2; row++) ...[
+                if (row > 0) const SizedBox(height: 6),
+                Row(
+                  children: [
+                    for (var col = 0; col < 4; col++) ...[
+                      if (col > 0) const SizedBox(width: 6),
+                      Expanded(
+                        child: (row * 4 + col) < kWeekdayLabels.length
+                            ? SizedBox(
+                                height: 38,
+                                child: _SelectableTile(
+                                  label: kWeekdayLabels[row * 4 + col],
+                                  selected: selectedDays.contains(
+                                    row * 4 + col,
+                                  ),
+                                  onTap: () {
+                                    final day = row * 4 + col;
+                                    setState(() {
+                                      if (selectedDays.contains(day)) {
+                                        selectedDays.remove(day);
+                                      } else {
+                                        selectedDays.add(day);
+                                      }
+                                      showDaysError = false;
+                                    });
+                                  },
+                                ),
+                              )
+                            : const SizedBox(height: 38),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
+              if (showDaysError) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Select at least one duty day.',
+                  style: TextStyle(color: scheme.error, fontSize: 12),
+                ),
+              ],
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () {
-                final validName = formKey.currentState!.validate();
-                if (selectedDays.isEmpty) {
-                  setState(() => showDaysError = true);
-                  return;
-                }
-                if (validName) {
-                  final sorted = selectedDays.toList()..sort();
-                  Navigator.of(dialogContext).pop(
-                    PositionFormResult(
-                      name: nameController.text.trim(),
-                      dutyDays: sorted,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Save'),
-            ),
-          ],
         );
       },
     ),
@@ -294,73 +321,60 @@ Future<ShiftFormResult?> showRosterShiftDialog(
   return showDialog<ShiftFormResult>(
     context: context,
     builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: Text(initialShift == null ? 'Add Shift' : 'Edit Shift'),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: nameController,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Shift Name',
-                    hintText: 'e.g. Night',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: doctorsController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Doctors Per Shift',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (v) {
-                    final parsed = int.tryParse((v ?? '').trim());
-                    if (parsed == null || parsed <= 0) {
-                      return 'Enter a whole number >= 1';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 8),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Grants Day Off'),
-                  subtitle: const Text('Doctor receives next day off'),
-                  value: grantsDayOff,
-                  onChanged: (v) => setState(() => grantsDayOff = v),
-                ),
-              ],
+      builder: (context, setState) => _RosterFormDialog(
+        title: initialShift == null ? 'Add Shift' : 'Edit Shift',
+        formKey: formKey,
+        onCancel: () => Navigator.of(dialogContext).pop(),
+        onSave: () {
+          if (formKey.currentState!.validate()) {
+            Navigator.of(dialogContext).pop(
+              ShiftFormResult(
+                name: nameController.text.trim(),
+                doctorsPerShift: int.parse(doctorsController.text.trim()),
+                grantsDayOff: grantsDayOff,
+              ),
+            );
+          }
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Shift Name',
+                hintText: 'e.g. Night',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Required' : null,
             ),
-          ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: doctorsController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: 'Doctors Per Shift',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) {
+                final parsed = int.tryParse((v ?? '').trim());
+                if (parsed == null || parsed <= 0) {
+                  return 'Enter a whole number >= 1';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 8),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Grants Day Off'),
+              subtitle: const Text('Doctor receives next day off'),
+              value: grantsDayOff,
+              onChanged: (v) => setState(() => grantsDayOff = v),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.of(dialogContext).pop(
-                  ShiftFormResult(
-                    name: nameController.text.trim(),
-                    doctorsPerShift: int.parse(doctorsController.text.trim()),
-                    grantsDayOff: grantsDayOff,
-                  ),
-                );
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     ),
   );
@@ -382,104 +396,88 @@ Future<DoctorFormResult?> showRosterDoctorDialog(
   return showDialog<DoctorFormResult>(
     context: context,
     builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: Text(initialDoctor == null ? 'Add Doctor' : 'Edit Doctor'),
-        content: Form(
-          key: formKey,
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                TextFormField(
-                  controller: nameController,
-                  autofocus: true,
-                  decoration: const InputDecoration(
-                    labelText: 'Doctor Name',
-                    hintText: 'e.g. Dr. Panos',
-                    border: OutlineInputBorder(),
-                  ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Required' : null,
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String?>(
-                  initialValue: teams.any((t) => t.id == selectedTeamId)
-                      ? selectedTeamId
-                      : null,
-                  decoration: const InputDecoration(
-                    labelText: 'Team',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('No Team'),
-                    ),
-                    for (final team in teams)
-                      DropdownMenuItem<String?>(
-                        value: team.id,
-                        child: Text(team.name),
-                      ),
-                  ],
-                  onChanged: (value) => setState(() => selectedTeamId = value),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Eligible Positions',
-                  style: Theme.of(context).textTheme.labelLarge,
-                ),
-                const SizedBox(height: 8),
-                if (positions.isEmpty)
-                  Text(
-                    'Create positions first to assign eligibility.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  )
-                else
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (final pos in positions)
-                        FilterChip(
-                          label: Text(pos.name),
-                          selected: selectedPositions.contains(pos.id),
-                          onSelected: (selected) {
-                            setState(() {
-                              if (selected) {
-                                selectedPositions.add(pos.id);
-                              } else {
-                                selectedPositions.remove(pos.id);
-                              }
-                            });
-                          },
-                        ),
-                    ],
-                  ),
-              ],
+      builder: (context, setState) => _RosterFormDialog(
+        title: initialDoctor == null ? 'Add Doctor' : 'Edit Doctor',
+        formKey: formKey,
+        onCancel: () => Navigator.of(dialogContext).pop(),
+        onSave: () {
+          if (formKey.currentState!.validate()) {
+            Navigator.of(dialogContext).pop(
+              DoctorFormResult(
+                name: nameController.text.trim(),
+                teamId: selectedTeamId,
+                positionIds: selectedPositions.toList(),
+              ),
+            );
+          }
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextFormField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Doctor Name',
+                hintText: 'e.g. Dr. Panos',
+                border: OutlineInputBorder(),
+              ),
+              validator: (v) =>
+                  (v == null || v.trim().isEmpty) ? 'Required' : null,
             ),
-          ),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String?>(
+              initialValue: teams.any((t) => t.id == selectedTeamId)
+                  ? selectedTeamId
+                  : null,
+              decoration: const InputDecoration(
+                labelText: 'Team',
+                border: OutlineInputBorder(),
+              ),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('No Team'),
+                ),
+                for (final team in teams)
+                  DropdownMenuItem<String?>(value: team.id, child: Text(team.name)),
+              ],
+              onChanged: (value) => setState(() => selectedTeamId = value),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Eligible Positions',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+            const SizedBox(height: 8),
+            if (positions.isEmpty)
+              Text(
+                'Create positions first to assign eligibility.',
+                style: Theme.of(context).textTheme.bodySmall,
+              )
+            else
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final pos in positions)
+                    FilterChip(
+                      label: Text(pos.name),
+                      selected: selectedPositions.contains(pos.id),
+                      onSelected: (selected) {
+                        setState(() {
+                          if (selected) {
+                            selectedPositions.add(pos.id);
+                          } else {
+                            selectedPositions.remove(pos.id);
+                          }
+                        });
+                      },
+                    ),
+                ],
+              ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                Navigator.of(dialogContext).pop(
-                  DoctorFormResult(
-                    name: nameController.text.trim(),
-                    teamId: selectedTeamId,
-                    positionIds: selectedPositions.toList(),
-                  ),
-                );
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
       ),
     ),
   );

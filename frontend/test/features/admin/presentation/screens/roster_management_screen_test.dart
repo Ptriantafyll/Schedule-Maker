@@ -331,6 +331,13 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Edit Shift'), findsOneWidget);
+      expect(find.byType(Scrollbar), findsOneWidget);
+      expect(
+        tester
+            .widgetList<EditableText>(find.byType(EditableText))
+            .every((e) => !e.autofocus),
+        isTrue,
+      );
       await tester.enterText(find.byType(TextFormField).first, 'Late Night');
       await tester.tap(find.widgetWithText(FilledButton, 'Save'));
       await tester.pumpAndSettle();
