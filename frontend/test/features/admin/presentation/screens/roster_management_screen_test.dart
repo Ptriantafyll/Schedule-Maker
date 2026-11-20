@@ -162,7 +162,15 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextFormField).first, 'ICU');
-    await tester.tap(find.widgetWithText(FilterChip, 'Mon'));
+    expect(
+      tester.getSize(find.widgetWithText(InkWell, 'Mon')),
+      tester.getSize(find.widgetWithText(InkWell, 'Wed')),
+    );
+    expect(
+      tester.getSize(find.widgetWithText(InkWell, 'Mon')),
+      tester.getSize(find.widgetWithText(InkWell, 'Fri')),
+    );
+    await tester.tap(find.widgetWithText(InkWell, 'Mon'));
     await tester.tap(find.widgetWithText(FilledButton, 'Save'));
     await tester.pumpAndSettle();
 

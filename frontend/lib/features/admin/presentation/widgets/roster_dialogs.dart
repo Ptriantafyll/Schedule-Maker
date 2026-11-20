@@ -17,6 +17,48 @@ const List<String> kWeekdayLabels = [
   'Sun',
 ];
 
+class _SelectableTile extends StatelessWidget {
+  const _SelectableTile({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Material(
+      color: selected ? scheme.primaryContainer : Colors.transparent,
+      borderRadius: BorderRadius.circular(10),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: onTap,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected ? scheme.primary : scheme.outlineVariant,
+            ),
+          ),
+          child: Center(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: selected ? scheme.onPrimaryContainer : scheme.onSurface,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class PositionFormResult {
   const PositionFormResult({required this.name, required this.dutyDays});
   final String name;
@@ -162,27 +204,40 @@ Future<PositionFormResult?> showRosterPositionDialog(
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 6,
-                    children: [
-                      for (var day = 0; day < kWeekdayLabels.length; day++)
-                        FilterChip(
-                          label: Text(kWeekdayLabels[day]),
-                          selected: selectedDays.contains(day),
-                          onSelected: (selected) {
-                            setState(() {
-                              if (selected) {
-                                selectedDays.add(day);
-                              } else {
-                                selectedDays.remove(day);
-                              }
-                              showDaysError = false;
-                            });
-                          },
-                        ),
-                    ],
-                  ),
+                  for (var row = 0; row < 2; row++) ...[
+                    if (row > 0) const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        for (var col = 0; col < 4; col++) ...[
+                          if (col > 0) const SizedBox(width: 6),
+                          Expanded(
+                            child: (row * 4 + col) < kWeekdayLabels.length
+                                ? SizedBox(
+                                    height: 38,
+                                    child: _SelectableTile(
+                                      label: kWeekdayLabels[row * 4 + col],
+                                      selected: selectedDays.contains(
+                                        row * 4 + col,
+                                      ),
+                                      onTap: () {
+                                        final day = row * 4 + col;
+                                        setState(() {
+                                          if (selectedDays.contains(day)) {
+                                            selectedDays.remove(day);
+                                          } else {
+                                            selectedDays.add(day);
+                                          }
+                                          showDaysError = false;
+                                        });
+                                      },
+                                    ),
+                                  )
+                                : const SizedBox(height: 38),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
                   if (showDaysError) ...[
                     const SizedBox(height: 8),
                     Text(
@@ -540,49 +595,19 @@ class _DoctorDatesDialogState extends ConsumerState<_DoctorDatesDialog> {
                         'yyyy-MM-dd',
                       ).format(DateTime(month.year, month.month, day));
                       final isSelected = selected.contains(iso);
-                      final scheme = Theme.of(context).colorScheme;
 
-                      return Material(
-                        color: isSelected
-                            ? scheme.primaryContainer
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(10),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: () {
-                            setDialogState(() {
-                              if (isSelected) {
-                                selected.remove(iso);
-                              } else {
-                                selected.add(iso);
-                              }
-                            });
-                          },
-                          child: DecoratedBox(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: isSelected
-                                    ? scheme.primary
-                                    : scheme.outlineVariant,
-                              ),
-                            ),
-                            child: Center(
-                              child: Text(
-                                '$day',
-                                style: Theme.of(context).textTheme.labelLarge
-                                    ?.copyWith(
-                                      color: isSelected
-                                          ? scheme.onPrimaryContainer
-                                          : scheme.onSurface,
-                                      fontWeight: isSelected
-                                          ? FontWeight.w700
-                                          : FontWeight.w500,
-                                    ),
-                              ),
-                            ),
-                          ),
-                        ),
+                      return _SelectableTile(
+                        label: '$day',
+                        selected: isSelected,
+                        onTap: () {
+                          setDialogState(() {
+                            if (isSelected) {
+                              selected.remove(iso);
+                            } else {
+                              selected.add(iso);
+                            }
+                          });
+                        },
                       );
                     },
                   ),
