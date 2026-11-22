@@ -175,7 +175,7 @@ def test_request_validation_error_logs_safe_field_details(client):
     try:
         response = client.post(
             "/api/v1/auth/login",
-            json={"password": "MySecretPassword123!"},
+            data={"password": "MySecretPassword123!"},
         )
     finally:
         main_logger.removeHandler(handler)
@@ -191,7 +191,7 @@ def test_request_validation_error_logs_safe_field_details(client):
     assert entry["error_count"] == 1
     assert entry["validation_errors"] == [
         {
-            "loc": "body.email",
+            "loc": "body.username",
             "type": "missing",
             "msg": "Field required",
         }
