@@ -210,7 +210,11 @@ Future<PositionFormResult?> showRosterPositionDialog(
   final nameController = TextEditingController(
     text: initialPosition?.name ?? '',
   );
-  final selectedDays = <int>{...(initialPosition?.dutyDays ?? const <int>[])};
+  final selectedDays = <int>{
+    ...(initialPosition?.dutyDays ?? const <int>[]).where(
+      (d) => d >= 0 && d < kWeekdayLabels.length,
+    ),
+  };
   var showDaysError = false;
 
   return showDialog<PositionFormResult>(

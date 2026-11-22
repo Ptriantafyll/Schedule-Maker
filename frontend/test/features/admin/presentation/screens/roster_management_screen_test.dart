@@ -475,4 +475,36 @@ void main() {
 
     expect(find.text('Department Roster'), findsOneWidget);
   });
+
+  testWidgets('strips out-of-range legacy duty days when editing a position', (
+    tester,
+  ) async {
+    fakeRepo.positionsToReturn = const [
+      RosterPosition(
+        id: 'pos-legacy',
+        name: 'Legacy ER',
+        departmentId: 'dept-1',
+        dutyDays: [-1, 0, 7],
+      ),
+    ];
+
+    await tester.pumpWidget(buildScreen());
+    await tester.pumpAndSettle();
+
+    final editBtn = find.byTooltip('Edit Legacy ER');
+    await tester.scrollUntilVisible(
+      editBtn,
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.ensureVisible(editBtn);
+    await tester.pumpAndSettle();
+    await tester.tap(editBtn);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+
+    expect(fakeRepo.positionsToReturn.single.dutyDays, [0]);
+  });
 }
