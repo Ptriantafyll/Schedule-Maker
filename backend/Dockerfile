@@ -13,7 +13,7 @@ ENV PYTHONUNBUFFERED=1 \
     UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH" \
     DATABASE_URL="sqlite:////app/data/hospital_schedule.db" \
-    LOG_DIR="/app/data/logs"
+    LOG_DIR="/var/log/schedule-maker"
 
 # Step 1: Copy dependency lockfiles first for optimal Docker layer caching
 COPY pyproject.toml uv.lock ./
@@ -28,8 +28,8 @@ COPY src/ ./src
 # Step 4: Finalize sync to include our project root package
 RUN uv sync --frozen --no-dev
 
-# Ensure data directory exists for the mounted SQLite volume
-RUN mkdir -p /app/data
+# Ensure data and log directories exist for mounted volumes
+RUN mkdir -p /app/data /var/log/schedule-maker
 
 # Expose internal API port
 EXPOSE 8000
