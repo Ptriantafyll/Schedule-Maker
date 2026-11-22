@@ -12,7 +12,8 @@ ENV PYTHONUNBUFFERED=1 \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     PATH="/app/.venv/bin:$PATH" \
-    DATABASE_URL="sqlite:////app/data/hospital_schedule.db"
+    DATABASE_URL="sqlite:////app/data/hospital_schedule.db" \
+    LOG_DIR="/app/data/logs"
 
 # Step 1: Copy dependency lockfiles first for optimal Docker layer caching
 COPY pyproject.toml uv.lock ./

@@ -10,6 +10,7 @@ import json
 import os
 import logging
 import uuid
+from pathlib import Path
 
 from contextvars import ContextVar
 from datetime import datetime, timezone
@@ -96,10 +97,51 @@ def _configured_log_level() -> str:
     return level
 
 
+def _resolve_log_file() -> Path | None:
+    """Return the persistent JSON log file path when LOG_DIR or /app/data is available."""
+    env_dir = os.getenv("LOG_DIR", "").strip()
+    if env_dir:
+        target_dir = Path(env_dir)
+    elif Path("/app/data").is_dir() and os.access("/app/data", os.W_OK):
+        target_dir = Path("/app/data/logs")
+    else:
+        return None
+
+    target_dir.mkdir(parents=True, exist_ok=True)
+    return target_dir / "backend.log"
+
+
 def configure_logging() -> None:
     """Configure handlers once for each application process."""
 
     level = _configured_log_level()
+    active_handlers = ["stdout"]
+    handlers: dict[str, Any] = {
+        "stdout": {
+            "class": "logging.StreamHandler",
+            "level": level,
+            "formatter": "json",
+            "stream": "ext://sys.stdout",
+        },
+        # A real handler prevents logging's last-resort handler from
+        # writing suppressed Ubicorn access records to stderr.
+        "discard": {
+            "class": "logging.NullHandler",
+        },
+    }
+
+    log_file = _resolve_log_file()
+    if log_file is not None:
+        handlers["file"] = {
+            "class": "logging.handlers.RotatingFileHandler",
+            "level": level,
+            "formatter": "json",
+            "filename": str(log_file),
+            "maxBytes": 10 * 1024 * 1024,
+            "backupCount": 5,
+            "encoding": "utf-8",
+        }
+        active_handlers.append("file")
 
     dictConfig(
         {
@@ -110,40 +152,28 @@ def configure_logging() -> None:
                     "()": JsonFormatter
                 }
             },
-            "handlers": {
-                "stdout": {
-                    "class": "logging.StreamHandler",
-                    "level": level,
-                    "formatter": "json",
-                    "stream": "ext://sys.stdout"
-                },
-                # A real handler prevents logging's last-resort handler from
-                # writing suppressed Ubicorn access records to stderr.
-                "discard": {
-                    "class": "logging.NullHandler",
-                },
-            },
+            "handlers": handlers,
             # Third-party libraries are noisy at INFO. keep their default at
             # WARNING while allowing the application package to use LOG_LEVEL.
             "root": {
                 "level": "WARNING",
-                "handlers": ["stdout"],
+                "handlers": list(active_handlers),
             },
             "loggers": {
                 # This matches the `src.*` module names
                 "src": {
                     "level": level,
-                    "handlers": ["stdout"],
+                    "handlers": list(active_handlers),
                     "propagate": False
                 },
                 "uvicorn": {
                     "level": level,
-                    "handlers": ["stdout"],
+                    "handlers": list(active_handlers),
                     "propagate": False
                 },
                 "uvicorn.error": {
                     "level": level,
-                    "handlers": ["stdout"],
+                    "handlers": list(active_handlers),
                     "propagate": False
                 },
                 "uvicorn.access": {

@@ -17,6 +17,7 @@ import pytest
 
 from src.utils.logger import (
     JsonFormatter,
+    configure_logging,
     log_audit_event,
     _EXTRA_FIELDS,
 )
@@ -197,3 +198,28 @@ def test_request_validation_error_logs_safe_field_details(client):
         }
     ]
     assert "MySecretPassword123!" not in stream.getvalue()
+
+
+def test_configure_logging_writes_rotating_json_file_when_log_dir_set(
+    tmp_path,
+    monkeypatch,
+):
+    """When LOG_DIR is set, configure_logging writes JSON logs to a rotating file as well as stdout."""
+    log_dir = tmp_path / "logs"
+    monkeypatch.setenv("LOG_DIR", str(log_dir))
+    try:
+        configure_logging()
+        logging.getLogger("src.main").info(
+            "Persistent log test",
+            extra={"event": "health.checked"},
+        )
+        log_file = log_dir / "backend.log"
+        assert log_file.is_file()
+        lines = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+        assert any(
+            entry.get("event") == "health.checked" and entry.get("message") == "Persistent log test"
+            for entry in lines
+        )
+    finally:
+        monkeypatch.delenv("LOG_DIR", raising=False)
+        configure_logging()
