@@ -158,3 +158,42 @@ def test_approved_audit_fields_are_in_extra_fields_allowlist():
     }
     for field in required_audit_fields:
         assert field in _EXTRA_FIELDS, f"Field '{field}' missing from _EXTRA_FIELDS"
+
+
+def test_request_validation_error_logs_safe_field_details(client):
+    """422 validation failures emit http.validation_error with safe field metadata and no raw secrets."""
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    handler.setLevel(logging.DEBUG)
+
+    main_logger = logging.getLogger("src.main")
+    main_logger.setLevel(logging.DEBUG)
+    main_logger.addHandler(handler)
+    main_logger.propagate = False
+
+    try:
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"password": "MySecretPassword123!"},
+        )
+    finally:
+        main_logger.removeHandler(handler)
+
+    assert response.status_code == 422
+
+    records = [json.loads(line) for line in stream.getvalue().splitlines() if line.strip()]
+    validation_records = [r for r in records if r.get("event") == "http.validation_error"]
+    assert len(validation_records) == 1
+
+    entry = validation_records[0]
+    assert entry["status_code"] == 422
+    assert entry["error_count"] == 1
+    assert entry["validation_errors"] == [
+        {
+            "loc": "body.email",
+            "type": "missing",
+            "msg": "Field required",
+        }
+    ]
+    assert "MySecretPassword123!" not in stream.getvalue()

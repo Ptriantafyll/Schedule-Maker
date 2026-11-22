@@ -27,6 +27,7 @@ _EXTRA_FIELDS = (
     "status_code",
     "duration_ms",
     "error_count",
+    "validation_errors",
     "action",
     "outcome",
     "user_id",

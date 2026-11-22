@@ -159,22 +159,31 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     )
 
 
-@app.exception_handler
+@app.exception_handler(RequestValidationError)
 async def log_validation_error(
     request: Request,
     exc: RequestValidationError
 ):
     """Log safe validation metadata and preserve FastAPI's error response."""
 
-    # Log the count and route, not exc.body or exc.errors(), because validation
-    # input can contain posswords, tokens etc
+    # Log field locations/types/messages only — omit `input` and `exc.body`
+    # because validation input can contain passwords, tokens, etc.
     fields = request_fields(
         request,
         event="http.validation_error",
         status_code=422,
     )
 
-    fields["error_count"] = len(exc.errors())
+    errors = exc.errors()
+    fields["error_count"] = len(errors)
+    fields["validation_errors"] = [
+        {
+            "loc": ".".join(str(part) for part in err.get("loc", ())),
+            "type": err.get("type"),
+            "msg": err.get("msg"),
+        }
+        for err in errors
+    ]
     logger.warning("Request validation failed", extra=fields)
     return await request_validation_exception_handler(request, exc)
 
