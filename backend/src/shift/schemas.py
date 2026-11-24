@@ -126,6 +126,11 @@ class ShiftAssignmentRead(ShiftAssignmentBase):
     is_deleted: bool = False
     sync_status: bool = False
 
+    doctor_name: Optional[str] = None
+    position_id: Optional[uuid.UUID] = None
+    position_name: Optional[str] = None
+    shift_name: Optional[str] = None
+
     model_config = ConfigDict(from_attributes=True)
 
 

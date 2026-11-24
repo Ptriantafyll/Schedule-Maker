@@ -72,6 +72,7 @@ def soft_delete_schedule_draft(
 def list_schedules_for_department(
     session: Session,
     department_id: uuid.UUID,
+    published_only: bool = False,
 ) -> list[ScheduleDraft]:
     """
     Retrieves all active ScheduleDraft records for a department,
@@ -85,6 +86,9 @@ def list_schedules_for_department(
         desc(ScheduleDraft.target_month),
         desc(ScheduleDraft.created_at)
     )
+
+    if published_only:
+        statement = statement.where(ScheduleDraft.status == "published")
 
     return list(session.exec(statement).all())
 

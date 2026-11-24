@@ -141,7 +141,7 @@ def get_schedule_draft(
     target_month: str = Query(...),
     department_id: uuid.UUID | None = Query(None),
     session: Session = Depends(get_session),
-    current_user: UserModel = Depends(require_department_member),
+    current_user: UserModel = Depends(require_department_admin),
 ):
     """Fetch the active schedule draft for a department and target month."""
     return schedule_controllers.get_schedule_draft_for_department_month_controller(

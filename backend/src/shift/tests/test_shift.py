@@ -10,7 +10,12 @@ from pydantic import ValidationError
 from sqlmodel import Session, select
 from sqlalchemy.exc import IntegrityError
 
-from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate, ShiftUpdate
+from src.shift.schemas import (
+    ShiftAssignmentCreate,
+    ShiftAssignmentRead,
+    ShiftCreate,
+    ShiftUpdate,
+)
 from src.shift.models import Shift as ShiftModel
 from src.shift.models import ShiftAssignment as ShiftAssignmentModel
 from src.shift import repository as shift_repository
@@ -2725,4 +2730,316 @@ def test_non_department_admin_cannot_update_or_delete_shift(
     session.refresh(shift)
     assert shift.name == "ER 1"
     assert shift.is_deleted is False
+
+
+def test_shift_assignment_read_schema_supports_optional_display_fields(
+    shift_assignment,
+    position,
+):
+    """Verifies ShiftAssignmentRead defaults display fields to None and accepts enriched values."""
+    from_orm_dto = ShiftAssignmentRead.model_validate(shift_assignment)
+    assert from_orm_dto.id == shift_assignment.id
+    assert from_orm_dto.doctor_name is None
+    assert from_orm_dto.position_id is None
+    assert from_orm_dto.position_name is None
+    assert from_orm_dto.shift_name is None
+
+    enriched_dto = ShiftAssignmentRead(
+        id=shift_assignment.id,
+        doctor_id=shift_assignment.doctor_id,
+        shift_id=shift_assignment.shift_id,
+        date=shift_assignment.date,
+        created_at=shift_assignment.created_at,
+        updated_at=shift_assignment.updated_at,
+        is_deleted=shift_assignment.is_deleted,
+        sync_status=shift_assignment.sync_status,
+        doctor_name="Dr. House",
+        position_id=position.id,
+        position_name=position.name,
+        shift_name="Night",
+    )
+    assert enriched_dto.doctor_name == "Dr. House"
+    assert enriched_dto.position_id == position.id
+    assert enriched_dto.position_name == position.name
+    assert enriched_dto.shift_name == "Night"
+
+
+def test_get_published_shift_assignments_for_department_filters_by_date_and_orders_asc(
+    session,
+    department,
+    position,
+    new_doctor,
+    shift,
+    shift_b,
+    doctor_b,
+):
+    """Tests month-bounded published assignment query, ordering, and joined entities."""
+    oct_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 10, 15),
+    )
+    nov_late = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 11, 20),
+    )
+    nov_early = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 11, 5),
+    )
+    deleted_nov = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 11, 12),
+    )
+    deleted_nov.is_deleted = True
+    session.add(deleted_nov)
+    session.commit()
+
+    # Foreign department assignment in the same month must be excluded
+    create_new_shift_assignment(
+        session=session,
+        doctor_id=doctor_b.id,
+        shift_id=shift_b.id,
+        date=datetime.date(2026, 11, 10),
+    )
+
+    nov_rows = shift_repository.get_published_shift_assignments_for_department(
+        session=session,
+        department_id=department.id,
+        start_date=datetime.date(2026, 11, 1),
+        end_date=datetime.date(2026, 11, 30),
+    )
+
+    assert [row[0].id for row in nov_rows] == [nov_early.id, nov_late.id]
+    first_assignment, first_doctor, first_shift, first_position = nov_rows[0]
+    assert first_assignment.date == datetime.date(2026, 11, 5)
+    assert first_doctor.id == new_doctor.id
+    assert first_doctor.name == new_doctor.name
+    assert first_shift.id == shift.id
+    assert first_shift.name == shift.name
+    assert first_position.id == position.id
+    assert first_position.name == position.name
+
+    all_rows = shift_repository.get_published_shift_assignments_for_department(
+        session=session,
+        department_id=department.id,
+    )
+    assert [row[0].id for row in all_rows] == [
+        oct_assignment.id,
+        nov_early.id,
+        nov_late.id,
+    ]
+
+
+def test_get_published_shift_assignments_preserves_history_when_parents_soft_deleted(
+    session,
+    department,
+    position,
+    new_doctor,
+    shift,
+):
+    """Tests active published assignments remain readable after doctor/shift/position soft-delete."""
+    assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 11, 8),
+    )
+
+    new_doctor.is_deleted = True
+    shift.is_deleted = True
+    position.is_deleted = True
+    session.add(new_doctor)
+    session.add(shift)
+    session.add(position)
+    session.commit()
+
+    rows = shift_repository.get_published_shift_assignments_for_department(
+        session=session,
+        department_id=department.id,
+        start_date=datetime.date(2026, 11, 1),
+        end_date=datetime.date(2026, 11, 30),
+    )
+
+    assert len(rows) == 1
+    ret_assignment, ret_doctor, ret_shift, ret_position = rows[0]
+    assert ret_assignment.id == assignment.id
+    assert ret_doctor.name == new_doctor.name
+    assert ret_shift.name == shift.name
+    assert ret_position.name == position.name
+
+
+def test_get_published_months_for_department_returns_distinct_months_descending(
+    session,
+    department,
+    new_doctor,
+    shift,
+    shift_b,
+    doctor_b,
+):
+    """Tests distinct YYYY-MM published months sorted newest-first, excluding deleted/foreign rows."""
+    create_new_shift_assignment(session, new_doctor.id, shift.id, datetime.date(2026, 9, 4))
+    create_new_shift_assignment(session, new_doctor.id, shift.id, datetime.date(2026, 11, 2))
+    create_new_shift_assignment(session, new_doctor.id, shift.id, datetime.date(2026, 11, 19))
+    create_new_shift_assignment(session, new_doctor.id, shift.id, datetime.date(2026, 10, 11))
+
+    deleted_dec = create_new_shift_assignment(
+        session, new_doctor.id, shift.id, datetime.date(2026, 12, 3)
+    )
+    deleted_dec.is_deleted = True
+    session.add(deleted_dec)
+    session.commit()
+
+    create_new_shift_assignment(session, doctor_b.id, shift_b.id, datetime.date(2027, 1, 7))
+
+    months = shift_repository.get_published_months_for_department(
+        session=session,
+        department_id=department.id,
+    )
+
+    assert months == ["2026-11", "2026-10", "2026-09"]
+
+
+def test_list_shift_assignments_controller_filters_by_target_month_and_enriches_display_fields(
+    session,
+    department,
+    position,
+    new_doctor,
+    shift,
+):
+    """Tests controller month filtering and joined display field population."""
+    oct_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 10, 25),
+    )
+    nov_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 11, 14),
+    )
+
+    nov_results = shift_controllers.list_shift_assignments_controller(
+        session=session,
+        department_id=department.id,
+        target_month="2026-11",
+    )
+
+    assert len(nov_results) == 1
+    assert nov_results[0].id == nov_assignment.id
+    assert nov_results[0].doctor_id == new_doctor.id
+    assert nov_results[0].doctor_name == new_doctor.name
+    assert nov_results[0].shift_id == shift.id
+    assert nov_results[0].shift_name == shift.name
+    assert nov_results[0].position_id == position.id
+    assert nov_results[0].position_name == position.name
+
+    all_results = shift_controllers.list_shift_assignments_controller(
+        session=session,
+        department_id=department.id,
+    )
+    assert [item.id for item in all_results] == [oct_assignment.id, nov_assignment.id]
+
+
+@pytest.mark.parametrize("bad_month", ["2026", "2026-13", "2026-00", "nov-2026", "2026/11"])
+def test_list_shift_assignments_route_rejects_invalid_target_month(
+    client,
+    viewer_headers,
+    bad_month,
+):
+    """Tests GET /api/v1/shifts/assignments rejects malformed target_month with 400."""
+    response = client.get(
+        f"/api/v1/shifts/assignments?target_month={bad_month}",
+        headers=viewer_headers,
+    )
+
+    assert response.status_code == 400
+    assert "YYYY-MM" in response.json()["detail"]
+
+
+def test_list_shift_assignments_route_filters_target_month_and_returns_enriched_fields(
+    client,
+    session,
+    department,
+    position,
+    new_doctor,
+    shift,
+    user_factory,
+    auth_headers_factory,
+):
+    """Tests GET /api/v1/shifts/assignments?target_month=YYYY-MM for DOCTOR role."""
+    doctor_user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=new_doctor.id,
+    )
+    doctor_headers = auth_headers_factory(doctor_user)
+
+    create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 10, 29),
+    )
+    nov_assignment = create_new_shift_assignment(
+        session=session,
+        doctor_id=new_doctor.id,
+        shift_id=shift.id,
+        date=datetime.date(2026, 11, 3),
+    )
+
+    response = client.get(
+        "/api/v1/shifts/assignments?target_month=2026-11",
+        headers=doctor_headers,
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == str(nov_assignment.id)
+    assert payload[0]["doctor_id"] == str(new_doctor.id)
+    assert payload[0]["doctor_name"] == new_doctor.name
+    assert payload[0]["shift_id"] == str(shift.id)
+    assert payload[0]["shift_name"] == shift.name
+    assert payload[0]["position_id"] == str(position.id)
+    assert payload[0]["position_name"] == position.name
+    assert payload[0]["date"] == "2026-11-03"
+
+
+def test_list_published_months_route_returns_months_descending_and_requires_auth(
+    client,
+    session,
+    new_doctor,
+    shift,
+    shift_b,
+    doctor_b,
+    viewer_headers,
+):
+    """Tests GET /api/v1/shifts/published-months enforces auth and returns distinct YYYY-MM descending."""
+    unauth_response = client.get("/api/v1/shifts/published-months")
+    assert unauth_response.status_code == 401
+
+    create_new_shift_assignment(session, new_doctor.id, shift.id, datetime.date(2026, 9, 10))
+    create_new_shift_assignment(session, new_doctor.id, shift.id, datetime.date(2026, 11, 2))
+    create_new_shift_assignment(session, doctor_b.id, shift_b.id, datetime.date(2027, 1, 5))
+
+    response = client.get(
+        "/api/v1/shifts/published-months",
+        headers=viewer_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json() == ["2026-11", "2026-09"]
+
+
+
 

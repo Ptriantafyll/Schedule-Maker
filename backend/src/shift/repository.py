@@ -7,6 +7,7 @@ import datetime
 import uuid
 import calendar
 from sqlmodel import Session, not_, select, func
+from src.doctor.models import Doctor as DoctorModel
 from src.position.models import Position as PositionModel
 from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate
 from src.shift.models import Shift as ShiftModel
@@ -193,6 +194,67 @@ def get_active_shift_assignments_for_department(
     )
 
     return list(session.exec(statement).all())
+
+
+def get_published_shift_assignments_for_department(
+    session: Session,
+    department_id: uuid.UUID,
+    *,
+    start_date: datetime.date | None = None,
+    end_date: datetime.date | None = None,
+) -> list[tuple[ShiftAssignmentModel, DoctorModel, ShiftModel, PositionModel]]:
+    """
+    Retrieves active published shift assignments joined with Doctor, Shift, and Position
+    for a department, optionally bounded by start_date/end_date, ordered by date ascending.
+    Preserves historical assignments even if parent Doctor, Shift, or Position was soft-deleted.
+    """
+    statement = (
+        select(ShiftAssignmentModel, DoctorModel, ShiftModel, PositionModel).join(
+            DoctorModel, DoctorModel.id == ShiftAssignmentModel.doctor_id
+        ).join(
+            ShiftModel, ShiftModel.id == ShiftAssignmentModel.shift_id
+        ).join(
+            PositionModel, PositionModel.id == ShiftModel.position_id
+        ).where(
+            PositionModel.department_id == department_id,
+            not_(ShiftAssignmentModel.is_deleted)
+        )
+    )
+
+    if start_date:
+        statement = statement.where(ShiftAssignmentModel.date >= start_date)
+
+    if end_date:
+        statement = statement.where(ShiftAssignmentModel.date <= end_date)
+
+    statement = statement.order_by(ShiftAssignmentModel.date.asc())
+
+    return list(session.exec(statement).all())
+
+
+def get_published_months_for_department(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[str]:
+    """
+    Retrieves distinct YYYY-MM strings for months with active shift assignments
+    in a department, ordered descending (newest month first).
+    """
+    statement = (
+        select(ShiftAssignmentModel.date)
+        .distinct()
+        .join(
+            ShiftModel, ShiftModel.id == ShiftAssignmentModel.shift_id
+        ).join(
+            PositionModel, PositionModel.id == ShiftModel.position_id
+        ).where(
+            PositionModel.department_id == department_id,
+            not_(ShiftAssignmentModel.is_deleted)
+        )
+    )
+    dates = session.exec(statement).all()
+
+    return sorted({f"{d.year:04d}-{d.month:02d}" for d in dates}, reverse=True)
 
 
 def get_latest_shift_assignment_date_for_department(

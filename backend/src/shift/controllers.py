@@ -2,11 +2,19 @@
 Shift controller functions for handling business logic related to team management.
 """
 
+import datetime
+import re
+import calendar
 import uuid
 from fastapi import HTTPException, status
 from sqlmodel import Session
 from src.shift import repository
-from src.shift.schemas import ShiftCreate, ShiftAssignmentCreate, ShiftUpdate
+from src.shift.schemas import (
+    ShiftAssignmentCreate,
+    ShiftAssignmentRead,
+    ShiftCreate,
+    ShiftUpdate,
+)
 from src.shift.models import Shift as ShiftModel
 from src.shift.models import ShiftAssignment as ShiftAssignmentModel
 from src.doctor import repository as doctor_repository
@@ -158,15 +166,79 @@ def create_shift_assignment_controller(
     return repository.create_shift_assignment(session, shift_id, shift_assignment_data)
 
 
+def _parse_target_month_bounds(
+    target_month: str,
+) -> tuple[datetime.date, datetime.date]:
+    """
+    Parses a YYYY-MM string and returns (first_day, last_day) of that month.
+    Raises HTTP 400 if the format or month number is invalid.
+    """
+    match = re.fullmatch(r"([1-9]\d{3})-(0[1-9]|1[0-2])", target_month)
+
+    if not match:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid target month format. Expected YYYY-MM."
+        )
+
+    year, month = int(match.group(1)), int(match.group(2))
+
+    _, last_day = calendar.monthrange(year, month)
+    return (datetime.date(year, month, 1), datetime.date(year, month, last_day))
+
+
 def list_shift_assignments_controller(
     session: Session,
     department_id: uuid.UUID,
-) -> list[ShiftAssignmentModel]:
-    """Handles logic for retrieving the active shift assignments"""
+    target_month: str | None = None,
+) -> list[ShiftAssignmentRead]:
+    """
+    Retrieves published shift assignments for a department (optionally filtered by
+    YYYY-MM target_month) with joined doctor, shift, and position display names.
+    """
+    start_date, end_date = (
+        _parse_target_month_bounds(target_month)
+        if target_month is not None
+        else (None, None)
+    )
 
-    return repository.get_active_shift_assignments_for_department(
+    assignment_rows = repository.get_published_shift_assignments_for_department(
         session=session,
         department_id=department_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+    return [
+        ShiftAssignmentRead(
+            id=assignment.id,
+            doctor_id=assignment.doctor_id,
+            shift_id=assignment.shift_id,
+            date=assignment.date,
+            created_at=assignment.created_at,
+            updated_at=assignment.updated_at,
+            is_deleted=assignment.is_deleted,
+            sync_status=assignment.sync_status,
+            doctor_name=doctor.name,
+            position_id=position.id,
+            position_name=position.name,
+            shift_name=shift.name,
+        )
+        for assignment, doctor, shift, position in assignment_rows
+    ]
+
+
+def list_published_months_controller(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[str]:
+    """
+    Retrieves distinct YYYY-MM strings for published months in a department,
+    ordered descending (newest month first).
+    """
+    return repository.get_published_months_for_department(
+        session=session,
+        department_id=department_id
     )
 
 

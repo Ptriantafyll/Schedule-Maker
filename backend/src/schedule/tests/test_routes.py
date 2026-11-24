@@ -196,10 +196,10 @@ def test_get_schedule_draft_endpoint_success(
     user_factory,
     auth_headers_factory,
 ):
-    """Verify department member can fetch the active schedule draft."""
+    """Verify department admin can fetch the active schedule draft."""
     dept = department_factory()
-    viewer = user_factory(role=UserRole.VIEWER, department_id=dept.id)
-    headers = auth_headers_factory(viewer)
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
 
     draft = ScheduleDraft(
         department_id=dept.id,
@@ -231,8 +231,8 @@ def test_get_schedule_draft_endpoint_not_found_returns_404(
 ):
     """Verify 404 is returned when no draft exists for target month."""
     dept = department_factory()
-    viewer = user_factory(role=UserRole.VIEWER, department_id=dept.id)
-    headers = auth_headers_factory(viewer)
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
 
     response = client.get(
         f"/api/v1/schedules/draft?target_month=2026-12&department_id={dept.id}",
@@ -248,14 +248,51 @@ def test_get_schedule_draft_rejects_cross_department_access(
     user_factory,
     auth_headers_factory,
 ):
-    """Verify department member cannot read drafts of another department."""
+    """Verify department admin cannot read drafts of another department."""
     dept_a = department_factory()
     dept_b = department_factory()
-    viewer_a = user_factory(role=UserRole.VIEWER, department_id=dept_a.id)
-    headers = auth_headers_factory(viewer_a)
+    admin_a = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept_a.id)
+    headers = auth_headers_factory(admin_a)
 
     response = client.get(
         f"/api/v1/schedules/draft?target_month=2026-11&department_id={dept_b.id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.parametrize("role", [UserRole.DOCTOR, UserRole.VIEWER])
+def test_get_schedule_draft_endpoint_forbids_non_admins(
+    client,
+    session,
+    department_factory,
+    doctor_factory,
+    user_factory,
+    auth_headers_factory,
+    role,
+):
+    """Verify DOCTOR and VIEWER cannot access raw ScheduleDraft endpoint even when a draft exists."""
+    dept = department_factory()
+    doc_id = doctor_factory(department_id=dept.id).id if role == UserRole.DOCTOR else None
+    user = user_factory(role=role, department_id=dept.id, doctor_id=doc_id)
+    headers = auth_headers_factory(user)
+
+    schedule_repository.create_schedule_draft(
+        session,
+        ScheduleDraft(
+            department_id=dept.id,
+            target_month="2026-11",
+            source_filename="test.xlsx",
+            total_duties=5,
+            solver_status="OPTIMAL",
+            status="draft",
+            assignments=[],
+        ),
+    )
+
+    response = client.get(
+        f"/api/v1/schedules/draft?target_month=2026-11&department_id={dept.id}",
         headers=headers,
     )
 
@@ -269,7 +306,7 @@ def test_export_schedule_endpoint_success(
     user_factory,
     auth_headers_factory,
 ):
-    """Verify department member can export active draft as Excel file."""
+    """Verify department member can export a published schedule as Excel file."""
     dept = department_factory()
     viewer = user_factory(role=UserRole.VIEWER, department_id=dept.id)
     headers = auth_headers_factory(viewer)
@@ -280,6 +317,7 @@ def test_export_schedule_endpoint_success(
         source_filename="test.xlsx",
         total_duties=5,
         solver_status="OPTIMAL",
+        status="published",
         assignments=[],
     )
     saved = schedule_repository.create_schedule_draft(session, draft)
@@ -358,10 +396,10 @@ def test_list_schedules_endpoint_success(
     user_factory,
     auth_headers_factory,
 ):
-    """Verify department member can retrieve a list of schedule summaries ordered by target_month."""
+    """Verify department admin can retrieve both draft and published schedule summaries."""
     dept = department_factory()
-    viewer = user_factory(role=UserRole.VIEWER, department_id=dept.id)
-    headers = auth_headers_factory(viewer)
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+    headers = auth_headers_factory(admin)
 
     draft_oct = ScheduleDraft(
         department_id=dept.id,
@@ -754,6 +792,7 @@ def test_export_schedule_draft_with_country_code(
         source_filename="test.xlsx",
         total_duties=1,
         solver_status="OPTIMAL",
+        status="published",
         assignments=[],
     )
     saved = schedule_repository.create_schedule_draft(session, draft)
@@ -1079,3 +1118,90 @@ def test_generate_schedule_endpoint_with_reconciliation_params(
     # Verify Dr. Temporary Resident has no assignments and wasn't saved
     temp_assignments = [a for a in data["assignments"] if a["doctor_name"] == "Dr. Temporary Resident"]
     assert len(temp_assignments) == 0
+
+
+@pytest.mark.parametrize("role", [UserRole.DOCTOR, UserRole.VIEWER])
+def test_list_schedules_endpoint_hides_drafts_from_non_admins(
+    client,
+    session,
+    department_factory,
+    doctor_factory,
+    user_factory,
+    auth_headers_factory,
+    role,
+):
+    """Verify DOCTOR and VIEWER only see published schedules from GET /api/v1/schedules."""
+    dept = department_factory()
+    doc_id = doctor_factory(department_id=dept.id).id if role == UserRole.DOCTOR else None
+    user = user_factory(role=role, department_id=dept.id, doctor_id=doc_id)
+    headers = auth_headers_factory(user)
+
+    published = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-10",
+        source_filename="oct.xlsx",
+        total_duties=10,
+        solver_status="OPTIMAL",
+        status="published",
+        assignments=[],
+    )
+    unpublished_draft = ScheduleDraft(
+        department_id=dept.id,
+        target_month="2026-11",
+        source_filename="nov.xlsx",
+        total_duties=12,
+        solver_status="OPTIMAL",
+        status="draft",
+        assignments=[],
+    )
+    schedule_repository.create_schedule_draft(session, published)
+    schedule_repository.create_schedule_draft(session, unpublished_draft)
+
+    response = client.get(
+        f"/api/v1/schedules?department_id={dept.id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert data[0]["target_month"] == "2026-10"
+    assert data[0]["status"] == "published"
+
+
+@pytest.mark.parametrize("role", [UserRole.DOCTOR, UserRole.VIEWER])
+def test_export_schedule_endpoint_hides_unpublished_draft_from_non_admins(
+    client,
+    session,
+    department_factory,
+    doctor_factory,
+    user_factory,
+    auth_headers_factory,
+    role,
+):
+    """Verify DOCTOR and VIEWER get 404 when trying to export an unpublished draft."""
+    dept = department_factory()
+    doc_id = doctor_factory(department_id=dept.id).id if role == UserRole.DOCTOR else None
+    user = user_factory(role=role, department_id=dept.id, doctor_id=doc_id)
+    headers = auth_headers_factory(user)
+
+    unpublished = schedule_repository.create_schedule_draft(
+        session,
+        ScheduleDraft(
+            department_id=dept.id,
+            target_month="2026-11",
+            source_filename="nov.xlsx",
+            total_duties=5,
+            solver_status="OPTIMAL",
+            status="draft",
+            assignments=[],
+        ),
+    )
+
+    response = client.get(
+        f"/api/v1/schedules/export-excel?draft_id={unpublished.id}",
+        headers=headers,
+    )
+
+    assert response.status_code == 404
+

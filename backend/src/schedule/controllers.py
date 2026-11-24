@@ -133,6 +133,12 @@ def generate_schedule_from_excel_controller(
         ) from exc
 
 
+def _is_non_admin_member(current_user: UserModel | None) -> bool:
+    """Return True when the user is a non-admin department member (DOCTOR or VIEWER)."""
+    return (current_user is not None
+            and current_user.role in (UserRole.DOCTOR, UserRole.VIEWER))
+
+
 def export_schedule_draft_controller(
     session: Session,
     draft_id: uuid.UUID,
@@ -163,6 +169,12 @@ def export_schedule_draft_controller(
         requested_department_id=draft.department_id,
     )
 
+    if _is_non_admin_member(current_user) and draft.status != "published":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Schedule draft not found."
+        )
+
     file_bytes = schedule_service.export_schedule_draft_to_excel(
         draft,
         country_code=country_code or "GR",
@@ -186,6 +198,7 @@ def list_schedules_controller(
     return schedule_repository.list_schedules_for_department(
         session=session,
         department_id=target_dept_id,
+        published_only=_is_non_admin_member(current_user)
     )
 
 

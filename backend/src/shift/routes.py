@@ -3,7 +3,7 @@ Shift routes for handling API requests related to shift management.
 """
 
 import uuid
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session
 from src.db.connection import get_session
 
@@ -56,12 +56,30 @@ def list_shifts(
 
 @router.get("/assignments", response_model=list[ShiftAssignmentRead])
 def list_shift_assignments(
+    target_month: str | None = Query(
+        None,
+        description="Optional target month filter in YYYY-MM format.",
+    ),
     session: Session = Depends(get_session),
     _current_user: UserModel = Depends(require_department_member),
     department_id: uuid.UUID = Depends(require_department_scope),
 ):
-    """Retrieves all shift assignments of a department."""
+    """Retrieves published shift assignments of a department, optionally filtered by target_month."""
     return shift_controllers.list_shift_assignments_controller(
+        session=session,
+        department_id=department_id,
+        target_month=target_month,
+    )
+
+
+@router.get("/published-months", response_model=list[str])
+def list_published_months(
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_member),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """Retrieves distinct YYYY-MM published schedule months for a department."""
+    return shift_controllers.list_published_months_controller(
         session=session,
         department_id=department_id,
     )

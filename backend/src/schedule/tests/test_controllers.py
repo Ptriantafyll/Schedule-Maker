@@ -496,3 +496,117 @@ def test_generate_schedule_from_roster_controller_super_admin_requires_departmen
 
     assert exc_info.value.status_code == 400
     assert "Department ID is required for Super Admin" in exc_info.value.detail
+
+
+def test_list_schedules_for_department_published_only_excludes_drafts(
+    session,
+    department_factory,
+):
+    """Verify repository published_only=True returns only status='published' rows."""
+    dept = department_factory()
+    published = schedule_repository.create_schedule_draft(
+        session,
+        ScheduleDraft(
+            department_id=dept.id,
+            target_month="2026-10",
+            source_filename="oct.xlsx",
+            status="published",
+        ),
+    )
+    schedule_repository.create_schedule_draft(
+        session,
+        ScheduleDraft(
+            department_id=dept.id,
+            target_month="2026-11",
+            source_filename="nov.xlsx",
+            status="draft",
+        ),
+    )
+
+    results = schedule_repository.list_schedules_for_department(
+        session,
+        dept.id,
+        published_only=True,
+    )
+
+    assert [item.id for item in results] == [published.id]
+
+
+@pytest.mark.parametrize("role", [UserRole.DOCTOR, UserRole.VIEWER])
+def test_list_schedules_controller_hides_drafts_from_non_admins(
+    session,
+    department_factory,
+    doctor_factory,
+    user_factory,
+    role,
+):
+    """Verify controller returns only published schedules for DOCTOR and VIEWER."""
+    from src.schedule.controllers import list_schedules_controller
+
+    dept = department_factory()
+    doc_id = doctor_factory(department_id=dept.id).id if role == UserRole.DOCTOR else None
+    user = user_factory(role=role, department_id=dept.id, doctor_id=doc_id)
+
+    published = schedule_repository.create_schedule_draft(
+        session,
+        ScheduleDraft(
+            department_id=dept.id,
+            target_month="2026-10",
+            source_filename="oct.xlsx",
+            status="published",
+        ),
+    )
+    schedule_repository.create_schedule_draft(
+        session,
+        ScheduleDraft(
+            department_id=dept.id,
+            target_month="2026-11",
+            source_filename="nov.xlsx",
+            status="draft",
+        ),
+    )
+
+    results = list_schedules_controller(
+        session=session,
+        department_id=dept.id,
+        current_user=user,
+    )
+
+    assert [item.id for item in results] == [published.id]
+
+
+@pytest.mark.parametrize("role", [UserRole.DOCTOR, UserRole.VIEWER])
+def test_export_schedule_draft_controller_blocks_unpublished_for_non_admins(
+    session,
+    department_factory,
+    doctor_factory,
+    user_factory,
+    role,
+):
+    """Verify controller raises 404 when DOCTOR or VIEWER tries to export an unpublished draft."""
+    dept = department_factory()
+    doc_id = doctor_factory(department_id=dept.id).id if role == UserRole.DOCTOR else None
+    user = user_factory(role=role, department_id=dept.id, doctor_id=doc_id)
+
+    unpublished = schedule_repository.create_schedule_draft(
+        session,
+        ScheduleDraft(
+            department_id=dept.id,
+            target_month="2026-11",
+            source_filename="nov.xlsx",
+            total_duties=0,
+            solver_status="OPTIMAL",
+            status="draft",
+            assignments=[],
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        export_schedule_draft_controller(
+            session=session,
+            draft_id=unpublished.id,
+            current_user=user,
+        )
+
+    assert exc_info.value.status_code == 404
+
