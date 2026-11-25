@@ -27,6 +27,7 @@ from src.department import repository as department_repository
 from src.shift import repository as shift_repository
 from src.team import repository as team_repository
 from src.position import repository as position_repository
+from src.user import repository as user_repository
 
 ######################
 # Helpers
@@ -84,10 +85,15 @@ def _get_doctor_or_404(
 def _to_doctor_read(
     doctor: DoctorModel,
     position_ids: list[uuid.UUID] | None = None,
+    linked_user: UserModel | None = None,
 ) -> DoctorRead:
-    """Serializes a Doctor ORM model into DoctorRead with position_ids."""
+    """Serializes a Doctor ORM model into DoctorRead with position_ids and linked user info."""
     return DoctorRead.model_validate(doctor).model_copy(
-        update={"position_ids": position_ids if position_ids is not None else []}
+        update={
+            "position_ids": position_ids if position_ids is not None else [],
+            "linked_user_id": linked_user.id if linked_user is not None else None,
+            "linked_user_email": linked_user.email if linked_user is not None else None,
+        }
     )
 
 
@@ -96,13 +102,18 @@ def _get_doctor_read_with_positions(
     doctor: DoctorModel,
     department_id: uuid.UUID,
 ) -> DoctorRead:
-    """Builds DoctorRead including active position IDs for a single doctor."""
+    """Builds DoctorRead including active position IDs and linked user metadata."""
     links = doctor_repository.get_doctor_positions_for_department(
         session=session,
         doctor_id=doctor.id,
         department_id=department_id,
     )
-    return _to_doctor_read(doctor, [link.position_id for link in links])
+    linked_user = user_repository.get_user_by_doctor_id(session, doctor.id)
+    return _to_doctor_read(
+        doctor,
+        [link.position_id for link in links],
+        linked_user=linked_user,
+    )
 
 ######################
 # Controllers
@@ -138,18 +149,40 @@ def create_doctor_controller(
 
 
 def list_doctors_controller(session: Session, department_id: uuid.UUID) -> list[DoctorRead]:
-    """Handles logic of listing all active doctors with their active position IDs."""
+    """Handles logic of listing all active doctors with their active position IDs and linked users."""
     doctors = doctor_repository.get_active_doctors_for_department(session, department_id)
     links = doctor_repository.get_all_doctor_positions_for_department(session, department_id)
+    doctor_users = user_repository.get_active_doctor_users_for_department(session, department_id)
 
     position_ids_by_doctor: dict[uuid.UUID, list[uuid.UUID]] = defaultdict(list)
     for link in links:
         position_ids_by_doctor[link.doctor_id].append(link.position_id)
 
+    users_by_doctor = {
+        user.doctor_id: user
+        for user in doctor_users
+        if user.doctor_id is not None
+    }
+
     return [
-        _to_doctor_read(doctor, position_ids_by_doctor[doctor.id])
+        _to_doctor_read(
+            doctor,
+            position_ids_by_doctor[doctor.id],
+            linked_user=users_by_doctor.get(doctor.id),
+        )
         for doctor in doctors
     ]
+
+
+def list_department_doctor_users_controller(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[UserModel]:
+    """Retrieves active DOCTOR user accounts in the department."""
+    return user_repository.get_active_doctor_users_for_department(
+        session=session,
+        department_id=department_id,
+    )
 
 
 def list_doctor_roster_controller(session: Session, department_id: uuid.UUID) -> list[DoctorModel]:
@@ -551,3 +584,88 @@ def delete_doctor_position_controller(
         doctor_position=doctor_position,
         commit=True,
     )
+
+
+def link_doctor_to_user_controller(
+    session: Session,
+    doctor_id: uuid.UUID,
+    user_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> DoctorRead:
+    """
+    Atomically links an active DOCTOR user in the department to target doctor_id,
+    migrates dates from the user's previous doctor card, soft-deletes an empty
+    duplicate auto-created doctor card, and commits once.
+    """
+    doctor = _get_doctor_or_404(
+        session=session,
+        doctor_id=doctor_id,
+        department_id=department_id,
+    )
+    user = user_repository.get_user_by_id(session, user_id)
+    if (
+        user is None
+        or user.is_deleted
+        or user.role != UserRole.DOCTOR
+        or user.department_id != department_id
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Doctor user not found.",
+        )
+
+    if user.doctor_id == doctor.id:
+        return _get_doctor_read_with_positions(session, doctor, department_id)
+
+    if user_repository.get_user_by_doctor_id(session, doctor.id) is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Doctor is already linked to another user account.",
+        )
+
+    old_doctor_id = user.doctor_id
+    try:
+        user_repository.reassign_user_doctor(session, user, doctor.id, commit=False)
+        if old_doctor_id is not None and old_doctor_id != doctor.id:
+            doctor_repository.migrate_doctor_schedule_dates(
+                session=session,
+                from_doctor_id=old_doctor_id,
+                to_doctor_id=doctor.id,
+                commit=False,
+            )
+            _cleanup_empty_duplicate_doctor(
+                session=session,
+                old_doctor_id=old_doctor_id,
+                department_id=department_id,
+            )
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+
+    session.refresh(doctor)
+    return _get_doctor_read_with_positions(session, doctor, department_id)
+
+
+def _cleanup_empty_duplicate_doctor(
+    session: Session,
+    old_doctor_id: uuid.UUID,
+    department_id: uuid.UUID,
+) -> None:
+    """Soft-deletes an unlinked duplicate doctor card if it holds no positions or shifts."""
+    old_doctor = doctor_repository.get_doctor_by_id_for_department(
+        session=session,
+        doctor_id=old_doctor_id,
+        department_id=department_id,
+    )
+    if old_doctor is None:
+        return
+    if doctor_repository.has_active_shift_assignments(session, old_doctor_id):
+        return
+    if doctor_repository.get_doctor_positions_for_department(
+        session=session,
+        doctor_id=old_doctor_id,
+        department_id=department_id,
+    ):
+        return
+    doctor_repository.soft_delete_doctor(session, old_doctor, commit=False)

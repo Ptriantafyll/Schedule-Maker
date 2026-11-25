@@ -29,6 +29,8 @@ class Invitation(SyncBase, table=True):
     used_at: Optional[datetime.datetime] = Field(default=None, nullable=True)
     revoked_at: Optional[datetime.datetime] = Field(
         default=None, nullable=True)
+    max_uses: int = Field(default=1, ge=1)
+    used_count: int = Field(default=0, ge=0)
 
     @property
     def is_expired(self) -> bool:
@@ -46,6 +48,7 @@ class Invitation(SyncBase, table=True):
             and self.used_at is None
             and self.revoked_at is None
             and not self.is_expired
+            and self.used_count < self.max_uses
         )
 
 

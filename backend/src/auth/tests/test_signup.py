@@ -355,3 +355,171 @@ def test_signup_validates_request_body(client):
 
     response = client.post("/api/v1/auth/signup", json=payload)
     assert response.status_code == 422
+
+
+def test_signup_multi_use_invitation_allows_max_uses_and_rejects_excess(
+    client,
+    session: Session,
+    department_factory,
+    invitation_factory,
+):
+    """A max_uses=2 invitation allows 2 signups and rejects the 3rd with HTTP 400."""
+    dept = department_factory()
+    raw_token = generate_invitation_token()
+    token_hash = hash_invitation_token(raw_token)
+    invitation = invitation_factory(
+        department_id=dept.id,
+        role=UserRole.DOCTOR,
+        doctor_id=None,
+        token_hash=token_hash,
+        max_uses=2,
+    )
+
+    resp1 = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "invitation_token": raw_token,
+            "first_name": "Gregory",
+            "last_name": "House",
+            "email": "house.multi@hospital.org",
+            "password": "SecurePassword123!",
+        },
+    )
+    assert resp1.status_code == 201
+
+    resp2 = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "invitation_token": raw_token,
+            "first_name": "James",
+            "last_name": "Wilson",
+            "email": "wilson.multi@hospital.org",
+            "password": "SecurePassword123!",
+        },
+    )
+    assert resp2.status_code == 201
+
+    resp3 = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "invitation_token": raw_token,
+            "first_name": "Lisa",
+            "last_name": "Cuddy",
+            "email": "cuddy.multi@hospital.org",
+            "password": "SecurePassword123!",
+        },
+    )
+    assert resp3.status_code == 400
+
+    refreshed = auth_repository.get_invitation_by_id(session, invitation.id)
+    assert refreshed.used_count == 2
+    assert refreshed.used_at is not None
+
+
+def test_signup_multi_use_doctor_auto_matches_existing_unlinked_doctor_by_name(
+    client,
+    session: Session,
+    department_factory,
+    doctor_factory,
+    invitation_factory,
+):
+    """Signing up with matching name (ignoring 'Dr.' prefix and case) links existing unlinked Doctor."""
+    dept = department_factory()
+    existing_doc = doctor_factory(department_id=dept.id, full_name="Dr. Gregory House")
+
+    raw_token = generate_invitation_token()
+    invitation_factory(
+        department_id=dept.id,
+        role=UserRole.DOCTOR,
+        doctor_id=None,
+        token_hash=hash_invitation_token(raw_token),
+        max_uses=3,
+    )
+
+    response = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "invitation_token": raw_token,
+            "first_name": "gregory",
+            "last_name": "HOUSE",
+            "email": "house.match@hospital.org",
+            "password": "SecurePassword123!",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["doctor_id"] == str(existing_doc.id)
+
+    doctors_in_dept = session.exec(
+        select(DoctorModel).where(DoctorModel.department_id == dept.id)
+    ).all()
+    assert len(doctors_in_dept) == 1
+
+
+def test_signup_multi_use_doctor_creates_new_doctor_when_ambiguous_or_no_match(
+    client,
+    session: Session,
+    department_factory,
+    doctor_factory,
+    invitation_factory,
+):
+    """Creates a new Doctor card if no unique unlinked name match exists (or 2 unlinked share the name)."""
+    dept = department_factory()
+    dup1 = doctor_factory(department_id=dept.id, full_name="Dr. Alex Smith")
+    dup2 = doctor_factory(department_id=dept.id, full_name="Alex Smith")
+
+    raw_token = generate_invitation_token()
+    invitation_factory(
+        department_id=dept.id,
+        role=UserRole.DOCTOR,
+        doctor_id=None,
+        token_hash=hash_invitation_token(raw_token),
+        max_uses=2,
+    )
+
+    response = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "invitation_token": raw_token,
+            "first_name": "Alex",
+            "last_name": "Smith",
+            "email": "alex.smith@hospital.org",
+            "password": "SecurePassword123!",
+        },
+    )
+    assert response.status_code == 201
+    created_doctor_id = response.json()["doctor_id"]
+    assert created_doctor_id not in {str(dup1.id), str(dup2.id)}
+
+
+def test_signup_multi_use_doctor_does_not_match_different_single_unlinked_doctor(
+    client,
+    department_factory,
+    doctor_factory,
+    invitation_factory,
+):
+    """Signing up as a different name creates a new Doctor even when one unlinked Doctor exists."""
+    dept = department_factory()
+    foreman = doctor_factory(department_id=dept.id, full_name="Dr. Eric Foreman")
+
+    raw_token = generate_invitation_token()
+    invitation_factory(
+        department_id=dept.id,
+        role=UserRole.DOCTOR,
+        doctor_id=None,
+        token_hash=hash_invitation_token(raw_token),
+        max_uses=3,
+    )
+
+    response = client.post(
+        "/api/v1/auth/signup",
+        json={
+            "invitation_token": raw_token,
+            "first_name": "Lisa",
+            "last_name": "Cuddy",
+            "email": "cuddy.nomatch@hospital.org",
+            "password": "SecurePassword123!",
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["doctor_id"] != str(foreman.id)
+

@@ -103,6 +103,7 @@ def _issue_invitation(
     role: UserRole,
     department_id: uuid.UUID,
     doctor_id: uuid.UUID | None = None,
+    max_uses: int = 1,
 ) -> InvitationCreatedResponse:
     """Helper to generate token, calculate expiry, persist invitation, and build response."""
     raw_token = security.generate_invitation_token()
@@ -119,6 +120,7 @@ def _issue_invitation(
         created_by_user_id=creator_user_id,
         expires_at=expires_at,
         doctor_id=doctor_id,
+        max_uses=max_uses,
     )
 
     return InvitationCreatedResponse(
@@ -128,6 +130,8 @@ def _issue_invitation(
         doctor_id=doctor_id,
         expires_at=expires_at,
         raw_token=raw_token,
+        max_uses=persisted.max_uses,
+        used_count=persisted.used_count,
     )
 
 
@@ -185,6 +189,7 @@ def create_staff_invitation(
         role=data.role,
         department_id=current_user.department_id,
         doctor_id=data.doctor_id,
+        max_uses=data.max_uses,
     )
 
 
@@ -194,7 +199,7 @@ def provision_department_with_admin(
     data: DepartmentAdminProvisioningCreate,
 ) -> tuple[DepartmentModel, InvitationCreatedResponse]:
     """
-    Purpose: A SUPER_ADMIN creates a brand new department and simultaneously 
+    Purpose: A SUPER_ADMIN creates a brand new department and simultaneously
     issues the first DEPARTMENT_ADMIN invitation token.
     """
     if current_user.role != UserRole.SUPER_ADMIN:
@@ -278,7 +283,7 @@ def consume_invitation_and_signup(
             "Invitation not found."
         )
 
-    if invitation.used_at is not None:
+    if invitation.used_at is not None or invitation.used_count >= invitation.max_uses:
         raise InvitationAlreadyUsedError(
             "Invitation already used."
         )
@@ -308,14 +313,22 @@ def consume_invitation_and_signup(
     if invitation.role == UserRole.DOCTOR:
         doctor_id = invitation.doctor_id
 
-        if invitation.doctor_id is None:
-            new_doctor = doctor_repository.stage_doctor(
+        if doctor_id is None:
+            matched_doctor = doctor_repository.find_unique_unlinked_doctor_by_normalized_name(
                 session=session,
-                name=full_name,
                 department_id=invitation.department_id,
-                team_id=None,
+                full_name=full_name
             )
-            doctor_id = new_doctor.id
+            if matched_doctor is not None:
+                doctor_id = matched_doctor.id
+            else:
+                new_doctor = doctor_repository.stage_doctor(
+                    session=session,
+                    name=full_name,
+                    department_id=invitation.department_id,
+                    team_id=None,
+                )
+                doctor_id = new_doctor.id
 
     account_data = UserAccountCreate(
         email=data.email,
@@ -330,7 +343,7 @@ def consume_invitation_and_signup(
         session=session,
         account_data=account_data
     )
-    auth_repository.mark_invitation_as_used(
+    auth_repository.consume_invitation_use(
         session=session,
         invitation=invitation,
     )

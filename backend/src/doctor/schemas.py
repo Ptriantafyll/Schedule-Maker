@@ -73,8 +73,29 @@ class DoctorRead(DoctorBase):
     is_deleted: bool = False
     sync_status: bool = False
     position_ids: list[uuid.UUID] = Field(default_factory=list)
+    linked_user_id: Optional[uuid.UUID] = None
+    linked_user_email: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DepartmentDoctorUserRead(BaseModel):
+    """Summary schema for active DOCTOR accounts in a department."""
+
+    id: uuid.UUID
+    full_name: str
+    email: str
+    doctor_id: uuid.UUID
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DoctorLinkUserRequest(BaseModel):
+    """Request schema for linking an existing DOCTOR User account to a Doctor card."""
+
+    user_id: uuid.UUID
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class DoctorRosterRead(BaseModel):

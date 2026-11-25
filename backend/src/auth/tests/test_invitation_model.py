@@ -164,3 +164,34 @@ def test_invitation_is_active_property():
         is_deleted=True,
     )
     assert deleted_invitation.is_active is False
+
+
+def test_invitation_multi_use_defaults_and_is_active_threshold():
+    """Tests max_uses and used_count defaults and is_active cutoff when used_count reaches max_uses."""
+    now = datetime.datetime.now(datetime.timezone.utc)
+
+    default_inv = Invitation(
+        token_hash="7" * 64,
+        role=UserRole.DOCTOR,
+        department_id=uuid.uuid4(),
+        created_by_user_id=uuid.uuid4(),
+        expires_at=now + datetime.timedelta(days=1),
+    )
+    assert default_inv.max_uses == 1
+    assert default_inv.used_count == 0
+    assert default_inv.is_active is True
+
+    multi_inv = Invitation(
+        token_hash="8" * 64,
+        role=UserRole.DOCTOR,
+        department_id=uuid.uuid4(),
+        created_by_user_id=uuid.uuid4(),
+        expires_at=now + datetime.timedelta(days=1),
+        max_uses=3,
+        used_count=2,
+    )
+    assert multi_inv.is_active is True
+
+    multi_inv.used_count = 3
+    assert multi_inv.is_active is False
+

@@ -3,11 +3,13 @@
 Authentication repository function for handling database operations.
 """
 
+import datetime
 import uuid
 from sqlmodel import Session, not_, select
 
 from src.user.schemas import UserPersistenceCreate
 from src.user.models import User as UserModel
+from src.user.models import UserRole
 from src.utils.email import normalize_email
 
 
@@ -81,3 +83,35 @@ def get_user_by_doctor_id(
     )
 
     return session.exec(statement).first()
+
+
+def get_active_doctor_users_for_department(
+    session: Session,
+    department_id: uuid.UUID,
+) -> list[UserModel]:
+    """Retrieves all active DOCTOR user accounts in a department."""
+    statement = select(UserModel).where(
+        UserModel.department_id == department_id,
+        UserModel.role == UserRole.DOCTOR,
+        not_(UserModel.is_deleted),
+    )
+    return list(session.exec(statement).all())
+
+
+def reassign_user_doctor(
+    session: Session,
+    user: UserModel,
+    doctor_id: uuid.UUID,
+    *,
+    commit: bool = False,
+) -> UserModel:
+    """Updates a user's linked doctor_id and sync metadata, flushing or committing."""
+    user.doctor_id = doctor_id
+    user.sync_status = False
+    user.updated_at = datetime.datetime.now(datetime.timezone.utc)
+    session.add(user)
+    session.flush()
+    if commit:
+        session.commit()
+        session.refresh(user)
+    return user

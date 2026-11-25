@@ -7,7 +7,7 @@ import os
 import logging
 import sqlite3
 from collections.abc import Generator
-from sqlalchemy import event
+from sqlalchemy import event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlmodel import Session, SQLModel, create_engine
 
@@ -37,6 +37,26 @@ engine = create_engine(
 )
 
 
+def _ensure_invitation_multi_use_columns() -> None:
+    """Adds max_uses and used_count columns to existing invitation tables if missing."""
+    existing_cols = {
+        col["name"] for col in inspect(engine).get_columns("invitation")
+    }
+    with engine.begin() as conn:
+        if "max_uses" not in existing_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE invitation ADD COLUMN max_uses INTEGER NOT NULL DEFAULT 1"
+                )
+            )
+        if "used_count" not in existing_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE invitation ADD COLUMN used_count INTEGER NOT NULL DEFAULT 0"
+                )
+            )
+
+
 def init_db() -> None:
     """
     Physically creates the tables in the target database if they do not exist.
@@ -52,6 +72,7 @@ def init_db() -> None:
     from src.schedule.models import ScheduleDraft  # pylint: disable=unused-import
 
     SQLModel.metadata.create_all(engine)
+    _ensure_invitation_multi_use_columns()
     logger.info("Database initialized")
 
 

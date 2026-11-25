@@ -221,3 +221,28 @@ def test_revoke_invitation(session: Session, invitation_factory):
     assert revoked.id == invitation.id
     assert revoked.revoked_at is not None
     assert revoked.is_active is False
+
+
+def test_consume_invitation_use_increments_count_until_max_uses(
+    session: Session,
+    invitation_factory,
+):
+    """Tests multi-use consumption increments used_count and only sets used_at when exhausted."""
+    invitation = invitation_factory(max_uses=2, used_count=0)
+
+    auth_repository.consume_invitation_use(session, invitation)
+    session.commit()
+    session.refresh(invitation)
+
+    assert invitation.used_count == 1
+    assert invitation.used_at is None
+    assert invitation.is_active is True
+
+    auth_repository.consume_invitation_use(session, invitation)
+    session.commit()
+    session.refresh(invitation)
+
+    assert invitation.used_count == 2
+    assert invitation.used_at is not None
+    assert invitation.is_active is False
+

@@ -541,6 +541,26 @@ Currently, `POST /api/v1/doctors/{doctor_id}/unavailability` and `POST /api/v1/d
 - Adding multiple unavailable dates or pre-assignments executes in a single HTTP request and a single atomic database transaction.
 - Any conflict across the submitted dates rolls back the entire batch and reports the conflicting date(s).
 
+### BL-024: Alembic Database Migrations Setup
+
+**Area:** Database / Production Deployment & Scalability  
+**Priority:** Medium
+
+#### Problem
+
+Currently, `src/db/connection.py` relies on `SQLModel.metadata.create_all(engine)` and ad-hoc startup `ALTER TABLE` helpers (e.g. `_ensure_invitation_multi_use_columns`) to apply additive schema changes. While acceptable for single-container SQLite setups, running DDL inside application startup risks race conditions across multi-worker deployments and lacks versioned rollbacks for PostgreSQL.
+
+#### Required work
+
+1. Add `alembic` via `uv add alembic` and initialize the migrations directory with explicit SQLAlchemy constraint `MetaData(naming_convention=...)`.
+2. Configure `env.py` with `target_metadata = SQLModel.metadata` and generate an initial baseline migration matching the current tables (including `invitation.max_uses` and `invitation.used_count`).
+3. Update deployment workflows to execute `alembic upgrade head` before starting application workers, and remove ad-hoc startup `ALTER TABLE` helpers from `init_db()`.
+
+#### Completion criteria
+
+- Schema changes are applied cleanly via `alembic upgrade head` without race conditions on multi-worker startup.
+- Rollbacks (`alembic downgrade`) and fresh PostgreSQL / SQLite deployments produce identical schemas.
+
 ## Resolved / Closed
 
 

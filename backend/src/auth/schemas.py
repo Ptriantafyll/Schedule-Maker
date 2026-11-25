@@ -7,7 +7,7 @@ from __future__ import annotations
 import datetime
 import uuid
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, model_validator, Field
 from src.user.models import UserRole
 from src.department.schemas import DepartmentRead
 from src.auth.security import validate_password_strength
@@ -49,6 +49,7 @@ class StaffInvitationCreate(BaseModel):
     """
     role: UserRole = UserRole.DOCTOR
     doctor_id: Optional[uuid.UUID] = None
+    max_uses: int = Field(default=1, ge=1, le=100)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -59,6 +60,13 @@ class StaffInvitationCreate(BaseModel):
             raise ValueError(
                 "Department admins may only invite doctors or viewers.")
         return v
+
+    @model_validator(mode="after")
+    def validate_staff_invitation(self) -> StaffInvitationCreate:
+        if self.doctor_id is not None and self.max_uses > 1:
+            raise ValueError(
+                "Targeted doctor invitations must have max_uses=1.")
+        return self
 
 
 class DepartmentAdminProvisioningCreate(BaseModel):
@@ -135,6 +143,8 @@ class InvitationCreatedResponse(BaseModel):
     doctor_id: Optional[uuid.UUID] = None
     expires_at: datetime.datetime
     raw_token: str
+    max_uses: int = 1
+    used_count: int = 0
 
 
 class InvitationRead(BaseModel):
@@ -155,6 +165,8 @@ class InvitationRead(BaseModel):
     updated_at: datetime.datetime
     is_deleted: bool = False
     sync_status: bool = False
+    max_uses: int = 1
+    used_count: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 

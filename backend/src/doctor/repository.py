@@ -18,6 +18,7 @@ from src.doctor.models import DoctorPreAssignment as DoctorPreAssignmentModel
 from src.doctor.models import DoctorUnavailability as DoctorUnavailabilityModel
 from src.doctor.models import DoctorPosition as DoctorPositionModel
 from src.position.models import Position as PositionModel
+from src.shift.models import ShiftAssignment as ShiftAssignmentModel
 
 _ModelT = TypeVar(
     "_ModelT",
@@ -110,6 +111,50 @@ def get_active_doctors_for_department(session: Session, department_id: uuid.UUID
     )
 
     return session.exec(statement).all()
+
+
+def _normalize_doctor_name(name: str) -> str:
+    """
+    Normalizes a doctor's name for case-insensitive matching by collapsing whitespace
+    and stripping leading 'Dr.' / 'Dr ' prefixes.
+    """
+    normalized = " ".join(name.strip().lower().split())
+    if normalized.startswith("dr."):
+        normalized = normalized[3:].strip()
+    elif normalized.startswith("dr "):
+        normalized = normalized[3:].strip()
+    return normalized
+
+
+def find_unique_unlinked_doctor_by_normalized_name(
+    session: Session,
+    department_id: uuid.UUID,
+    full_name: str,
+) -> DoctorModel | None:
+    """
+    Finds a unique active, unlinked Doctor in the department whose normalized name
+    matches full_name. Returns None if zero or multiple unlinked doctors match.
+    """
+    target_name = _normalize_doctor_name(full_name)
+    if not target_name:
+        return None
+
+    active_doctors = get_active_doctors_for_department(session, department_id)
+    linked_doctor_ids = get_doctor_emails_for_department(
+        session, department_id
+    )
+
+    matches = [
+        doc
+        for doc in active_doctors
+        if doc.id not in linked_doctor_ids
+        and _normalize_doctor_name(doc.name) == target_name
+    ]
+
+    if len(matches) == 1:
+        return matches[0]
+
+    return None
 
 
 def stage_doctor(
@@ -273,7 +318,7 @@ def get_doctor_unavailability_by_id_for_doctor(
         .where(
             DoctorUnavailabilityModel.id == unavailability_id,
             DoctorUnavailabilityModel.doctor_id == doctor_id,
-            not_(DoctorUnavailabilityModel.is_deleted) 
+            not_(DoctorUnavailabilityModel.is_deleted)
         )
     )
 
@@ -641,3 +686,62 @@ def restore_doctor_pre_assignment(
     """Restores a soft-deleted doctor pre-assignment in place with the updated shift."""
     pre_assignment.shift_id = shift_id
     return _set_deleted(session, pre_assignment, is_deleted=False, commit=commit)
+
+
+def has_active_shift_assignments(
+    session: Session,
+    doctor_id: uuid.UUID,
+) -> bool:
+    """Returns True if the doctor has any non-deleted ShiftAssignment rows."""
+    statement = select(ShiftAssignmentModel.id).where(
+        ShiftAssignmentModel.doctor_id == doctor_id,
+        not_(ShiftAssignmentModel.is_deleted),
+    )
+    return session.exec(statement).first() is not None
+
+
+def migrate_doctor_schedule_dates(
+    session: Session,
+    from_doctor_id: uuid.UUID,
+    to_doctor_id: uuid.UUID,
+    *,
+    commit: bool = False,
+) -> None:
+    """
+    Moves active unavailability and pre-assignment dates from from_doctor_id onto
+    to_doctor_id (skipping dates that already exist or conflict on to_doctor_id,
+    restoring soft-deleted target rows in place when applicable) without committing
+    unless commit=True.
+    """
+    for unavail in get_doctor_unavailability(session, from_doctor_id):
+        if get_doctor_pre_assignment_by_date(session, to_doctor_id, unavail.date) is None:
+            existing = get_doctor_unavailability_by_date(
+                session, to_doctor_id, unavail.date, include_deleted=True
+            )
+            if existing is None:
+                session.add(DoctorUnavailabilityModel(doctor_id=to_doctor_id, date=unavail.date))
+                session.flush()
+            elif existing.is_deleted:
+                restore_doctor_unavailability(session, existing, commit=False)
+        soft_delete_doctor_unavailability(session, unavail, commit=False)
+
+    for pre in get_doctor_pre_assignments(session, from_doctor_id):
+        if get_doctor_unavailability_by_date(session, to_doctor_id, pre.date) is None:
+            existing = get_doctor_pre_assignment_by_date(
+                session, to_doctor_id, pre.date, include_deleted=True
+            )
+            if existing is None:
+                session.add(
+                    DoctorPreAssignmentModel(
+                        doctor_id=to_doctor_id, shift_id=pre.shift_id, date=pre.date
+                    )
+                )
+                session.flush()
+            elif existing.is_deleted:
+                restore_doctor_pre_assignment(
+                    session, existing, shift_id=pre.shift_id, commit=False
+                )
+        soft_delete_doctor_pre_assignment(session, pre, commit=False)
+
+    if commit:
+        session.commit()

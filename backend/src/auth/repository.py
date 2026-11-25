@@ -21,6 +21,7 @@ def create_invitation(
     created_by_user_id: uuid.UUID,
     expires_at: datetime.datetime,
     doctor_id: Optional[uuid.UUID] = None,
+    max_uses: int = 1,
 ) -> InvitationModel:
     """Creates an invitation in the db"""
     new_invitation = InvitationModel(
@@ -30,6 +31,7 @@ def create_invitation(
         doctor_id=doctor_id,
         created_by_user_id=created_by_user_id,
         expires_at=expires_at,
+        max_uses=max_uses
     )
 
     session.add(new_invitation)
@@ -91,7 +93,8 @@ def get_active_invitation_for_doctor(
         not_(InvitationModel.is_deleted),
         InvitationModel.used_at == None,
         InvitationModel.revoked_at == None,
-        InvitationModel.expires_at > now
+        InvitationModel.used_count < InvitationModel.max_uses,
+        InvitationModel.expires_at > now,
     )
 
     return session.exec(statement).first()
@@ -135,13 +138,16 @@ def revoke_invitation(
     return invitation
 
 
-def mark_invitation_as_used(
+def consume_invitation_use(
     session: Session,
     invitation: InvitationModel,
 ) -> InvitationModel:
     """Consumes an invitation."""
-    now = datetime.datetime.now(datetime.timezone.utc)
-    invitation.used_at = now
+    invitation.used_count += 1
+
+    if invitation.used_count >= invitation.max_uses:
+        now = datetime.datetime.now(datetime.timezone.utc)
+        invitation.used_at = now
 
     session.add(invitation)
 

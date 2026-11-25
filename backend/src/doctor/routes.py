@@ -9,7 +9,9 @@ from sqlmodel import Session
 from src.db.connection import get_session
 
 from src.doctor.schemas import (
+    DepartmentDoctorUserRead,
     DoctorCreate,
+    DoctorLinkUserRequest,
     DoctorRead,
     DoctorUpdate,
     DoctorRosterRead,
@@ -82,6 +84,19 @@ def list_doctor_roster(
     )
 
 
+@router.get("/users", response_model=list[DepartmentDoctorUserRead])
+def list_department_doctor_users(
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """Retrieves active DOCTOR user accounts in the admin's department."""
+    return doctor_controllers.list_department_doctor_users_controller(
+        session=session,
+        department_id=department_id,
+    )
+
+
 @router.get("/{doctor_id}", response_model=DoctorRead)
 def get_doctor(
     doctor_id: uuid.UUID,
@@ -131,6 +146,23 @@ def delete_doctor(
     return doctor_controllers.delete_doctor_controller(
         session=session,
         doctor_id=doctor_id,
+        department_id=department_id,
+    )
+
+
+@router.post("/{doctor_id}/link-user", response_model=DoctorRead)
+def link_doctor_to_user(
+    doctor_id: uuid.UUID,
+    link_data: DoctorLinkUserRequest,
+    session: Session = Depends(get_session),
+    _current_user: UserModel = Depends(require_department_admin),
+    department_id: uuid.UUID = Depends(require_department_scope),
+):
+    """Links an existing DOCTOR User account to a department Doctor card."""
+    return doctor_controllers.link_doctor_to_user_controller(
+        session=session,
+        doctor_id=doctor_id,
+        user_id=link_data.user_id,
         department_id=department_id,
     )
 

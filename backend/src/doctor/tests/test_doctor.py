@@ -3639,3 +3639,329 @@ def test_deleted_pre_assignment_does_not_block_unavailability_and_restores_in_pl
     assert restored["is_deleted"] is False
     assert restored["sync_status"] is False
 
+
+def test_get_active_doctor_users_for_department_filters_role_dept_and_deleted(
+    session,
+    department,
+    department_b,
+    new_doctor,
+    doctor_b,
+    user_factory,
+):
+    """Tests user_repository.get_active_doctor_users_for_department filters by role, tenant, and active status."""
+    from src.user import repository as user_repository
+
+    active_doc_user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=new_doctor.id,
+        email="active.doc@hospital.org",
+    )
+    deleted_doc = create_new_doctor(
+        session=session,
+        name="Dr. Deleted",
+        department_id=department.id,
+    )
+    deleted_doc_user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=deleted_doc.id,
+        email="deleted.doc@hospital.org",
+    )
+    deleted_doc_user.is_deleted = True
+    session.add(deleted_doc_user)
+    session.commit()
+
+    user_factory(role=UserRole.VIEWER, department_id=department.id)
+    user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department_b.id,
+        doctor_id=doctor_b.id,
+    )
+
+    results = user_repository.get_active_doctor_users_for_department(
+        session=session,
+        department_id=department.id,
+    )
+
+    assert [u.id for u in results] == [active_doc_user.id]
+
+
+def test_list_and_get_doctors_expose_linked_user_metadata(
+    client,
+    session,
+    department,
+    new_doctor,
+    user_factory,
+    department_admin_headers,
+):
+    """Tests GET /doctors/ and GET /doctors/{id} expose linked_user_id and linked_user_email."""
+    doc_user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=new_doctor.id,
+        email="linked.doc@hospital.org",
+    )
+    unlinked_doc = create_new_doctor(
+        session=session,
+        name="Dr. Unlinked",
+        department_id=department.id,
+    )
+
+    list_resp = client.get("/api/v1/doctors/", headers=department_admin_headers)
+    assert list_resp.status_code == 200
+    by_id = {item["id"]: item for item in list_resp.json()}
+
+    assert by_id[str(new_doctor.id)]["linked_user_id"] == str(doc_user.id)
+    assert by_id[str(new_doctor.id)]["linked_user_email"] == "linked.doc@hospital.org"
+    assert by_id[str(unlinked_doc.id)]["linked_user_id"] is None
+    assert by_id[str(unlinked_doc.id)]["linked_user_email"] is None
+
+    get_linked = client.get(
+        f"/api/v1/doctors/{new_doctor.id}",
+        headers=department_admin_headers,
+    )
+    assert get_linked.status_code == 200
+    assert get_linked.json()["linked_user_id"] == str(doc_user.id)
+    assert get_linked.json()["linked_user_email"] == "linked.doc@hospital.org"
+
+    get_unlinked = client.get(
+        f"/api/v1/doctors/{unlinked_doc.id}",
+        headers=department_admin_headers,
+    )
+    assert get_unlinked.status_code == 200
+    assert get_unlinked.json()["linked_user_id"] is None
+    assert get_unlinked.json()["linked_user_email"] is None
+
+
+def test_list_department_doctor_users_route(
+    client,
+    session,
+    department,
+    department_b,
+    new_doctor,
+    doctor_b,
+    user_factory,
+    department_admin_headers,
+    auth_headers_factory,
+):
+    """Tests GET /api/v1/doctors/users lists department DOCTOR accounts and enforces admin auth."""
+    unauth = client.get("/api/v1/doctors/users")
+    assert unauth.status_code == 401
+
+    doc_user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=new_doctor.id,
+        full_name="Dr. Gregory House",
+        email="house.users@hospital.org",
+    )
+    viewer = user_factory(role=UserRole.VIEWER, department_id=department.id)
+    user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department_b.id,
+        doctor_id=doctor_b.id,
+        email="other.dept@hospital.org",
+    )
+
+    assert client.get("/api/v1/doctors/users", headers=auth_headers_factory(doc_user)).status_code == 403
+    assert client.get("/api/v1/doctors/users", headers=auth_headers_factory(viewer)).status_code == 403
+
+    resp = client.get("/api/v1/doctors/users", headers=department_admin_headers)
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert len(payload) == 1
+    assert payload[0]["id"] == str(doc_user.id)
+    assert payload[0]["full_name"] == "Dr. Gregory House"
+    assert payload[0]["email"] == "house.users@hospital.org"
+    assert payload[0]["doctor_id"] == str(new_doctor.id)
+
+
+def test_link_doctor_to_user_migrates_dates_and_soft_deletes_orphan_doctor(
+    client,
+    session,
+    department,
+    position,
+    shift,
+    user_factory,
+    department_admin_headers,
+):
+    """Tests POST /doctors/{id}/link-user re-links User, migrates dates, and deletes empty duplicate Doctor."""
+    target_doc = create_new_doctor(
+        session=session,
+        name="Dr. Greg",
+        department_id=department.id,
+    )
+    doctor_repository.create_doctor_position(
+        session,
+        target_doc.id,
+        DoctorPositionCreate(position_id=position.id),
+    )
+
+    orphan_doc = create_new_doctor(
+        session=session,
+        name="Gregory House",
+        department_id=department.id,
+    )
+    doc_user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=orphan_doc.id,
+        full_name="Gregory House",
+        email="greg.house@hospital.org",
+    )
+
+    unavail_date = datetime.date(2026, 11, 4)
+    pre_date = datetime.date(2026, 11, 10)
+    doctor_repository.create_doctor_unavailability(
+        session, orphan_doc.id, DoctorUnavailabilityCreate(date=unavail_date)
+    )
+    doctor_repository.create_doctor_pre_assignment(
+        session, orphan_doc.id, DoctorPreAssignmentCreate(shift_id=shift.id, date=pre_date)
+    )
+
+    resp = client.post(
+        f"/api/v1/doctors/{target_doc.id}/link-user",
+        json={"user_id": str(doc_user.id)},
+        headers=department_admin_headers,
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["id"] == str(target_doc.id)
+    assert body["linked_user_id"] == str(doc_user.id)
+    assert body["linked_user_email"] == "greg.house@hospital.org"
+    assert body["position_ids"] == [str(position.id)]
+
+    session.refresh(doc_user)
+    session.refresh(orphan_doc)
+    assert doc_user.doctor_id == target_doc.id
+    assert orphan_doc.is_deleted is True
+
+    migrated_unavail = doctor_repository.get_doctor_unavailability(session, target_doc.id)
+    migrated_pre = doctor_repository.get_doctor_pre_assignments(session, target_doc.id)
+    assert [u.date for u in migrated_unavail] == [unavail_date]
+    assert [(p.date, p.shift_id) for p in migrated_pre] == [(pre_date, shift.id)]
+
+
+def test_link_doctor_to_user_preserves_old_doctor_with_assignments(
+    client,
+    session,
+    department,
+    shift,
+    user_factory,
+    department_admin_headers,
+):
+    """Old Doctor card stays active if it has published ShiftAssignment rows."""
+    from src.shift.schemas import ShiftAssignmentCreate
+
+    target_doc = create_new_doctor(
+        session=session,
+        name="Dr. New Card",
+        department_id=department.id,
+    )
+    old_doc = create_new_doctor(
+        session=session,
+        name="Dr. Historical",
+        department_id=department.id,
+    )
+    doc_user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=old_doc.id,
+        email="historical.doc@hospital.org",
+    )
+    shift_repository.create_shift_assignment(
+        session,
+        shift.id,
+        ShiftAssignmentCreate(doctor_id=old_doc.id, date=datetime.date(2026, 10, 5)),
+    )
+
+    resp = client.post(
+        f"/api/v1/doctors/{target_doc.id}/link-user",
+        json={"user_id": str(doc_user.id)},
+        headers=department_admin_headers,
+    )
+
+    assert resp.status_code == 200
+    session.refresh(doc_user)
+    session.refresh(old_doc)
+    assert doc_user.doctor_id == target_doc.id
+    assert old_doc.is_deleted is False
+
+
+def test_link_doctor_to_user_conflict_and_validation_errors(
+    client,
+    session,
+    department,
+    department_b,
+    new_doctor,
+    doctor_b,
+    user_factory,
+    department_admin_headers,
+    auth_headers_factory,
+):
+    """Tests 409 when doctor is already linked to another user, plus 404/403/401 checks."""
+    already_linked_doc = create_new_doctor(
+        session=session,
+        name="Dr. Already Linked",
+        department_id=department.id,
+    )
+    user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=already_linked_doc.id,
+        email="first.doc@hospital.org",
+    )
+    second_user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department.id,
+        doctor_id=new_doctor.id,
+        email="second.doc@hospital.org",
+    )
+    viewer = user_factory(role=UserRole.VIEWER, department_id=department.id)
+    foreign_user = user_factory(
+        role=UserRole.DOCTOR,
+        department_id=department_b.id,
+        doctor_id=doctor_b.id,
+    )
+
+    unlinked_doc = create_new_doctor(
+        session=session,
+        name="Dr. Open Slot",
+        department_id=department.id,
+    )
+
+    assert client.post(
+        f"/api/v1/doctors/{unlinked_doc.id}/link-user",
+        json={"user_id": str(second_user.id)},
+    ).status_code == 401
+    assert client.post(
+        f"/api/v1/doctors/{unlinked_doc.id}/link-user",
+        json={"user_id": str(second_user.id)},
+        headers=auth_headers_factory(viewer),
+    ).status_code == 403
+
+    conflict = client.post(
+        f"/api/v1/doctors/{already_linked_doc.id}/link-user",
+        json={"user_id": str(second_user.id)},
+        headers=department_admin_headers,
+    )
+    assert conflict.status_code == 409
+
+    for bad_user_id in (foreign_user.id, viewer.id, uuid.uuid4()):
+        resp = client.post(
+            f"/api/v1/doctors/{unlinked_doc.id}/link-user",
+            json={"user_id": str(bad_user_id)},
+            headers=department_admin_headers,
+        )
+        assert resp.status_code == 404
+
+    assert client.post(
+        f"/api/v1/doctors/{doctor_b.id}/link-user",
+        json={"user_id": str(second_user.id)},
+        headers=department_admin_headers,
+    ).status_code == 404
+
+
+

@@ -225,3 +225,25 @@ def test_create_staff_invitation_rejects_viewer_with_doctor_id(
     data = StaffInvitationCreate(role=UserRole.VIEWER, doctor_id=doc.id)
     with pytest.raises(InvalidInvitationDoctorError):
         create_staff_invitation(session=session, current_user=admin, data=data)
+
+
+def test_create_staff_invitation_with_max_uses(
+    session: Session,
+    department_factory,
+    user_factory,
+):
+    """Tests creating a multi-use doctor invitation persists max_uses and returns counts."""
+    dept = department_factory()
+    admin = user_factory(role=UserRole.DEPARTMENT_ADMIN, department_id=dept.id)
+
+    data = StaffInvitationCreate(role=UserRole.DOCTOR, doctor_id=None, max_uses=5)
+    response = create_staff_invitation(session=session, current_user=admin, data=data)
+
+    assert response.max_uses == 5
+    assert response.used_count == 0
+
+    persisted = auth_repository.get_invitation_by_id(session, response.id)
+    assert persisted is not None
+    assert persisted.max_uses == 5
+    assert persisted.used_count == 0
+

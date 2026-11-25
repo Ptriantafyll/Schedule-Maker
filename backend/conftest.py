@@ -195,6 +195,8 @@ def invitation_factory_fixture(session, department_factory, user_factory):
         used_at: datetime.datetime | None = None,
         revoked_at: datetime.datetime | None = None,
         is_deleted: bool = False,
+        max_uses: int = 1,
+        used_count: int = 0,
     ) -> InvitationModel:
         if department_id is None:
             department_id = department_factory().id
@@ -220,6 +222,8 @@ def invitation_factory_fixture(session, department_factory, user_factory):
             used_at=used_at,
             revoked_at=revoked_at,
             is_deleted=is_deleted,
+            max_uses=max_uses,
+            used_count=used_count,
         )
         session.add(invitation)
         session.commit()

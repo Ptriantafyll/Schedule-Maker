@@ -298,3 +298,45 @@ def test_invitation_read_omits_secrets(invitation_factory):
     dumped = read_dto.model_dump()
     assert "token_hash" not in dumped
     assert "raw_token" not in dumped
+
+
+def test_staff_invitation_create_multi_use_validation():
+    """Tests max_uses defaults, bounds (1..100), and single-use enforcement when doctor_id is set."""
+    default_data = StaffInvitationCreate()
+    assert default_data.max_uses == 1
+
+    bulk_data = StaffInvitationCreate(role=UserRole.DOCTOR, max_uses=15)
+    assert bulk_data.max_uses == 15
+
+    with pytest.raises(ValidationError):
+        StaffInvitationCreate(max_uses=0)
+
+    with pytest.raises(ValidationError):
+        StaffInvitationCreate(max_uses=101)
+
+    with pytest.raises(ValidationError) as exc_info:
+        StaffInvitationCreate(doctor_id=uuid.uuid4(), max_uses=2)
+    assert "max_uses" in str(exc_info.value)
+
+
+def test_invitation_response_and_read_expose_multi_use_counts(invitation_factory):
+    """Tests InvitationCreatedResponse and InvitationRead serialize max_uses and used_count."""
+    expires_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(days=7)
+    created_resp = InvitationCreatedResponse(
+        id=uuid.uuid4(),
+        role=UserRole.DOCTOR,
+        department_id=uuid.uuid4(),
+        doctor_id=None,
+        expires_at=expires_at,
+        raw_token="secret_token",
+        max_uses=5,
+        used_count=0,
+    )
+    assert created_resp.max_uses == 5
+    assert created_resp.used_count == 0
+
+    invitation = invitation_factory()
+    read_dto = InvitationRead.model_validate(invitation)
+    assert read_dto.max_uses == 1
+    assert read_dto.used_count == 0
+
