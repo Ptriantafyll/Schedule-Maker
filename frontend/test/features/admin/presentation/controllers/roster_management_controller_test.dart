@@ -2,13 +2,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/network/api_exception.dart';
 import 'package:frontend/features/admin/data/repositories/roster_repository.dart';
+import 'package:frontend/features/admin/domain/models/department_doctor_user.dart';
 import 'package:frontend/features/admin/domain/models/doctor_pre_assignment.dart';
 import 'package:frontend/features/admin/domain/models/doctor_unavailability.dart';
 import 'package:frontend/features/admin/domain/models/roster_doctor.dart';
 import 'package:frontend/features/admin/domain/models/roster_position.dart';
 import 'package:frontend/features/admin/domain/models/roster_shift.dart';
 import 'package:frontend/features/admin/domain/models/roster_team.dart';
+import 'package:frontend/features/admin/domain/models/staff_invitation.dart';
 import 'package:frontend/features/admin/presentation/controllers/roster_management_controller.dart';
+import 'package:frontend/features/auth/domain/models/user_role.dart';
 
 class FakeRosterRepository implements RosterRepository {
   List<RosterTeam> teamsToReturn = [];
@@ -17,6 +20,8 @@ class FakeRosterRepository implements RosterRepository {
   List<RosterDoctor> doctorsToReturn = [];
   List<DoctorUnavailability> unavailabilitiesToReturn = [];
   List<DoctorPreAssignment> preAssignmentsToReturn = [];
+  List<StaffInvitation> invitationsToReturn = [];
+  List<DepartmentDoctorUser> doctorUsersToReturn = [];
 
   Exception? exceptionToThrow;
   String? failOnAssignPositionId;
@@ -305,6 +310,104 @@ class FakeRosterRepository implements RosterRepository {
     preAssignmentsToReturn = preAssignmentsToReturn
         .where((pa) => pa.id != preAssignmentId)
         .toList();
+  }
+
+  @override
+  Future<List<StaffInvitation>> fetchInvitations() async {
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return invitationsToReturn;
+  }
+
+  @override
+  Future<CreatedStaffInvitation> createStaffInvitation({
+    String role = 'doctor',
+    String? doctorId,
+    int maxUses = 1,
+  }) async {
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    final id = 'inv-${++_counter}';
+    final parsedRole = UserRole.fromString(role);
+    final expiresAt = DateTime.now().toUtc().add(const Duration(days: 7));
+    invitationsToReturn = [
+      ...invitationsToReturn,
+      StaffInvitation(
+        id: id,
+        role: parsedRole,
+        departmentId: 'dept-1',
+        doctorId: doctorId,
+        expiresAt: expiresAt,
+        maxUses: maxUses,
+      ),
+    ];
+    return CreatedStaffInvitation(
+      id: id,
+      role: parsedRole,
+      departmentId: 'dept-1',
+      doctorId: doctorId,
+      expiresAt: expiresAt,
+      rawToken: 'raw-token-$id',
+      maxUses: maxUses,
+    );
+  }
+
+  @override
+  Future<StaffInvitation> revokeInvitation({
+    required String invitationId,
+  }) async {
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    final index = invitationsToReturn.indexWhere((i) => i.id == invitationId);
+    if (index == -1) throw StateError('Invitation $invitationId not found');
+    final current = invitationsToReturn[index];
+    final revoked = StaffInvitation(
+      id: current.id,
+      role: current.role,
+      departmentId: current.departmentId,
+      doctorId: current.doctorId,
+      expiresAt: current.expiresAt,
+      usedAt: current.usedAt,
+      revokedAt: DateTime.now().toUtc(),
+      maxUses: current.maxUses,
+      usedCount: current.usedCount,
+    );
+    invitationsToReturn = [
+      for (final inv in invitationsToReturn)
+        inv.id == invitationId ? revoked : inv,
+    ];
+    return revoked;
+  }
+
+  @override
+  Future<List<DepartmentDoctorUser>> fetchDepartmentDoctorUsers() async {
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return doctorUsersToReturn;
+  }
+
+  @override
+  Future<RosterDoctor> linkDoctorToUser({
+    required String doctorId,
+    required String userId,
+  }) async {
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    final docIndex = doctorsToReturn.indexWhere((d) => d.id == doctorId);
+    if (docIndex == -1) throw StateError('Doctor $doctorId not found');
+    final userIndex = doctorUsersToReturn.indexWhere((u) => u.id == userId);
+    final email = userIndex == -1
+        ? '$userId@hospital.org'
+        : doctorUsersToReturn[userIndex].email;
+    final target = doctorsToReturn[docIndex];
+    final linked = RosterDoctor(
+      id: target.id,
+      name: target.name,
+      departmentId: target.departmentId,
+      teamId: target.teamId,
+      positionIds: target.positionIds,
+      linkedUserId: userId,
+      linkedUserEmail: email,
+    );
+    doctorsToReturn = [
+      for (final d in doctorsToReturn) d.id == doctorId ? linked : d,
+    ];
+    return linked;
   }
 }
 

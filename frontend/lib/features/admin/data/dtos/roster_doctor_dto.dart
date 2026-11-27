@@ -7,6 +7,8 @@ class RosterDoctorDto {
     required this.departmentId,
     this.teamId,
     required this.positionIds,
+    this.linkedUserId,
+    this.linkedUserEmail,
   });
 
   final String id;
@@ -14,6 +16,8 @@ class RosterDoctorDto {
   final String departmentId;
   final String? teamId;
   final List<String> positionIds;
+  final String? linkedUserId;
+  final String? linkedUserEmail;
 
   factory RosterDoctorDto.fromJson(Map<String, dynamic> json) {
     final id = json['id'];
@@ -44,6 +48,16 @@ class RosterDoctorDto {
       throw const FormatException('Invalid "position_ids" in doctor JSON');
     }
 
+    final linkedUserId = json['linked_user_id'];
+    if (linkedUserId != null && linkedUserId is! String) {
+      throw const FormatException('Invalid "linked_user_id" in doctor JSON');
+    }
+
+    final linkedUserEmail = json['linked_user_email'];
+    if (linkedUserEmail != null && linkedUserEmail is! String) {
+      throw const FormatException('Invalid "linked_user_email" in doctor JSON');
+    }
+
     return RosterDoctorDto(
       id: id,
       name: name,
@@ -52,6 +66,8 @@ class RosterDoctorDto {
       positionIds: rawPositionIds == null
           ? const []
           : List<String>.from(rawPositionIds),
+      linkedUserId: linkedUserId as String?,
+      linkedUserEmail: linkedUserEmail as String?,
     );
   }
 
@@ -62,6 +78,8 @@ class RosterDoctorDto {
       departmentId: departmentId,
       teamId: teamId,
       positionIds: positionIds,
+      linkedUserId: linkedUserId,
+      linkedUserEmail: linkedUserEmail,
     );
   }
 
@@ -72,6 +90,8 @@ class RosterDoctorDto {
       'department_id': departmentId,
       'team_id': teamId,
       'position_ids': positionIds,
+      'linked_user_id': ?linkedUserId,
+      'linked_user_email': ?linkedUserEmail,
     };
   }
 }

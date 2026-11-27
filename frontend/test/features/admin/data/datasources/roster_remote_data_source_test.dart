@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/network/api_client.dart';
 import 'package:frontend/core/network/api_exception.dart';
 import 'package:frontend/features/admin/data/datasources/roster_remote_data_source.dart';
+import 'package:frontend/features/auth/domain/models/user_role.dart';
 
 class FakeApiClient implements ApiClient {
   String? capturedMethod;
@@ -569,5 +570,165 @@ void main() {
         throwsA(isA<ApiException>()),
       );
     });
+  });
+
+  group('Invitations & doctor-user linking endpoints', () {
+    final sampleInvitationJson = <String, dynamic>{
+      'id': 'inv-1',
+      'role': 'doctor',
+      'department_id': 'dept-1',
+      'doctor_id': 'doc-1',
+      'created_by_user_id': 'admin-1',
+      'expires_at': '2099-12-01T10:00:00Z',
+      'used_at': null,
+      'revoked_at': null,
+      'created_at': '2026-11-01T08:00:00Z',
+      'updated_at': '2026-11-01T08:00:00Z',
+      'is_deleted': false,
+      'sync_status': false,
+      'max_uses': 1,
+      'used_count': 0,
+    };
+
+    final sampleCreatedInvitationJson = <String, dynamic>{
+      'id': 'inv-2',
+      'role': 'doctor',
+      'department_id': 'dept-1',
+      'doctor_id': null,
+      'expires_at': '2099-12-01T10:00:00Z',
+      'raw_token': 'secret-token-xyz',
+      'max_uses': 5,
+      'used_count': 0,
+    };
+
+    final sampleDoctorUserJson = <String, dynamic>{
+      'id': 'usr-1',
+      'full_name': 'Dr. Panos',
+      'email': 'panos@hospital.org',
+      'doctor_id': 'doc-1',
+    };
+
+    test('fetchInvitations GETs /api/v1/auth/invitations', () async {
+      fakeApiClient.responseToReturn = Response(
+        requestOptions: RequestOptions(path: '/api/v1/auth/invitations'),
+        statusCode: 200,
+        data: [sampleInvitationJson],
+      );
+
+      final result = await dataSource.fetchInvitations();
+
+      expect(fakeApiClient.capturedMethod, 'GET');
+      expect(fakeApiClient.capturedPath, '/api/v1/auth/invitations');
+      expect(result.single.id, 'inv-1');
+      expect(result.single.role, UserRole.doctor);
+      expect(result.single.doctorId, 'doc-1');
+    });
+
+    test(
+      'createStaffInvitation POSTs /api/v1/auth/invitations/staff omitting null doctor_id',
+      () async {
+        fakeApiClient.responseToReturn = Response(
+          requestOptions: RequestOptions(
+            path: '/api/v1/auth/invitations/staff',
+          ),
+          statusCode: 201,
+          data: sampleCreatedInvitationJson,
+        );
+
+        final bulk = await dataSource.createStaffInvitation(maxUses: 5);
+        expect(fakeApiClient.capturedMethod, 'POST');
+        expect(fakeApiClient.capturedPath, '/api/v1/auth/invitations/staff');
+        expect(fakeApiClient.capturedData, {'role': 'doctor', 'max_uses': 5});
+        expect(bulk.rawToken, 'secret-token-xyz');
+        expect(bulk.maxUses, 5);
+
+        await dataSource.createStaffInvitation(
+          role: 'doctor',
+          doctorId: 'doc-1',
+          maxUses: 1,
+        );
+        expect(fakeApiClient.capturedData, {
+          'role': 'doctor',
+          'doctor_id': 'doc-1',
+          'max_uses': 1,
+        });
+      },
+    );
+
+    test(
+      'revokeInvitation POSTs /api/v1/auth/invitations/{id}/revoke',
+      () async {
+        fakeApiClient.responseToReturn = Response(
+          requestOptions: RequestOptions(
+            path: '/api/v1/auth/invitations/inv-1/revoke',
+          ),
+          statusCode: 200,
+          data: {
+            ...sampleInvitationJson,
+            'revoked_at': '2026-11-10T10:00:00Z',
+          },
+        );
+
+        final revoked = await dataSource.revokeInvitation(
+          invitationId: 'inv-1',
+        );
+
+        expect(fakeApiClient.capturedMethod, 'POST');
+        expect(
+          fakeApiClient.capturedPath,
+          '/api/v1/auth/invitations/inv-1/revoke',
+        );
+        expect(revoked.isActive, isFalse);
+      },
+    );
+
+    test(
+      'fetchDepartmentDoctorUsers GETs /api/v1/doctors/users',
+      () async {
+        fakeApiClient.responseToReturn = Response(
+          requestOptions: RequestOptions(path: '/api/v1/doctors/users'),
+          statusCode: 200,
+          data: [sampleDoctorUserJson],
+        );
+
+        final users = await dataSource.fetchDepartmentDoctorUsers();
+
+        expect(fakeApiClient.capturedMethod, 'GET');
+        expect(fakeApiClient.capturedPath, '/api/v1/doctors/users');
+        expect(users.single.email, 'panos@hospital.org');
+        expect(users.single.doctorId, 'doc-1');
+      },
+    );
+
+    test(
+      'linkDoctorToUser POSTs /api/v1/doctors/{id}/link-user with {user_id}',
+      () async {
+        fakeApiClient.responseToReturn = Response(
+          requestOptions: RequestOptions(
+            path: '/api/v1/doctors/doc-1/link-user',
+          ),
+          statusCode: 200,
+          data: {
+            ...sampleDoctorJson,
+            'linked_user_id': 'usr-1',
+            'linked_user_email': 'panos@hospital.org',
+          },
+        );
+
+        final linked = await dataSource.linkDoctorToUser(
+          doctorId: 'doc-1',
+          userId: 'usr-1',
+        );
+
+        expect(fakeApiClient.capturedMethod, 'POST');
+        expect(
+          fakeApiClient.capturedPath,
+          '/api/v1/doctors/doc-1/link-user',
+        );
+        expect(fakeApiClient.capturedData, {'user_id': 'usr-1'});
+        expect(linked.linkedUserId, 'usr-1');
+        expect(linked.linkedUserEmail, 'panos@hospital.org');
+      },
+    );
   });
 }

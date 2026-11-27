@@ -7,6 +7,8 @@ class RosterDoctor {
     required this.departmentId,
     this.teamId,
     required this.positionIds,
+    this.linkedUserId,
+    this.linkedUserEmail,
   });
 
   final String id;
@@ -14,6 +16,8 @@ class RosterDoctor {
   final String departmentId;
   final String? teamId;
   final List<String> positionIds;
+  final String? linkedUserId;
+  final String? linkedUserEmail;
 
   @override
   bool operator ==(Object other) {
@@ -24,14 +28,23 @@ class RosterDoctor {
         other.name == name &&
         other.departmentId == departmentId &&
         other.teamId == teamId &&
+        other.linkedUserId == linkedUserId &&
+        other.linkedUserEmail == linkedUserEmail &&
         listEquals(other.positionIds, positionIds);
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, departmentId, teamId, Object.hashAll(positionIds));
+  int get hashCode => Object.hash(
+    id,
+    name,
+    departmentId,
+    teamId,
+    Object.hashAll(positionIds),
+    linkedUserId,
+    linkedUserEmail,
+  );
 
   @override
   String toString() =>
-      'RosterDoctor(id: $id, name: $name, departmentId: $departmentId, teamId: $teamId, positionIds: $positionIds)';
+      'RosterDoctor(id: $id, name: $name, departmentId: $departmentId, teamId: $teamId, positionIds: $positionIds, linkedUserId: $linkedUserId, linkedUserEmail: $linkedUserEmail)';
 }

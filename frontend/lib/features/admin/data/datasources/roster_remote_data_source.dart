@@ -1,17 +1,21 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/core/network/api_client.dart';
+import 'package:frontend/features/admin/data/dtos/department_doctor_user_dto.dart';
 import 'package:frontend/features/admin/data/dtos/doctor_pre_assignment_dto.dart';
 import 'package:frontend/features/admin/data/dtos/doctor_unavailability_dto.dart';
 import 'package:frontend/features/admin/data/dtos/roster_doctor_dto.dart';
 import 'package:frontend/features/admin/data/dtos/roster_position_dto.dart';
 import 'package:frontend/features/admin/data/dtos/roster_shift_dto.dart';
 import 'package:frontend/features/admin/data/dtos/roster_team_dto.dart';
+import 'package:frontend/features/admin/data/dtos/staff_invitation_dto.dart';
+import 'package:frontend/features/admin/domain/models/department_doctor_user.dart';
 import 'package:frontend/features/admin/domain/models/doctor_pre_assignment.dart';
 import 'package:frontend/features/admin/domain/models/doctor_unavailability.dart';
 import 'package:frontend/features/admin/domain/models/roster_doctor.dart';
 import 'package:frontend/features/admin/domain/models/roster_position.dart';
 import 'package:frontend/features/admin/domain/models/roster_shift.dart';
 import 'package:frontend/features/admin/domain/models/roster_team.dart';
+import 'package:frontend/features/admin/domain/models/staff_invitation.dart';
 
 final rosterRemoteDataSourceProvider = Provider<RosterRemoteDataSource>((ref) {
   final apiClient = ref.watch(apiClientProvider);
@@ -262,5 +266,50 @@ class RosterRemoteDataSource {
     await _apiClient.delete<void>(
       '/api/v1/doctors/$doctorId/pre-assignments/$preAssignmentId',
     );
+  }
+
+  Future<List<StaffInvitation>> fetchInvitations() => _fetchList(
+    '/api/v1/auth/invitations',
+    (json) => StaffInvitationDto.fromJson(json).toDomain(),
+  );
+
+  Future<CreatedStaffInvitation> createStaffInvitation({
+    String role = 'doctor',
+    String? doctorId,
+    int maxUses = 1,
+  }) async {
+    final response = await _apiClient.post<Map<String, dynamic>>(
+      '/api/v1/auth/invitations/staff',
+      data: {'role': role, 'doctor_id': ?doctorId, 'max_uses': maxUses},
+    );
+
+    return CreatedStaffInvitationDto.fromJson(response.data!).toDomain();
+  }
+
+  Future<StaffInvitation> revokeInvitation({
+    required String invitationId,
+  }) async {
+    final response = await _apiClient.post(
+      '/api/v1/auth/invitations/$invitationId/revoke',
+    );
+
+    return StaffInvitationDto.fromJson(response.data!).toDomain();
+  }
+
+  Future<List<DepartmentDoctorUser>> fetchDepartmentDoctorUsers() => _fetchList(
+    '/api/v1/doctors/users',
+    (json) => DepartmentDoctorUserDto.fromJson(json).toDomain(),
+  );
+
+  Future<RosterDoctor> linkDoctorToUser({
+    required String doctorId,
+    required String userId,
+  }) async {
+    final response = await _apiClient.post(
+      '/api/v1/doctors/$doctorId/link-user',
+      data: {"user_id": userId},
+    );
+
+    return RosterDoctorDto.fromJson(response.data!).toDomain();
   }
 }

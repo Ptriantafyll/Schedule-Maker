@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:frontend/features/admin/data/datasources/roster_remote_data_source.dart';
+import 'package:frontend/features/admin/domain/models/department_doctor_user.dart';
 import 'package:frontend/features/admin/domain/models/doctor_pre_assignment.dart';
 import 'package:frontend/features/admin/domain/models/doctor_unavailability.dart';
 import 'package:frontend/features/admin/domain/models/roster_doctor.dart';
 import 'package:frontend/features/admin/domain/models/roster_position.dart';
 import 'package:frontend/features/admin/domain/models/roster_shift.dart';
 import 'package:frontend/features/admin/domain/models/roster_team.dart';
+import 'package:frontend/features/admin/domain/models/staff_invitation.dart';
 
 final rosterRepositoryProvider = Provider<RosterRepository>((ref) {
   final remoteDataSource = ref.watch(rosterRemoteDataSourceProvider);
@@ -15,10 +17,7 @@ final rosterRepositoryProvider = Provider<RosterRepository>((ref) {
 abstract class RosterRepository {
   Future<List<RosterTeam>> fetchTeams();
   Future<RosterTeam> createTeam({required String name});
-  Future<RosterTeam> updateTeam({
-    required String teamId,
-    required String name,
-  });
+  Future<RosterTeam> updateTeam({required String teamId, required String name});
   Future<void> deleteTeam({required String teamId});
 
   Future<List<RosterPosition>> fetchPositions();
@@ -49,10 +48,7 @@ abstract class RosterRepository {
   Future<void> deleteShift({required String shiftId});
 
   Future<List<RosterDoctor>> fetchDoctors();
-  Future<RosterDoctor> createDoctor({
-    required String name,
-    String? teamId,
-  });
+  Future<RosterDoctor> createDoctor({required String name, String? teamId});
   Future<RosterDoctor> updateDoctor({
     required String doctorId,
     String? name,
@@ -93,6 +89,19 @@ abstract class RosterRepository {
   Future<void> removeDoctorPreAssignment({
     required String doctorId,
     required String preAssignmentId,
+  });
+
+  Future<List<StaffInvitation>> fetchInvitations();
+  Future<CreatedStaffInvitation> createStaffInvitation({
+    String role = 'doctor',
+    String? doctorId,
+    int maxUses = 1,
+  });
+  Future<StaffInvitation> revokeInvitation({required String invitationId});
+  Future<List<DepartmentDoctorUser>> fetchDepartmentDoctorUsers();
+  Future<RosterDoctor> linkDoctorToUser({
+    required String doctorId,
+    required String userId,
   });
 }
 
@@ -180,10 +189,8 @@ class RosterRepositoryImpl implements RosterRepository {
   Future<List<RosterDoctor>> fetchDoctors() => remoteDataSource.fetchDoctors();
 
   @override
-  Future<RosterDoctor> createDoctor({
-    required String name,
-    String? teamId,
-  }) => remoteDataSource.createDoctor(name: name, teamId: teamId);
+  Future<RosterDoctor> createDoctor({required String name, String? teamId}) =>
+      remoteDataSource.createDoctor(name: name, teamId: teamId);
 
   @override
   Future<RosterDoctor> updateDoctor({
@@ -229,7 +236,8 @@ class RosterRepositoryImpl implements RosterRepository {
   Future<DoctorUnavailability> addDoctorUnavailability({
     required String doctorId,
     required String date,
-  }) => remoteDataSource.addDoctorUnavailability(doctorId: doctorId, date: date);
+  }) =>
+      remoteDataSource.addDoctorUnavailability(doctorId: doctorId, date: date);
 
   @override
   Future<void> removeDoctorUnavailability({
@@ -264,4 +272,33 @@ class RosterRepositoryImpl implements RosterRepository {
     doctorId: doctorId,
     preAssignmentId: preAssignmentId,
   );
+
+  @override
+  Future<List<StaffInvitation>> fetchInvitations() =>
+      remoteDataSource.fetchInvitations();
+
+  @override
+  Future<CreatedStaffInvitation> createStaffInvitation({
+    String role = 'doctor',
+    String? doctorId,
+    int maxUses = 1,
+  }) => remoteDataSource.createStaffInvitation(
+    role: role,
+    doctorId: doctorId,
+    maxUses: maxUses,
+  );
+
+  @override
+  Future<StaffInvitation> revokeInvitation({required String invitationId}) =>
+      remoteDataSource.revokeInvitation(invitationId: invitationId);
+
+  @override
+  Future<List<DepartmentDoctorUser>> fetchDepartmentDoctorUsers() =>
+      remoteDataSource.fetchDepartmentDoctorUsers();
+
+  @override
+  Future<RosterDoctor> linkDoctorToUser({
+    required String doctorId,
+    required String userId,
+  }) => remoteDataSource.linkDoctorToUser(doctorId: doctorId, userId: userId);
 }

@@ -2,12 +2,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:frontend/core/network/api_exception.dart';
 import 'package:frontend/features/admin/data/datasources/roster_remote_data_source.dart';
 import 'package:frontend/features/admin/data/repositories/roster_repository.dart';
+import 'package:frontend/features/admin/domain/models/department_doctor_user.dart';
 import 'package:frontend/features/admin/domain/models/doctor_pre_assignment.dart';
 import 'package:frontend/features/admin/domain/models/doctor_unavailability.dart';
 import 'package:frontend/features/admin/domain/models/roster_doctor.dart';
 import 'package:frontend/features/admin/domain/models/roster_position.dart';
 import 'package:frontend/features/admin/domain/models/roster_shift.dart';
 import 'package:frontend/features/admin/domain/models/roster_team.dart';
+import 'package:frontend/features/admin/domain/models/staff_invitation.dart';
+import 'package:frontend/features/auth/domain/models/user_role.dart';
 
 class FakeRosterRemoteDataSource implements RosterRemoteDataSource {
   Exception? exceptionToThrow;
@@ -22,6 +25,8 @@ class FakeRosterRemoteDataSource implements RosterRemoteDataSource {
   String? capturedTeamId;
   bool? capturedClearTeam;
   String? capturedDate;
+  String? capturedRole;
+  int? capturedMaxUses;
 
   List<RosterTeam> teamsToReturn = const [];
   RosterTeam? teamToReturn;
@@ -35,6 +40,10 @@ class FakeRosterRemoteDataSource implements RosterRemoteDataSource {
   DoctorUnavailability? unavailabilityToReturn;
   List<DoctorPreAssignment> preAssignmentsToReturn = const [];
   DoctorPreAssignment? preAssignmentToReturn;
+  List<StaffInvitation> invitationsToReturn = const [];
+  StaffInvitation? invitationToReturn;
+  CreatedStaffInvitation? createdInvitationToReturn;
+  List<DepartmentDoctorUser> doctorUsersToReturn = const [];
 
   @override
   Future<List<RosterTeam>> fetchTeams() async {
@@ -287,6 +296,56 @@ class FakeRosterRemoteDataSource implements RosterRemoteDataSource {
     capturedSecondId = preAssignmentId;
     if (exceptionToThrow != null) throw exceptionToThrow!;
   }
+
+  @override
+  Future<List<StaffInvitation>> fetchInvitations() async {
+    lastCall = 'fetchInvitations';
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return invitationsToReturn;
+  }
+
+  @override
+  Future<CreatedStaffInvitation> createStaffInvitation({
+    String role = 'doctor',
+    String? doctorId,
+    int maxUses = 1,
+  }) async {
+    lastCall = 'createStaffInvitation';
+    capturedRole = role;
+    capturedId = doctorId;
+    capturedMaxUses = maxUses;
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return createdInvitationToReturn!;
+  }
+
+  @override
+  Future<StaffInvitation> revokeInvitation({
+    required String invitationId,
+  }) async {
+    lastCall = 'revokeInvitation';
+    capturedId = invitationId;
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return invitationToReturn!;
+  }
+
+  @override
+  Future<List<DepartmentDoctorUser>> fetchDepartmentDoctorUsers() async {
+    lastCall = 'fetchDepartmentDoctorUsers';
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return doctorUsersToReturn;
+  }
+
+  @override
+  Future<RosterDoctor> linkDoctorToUser({
+    required String doctorId,
+    required String userId,
+  }) async {
+    lastCall = 'linkDoctorToUser';
+    capturedId = doctorId;
+    capturedSecondId = userId;
+    if (exceptionToThrow != null) throw exceptionToThrow!;
+    return doctorToReturn!;
+  }
 }
 
 void main() {
@@ -470,5 +529,66 @@ void main() {
       () => repository.deleteDoctor(doctorId: 'missing-id'),
       throwsA(isA<ApiException>()),
     );
+  });
+
+  test('delegates invitation and doctor-user linking operations cleanly', () async {
+    final invitation = StaffInvitation(
+      id: 'inv-1',
+      role: UserRole.doctor,
+      departmentId: 'dept-1',
+      doctorId: 'doc-1',
+      expiresAt: DateTime.utc(2099, 12, 1),
+    );
+    final createdInvitation = CreatedStaffInvitation(
+      id: 'inv-2',
+      role: UserRole.doctor,
+      departmentId: 'dept-1',
+      expiresAt: DateTime.utc(2099, 12, 1),
+      rawToken: 'raw-token-123',
+      maxUses: 4,
+    );
+    const doctorUser = DepartmentDoctorUser(
+      id: 'usr-1',
+      fullName: 'Dr. Panos',
+      email: 'panos@hospital.org',
+      doctorId: 'doc-1',
+    );
+    const linkedDoctor = RosterDoctor(
+      id: 'doc-1',
+      name: 'Dr. Panos',
+      departmentId: 'dept-1',
+      teamId: 'team-1',
+      positionIds: ['pos-1'],
+      linkedUserId: 'usr-1',
+      linkedUserEmail: 'panos@hospital.org',
+    );
+
+    fakeRemoteDataSource.invitationsToReturn = [invitation];
+    fakeRemoteDataSource.invitationToReturn = invitation;
+    fakeRemoteDataSource.createdInvitationToReturn = createdInvitation;
+    fakeRemoteDataSource.doctorUsersToReturn = [doctorUser];
+    fakeRemoteDataSource.doctorToReturn = linkedDoctor;
+
+    expect(await repository.fetchInvitations(), [invitation]);
+    expect(
+      await repository.createStaffInvitation(doctorId: 'doc-1', maxUses: 4),
+      createdInvitation,
+    );
+    expect(fakeRemoteDataSource.capturedRole, 'doctor');
+    expect(fakeRemoteDataSource.capturedId, 'doc-1');
+    expect(fakeRemoteDataSource.capturedMaxUses, 4);
+
+    expect(
+      await repository.revokeInvitation(invitationId: 'inv-1'),
+      invitation,
+    );
+    expect(fakeRemoteDataSource.lastCall, 'revokeInvitation');
+
+    expect(await repository.fetchDepartmentDoctorUsers(), [doctorUser]);
+    expect(
+      await repository.linkDoctorToUser(doctorId: 'doc-1', userId: 'usr-1'),
+      linkedDoctor,
+    );
+    expect(fakeRemoteDataSource.capturedSecondId, 'usr-1');
   });
 }
