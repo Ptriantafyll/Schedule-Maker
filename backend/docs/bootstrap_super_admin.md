@@ -1,5 +1,13 @@
 # Bootstrap a Super-Admin
 
+## Command
+
+Run from the `backend/` directory (script: [bootstrap_super_admin.py](file:///C:/Users/ptria/source/repos/Schedule-Maker/backend/scripts/bootstrap_super_admin.py)):
+
+```bash
+uv run --no-sync python -m scripts.bootstrap_super_admin --email "admin@example.com" --full-name "System Administrator"
+```
+
 ## Purpose
 
 The bootstrap command creates a trusted `super_admin` account directly through

@@ -1,5 +1,15 @@
 # Bootstrap a Department Admin
 
+## Command
+
+Run from the `backend/` directory (script: [bootstrap_department_admin.py](file:///C:/Users/ptria/source/repos/Schedule-Maker/backend/scripts/bootstrap_department_admin.py)):
+
+```bash
+uv run --no-sync python -m scripts.bootstrap_department_admin --department-name "Cardiology" --department-code "CARD" --email "admin@cardio.hospital.com" --full-name "Dr. Sarah Connor"
+```
+
+*(Omit `--department-code` to auto-derive the uppercase code from the first 4 characters of `--department-name`.)*
+
 ## Purpose
 
 The department-admin bootstrap command creates a trusted `department_admin` account (and its associated hospital `Department` if it does not already exist) directly through the backend service layer.
